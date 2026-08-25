@@ -148,3 +148,4 @@ Políticas:
 Compresión en cliente: JPEG calidad 75%, resolución máx 1920x1080 (peso promedio ~400-800 KB por foto).
 
 CORS habilitado para peticiones PUT directas desde el cliente móvil.
+

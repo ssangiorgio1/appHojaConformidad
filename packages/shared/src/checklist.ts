@@ -1,7 +1,32 @@
 // Ported verbatim from hoja-de-conformidad-wara_1.html (CHECKLIST_ITEMS) —
 // this is the single source of truth for checklist keys/labels shared by the
-// Mongoose schema, request validation, and (later) the mobile/web clients.
-export const CHECKLIST_ITEMS = [
+// API, the mobile app, and (later) the web admin panel.
+export const CHECKLIST_KEYS = [
+  'item1',
+  'item2',
+  'item3',
+  'item4',
+  'item5',
+  'item6_airbag',
+  'item6_guine',
+  'item6_alternador',
+  'item6_presion',
+  'item6_temp',
+  'item6_falla',
+  'item7',
+  'item8',
+] as const;
+
+export type ChecklistKey = (typeof CHECKLIST_KEYS)[number];
+
+export interface ChecklistItemDef {
+  key: ChecklistKey;
+  label: string;
+  note?: string;
+  group?: string;
+}
+
+export const CHECKLIST_ITEMS: ChecklistItemDef[] = [
   { key: 'item1', label: '1. Luces de posición, guiñe, balizas, luces altas y bajas e ignición del vehículo.' },
   {
     key: 'item2',
@@ -19,12 +44,15 @@ export const CHECKLIST_ITEMS = [
   { key: 'item6_falla', label: 'f) Notificar sobre alguna luz de falla.' },
   { key: 'item7', label: '7. Tornillos de panel y tablero completo.' },
   { key: 'item8', label: '8. Tapizado de asientos delanteros (fotos).' },
-] as const;
-
-export type ChecklistKey = (typeof CHECKLIST_ITEMS)[number]['key'];
-
-export const CHECKLIST_KEYS = CHECKLIST_ITEMS.map((i) => i.key) as ChecklistKey[];
+];
 
 export const CHECKLIST_LABELS: Record<ChecklistKey, string> = Object.fromEntries(
   CHECKLIST_ITEMS.map((i) => [i.key, i.label]),
 ) as Record<ChecklistKey, string>;
+
+export type ChecklistValue = 'SI' | 'NO' | null;
+export type Checklist = Record<ChecklistKey, ChecklistValue>;
+
+export function emptyChecklist(): Checklist {
+  return Object.fromEntries(CHECKLIST_KEYS.map((key) => [key, null])) as Checklist;
+}

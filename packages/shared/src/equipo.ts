@@ -1,6 +1,6 @@
 // Ported verbatim from hoja-de-conformidad-wara_1.html (EQUIP_GROUPS / EQUIP_CHECK_FIELDS).
-// The 5 groups below are a UI grouping concern only — the Mongoose schema and
-// validation treat `equipo` as one flat object keyed by these field keys.
+// The 5 groups below are a UI grouping concern only — API and storage layers
+// treat `equipo` as one flat object keyed by these field keys.
 export const EQUIP_GROUPS = [
   {
     title: 'Datos del equipo',
@@ -73,3 +73,9 @@ export type EquipoCheckKey = (typeof EQUIP_CHECK_FIELDS)[number]['key'];
 
 export const EQUIP_TEXT_KEYS = EQUIP_GROUPS.flatMap((g) => g.fields.map((f) => f.key)) as EquipoTextKey[];
 export const EQUIP_CHECK_KEYS = EQUIP_CHECK_FIELDS.map((f) => f.key) as EquipoCheckKey[];
+
+export type Equipo = Partial<Record<EquipoTextKey, string>> & Partial<Record<EquipoCheckKey, boolean>>;
+
+export function emptyEquipo(): Equipo {
+  return {};
+}

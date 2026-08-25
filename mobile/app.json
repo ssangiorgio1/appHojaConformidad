@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "Conformidad WARA",
+    "slug": "wara-conformidad",
+    "scheme": "waraconformidad",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#f5f1ef",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.waragps.conformidad"
+    },
+    "android": {
+      "package": "com.waragps.conformidad",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-web-browser",
+      "expo-splash-screen",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "WARA Conformidad necesita acceso a tus fotos para adjuntarlas a la hoja de conformidad.",
+          "cameraPermission": "WARA Conformidad necesita acceso a la cámara para tomar fotos de la instalación."
+        }
+      ],
+      "expo-sharing"
+    ]
+  }
+}

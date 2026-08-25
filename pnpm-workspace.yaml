@@ -2,6 +2,7 @@ packages:
   - "api"
   - "mobile"
   - "web"
+  - "packages/*"
 allowBuilds:
   '@firebase/util': true
   esbuild: true

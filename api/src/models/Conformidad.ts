@@ -1,6 +1,5 @@
 import { Schema, model, type InferSchemaType } from 'mongoose';
-import { CHECKLIST_KEYS } from '../constants/checklist.js';
-import { EQUIP_TEXT_KEYS, EQUIP_CHECK_KEYS } from '../constants/equipo.js';
+import { CHECKLIST_KEYS, EQUIP_TEXT_KEYS, EQUIP_CHECK_KEYS } from '@wara/shared';
 
 const checklistFields = Object.fromEntries(
   CHECKLIST_KEYS.map((key) => [key, { type: String, enum: ['SI', 'NO'], default: null }]),

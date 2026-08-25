@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import { CHECKLIST_KEYS } from '../constants/checklist.js';
-import { EQUIP_TEXT_KEYS, EQUIP_CHECK_KEYS } from '../constants/equipo.js';
+import { CHECKLIST_KEYS, EQUIP_TEXT_KEYS, EQUIP_CHECK_KEYS } from '@wara/shared';
 
 const checklistShape = Object.fromEntries(
   CHECKLIST_KEYS.map((key) => [key, z.enum(['SI', 'NO']).nullable().optional()]),

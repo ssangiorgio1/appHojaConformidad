@@ -11,6 +11,7 @@
     "seed:superadmin": "tsx scripts/seedSuperAdmin.ts"
   },
   "dependencies": {
+    "@wara/shared": "workspace:*",
     "@aws-sdk/client-s3": "^3.1116.0",
     "@aws-sdk/s3-request-presigner": "^3.1116.0",
     "cors": "^2.8.6",

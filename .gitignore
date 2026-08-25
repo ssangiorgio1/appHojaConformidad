@@ -1,7 +1,13 @@
 node_modules/
-.env
-.env.local
+*.env
+!*.env.example
 dist/
 build/
 .DS_Store
 *.log
+
+# credential files that land loose in the repo root (Atlas/Firebase downloads, etc.)
+*firebase-adminsdk*.json
+*serviceAccountKey*.json
+*credentials*
+.claude/
