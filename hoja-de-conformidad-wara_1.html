@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>Hoja de Conformidad WARA</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Conformidad">
+<meta name="theme-color" content="#7a1630">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='16' fill='%237a1630'/%3E%3Ctext x='50' y='68' font-size='58' font-family='Arial, sans-serif' font-weight='bold' fill='white' text-anchor='middle'%3EW%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%237a1630'/%3E%3Ctext x='50' y='68' font-size='58' font-family='Arial, sans-serif' font-weight='bold' fill='white' text-anchor='middle'%3EW%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --primary:#7a1630;
+  --primary-dark:#570f22;
+  --accent:#b7273f;
+  --ok:#1f7a3d;
+  --ok-bg:#e6f4ea;
+  --bad:#a31c1c;
+  --bad-bg:#fbe7e7;
+  --bg:#f5f1ef;
+  --card:#ffffff;
+  --border:#e3d9d6;
+  --text:#26201f;
+  --muted:#7a6f6c;
+  --radius:14px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  -webkit-tap-highlight-color:transparent;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+#app{max-width:640px;margin:0 auto;min-height:100vh;background:var(--bg);padding-bottom:40px;}
+a{color:inherit;}
+button{font-family:inherit;}
+.topbar{
+  background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+  color:#fff;padding:14px 16px;position:sticky;top:0;z-index:20;
+  display:flex;align-items:center;gap:10px;box-shadow:0 2px 8px rgba(0,0,0,.15);
+}
+.topbar .back{background:rgba(255,255,255,.15);border:none;color:#fff;font-size:20px;
+  width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex:none;}
+.topbar h1{font-size:17px;margin:0;flex:1;line-height:1.2;font-weight:700;}
+.topbar .sub{font-size:11px;opacity:.85;font-weight:400;display:block;}
+.content{padding:14px;}
+.card{background:var(--card);border-radius:var(--radius);padding:14px;margin-bottom:12px;
+  border:1px solid var(--border);}
+.section-title{font-weight:700;font-size:14px;color:var(--primary-dark);text-transform:uppercase;
+  letter-spacing:.03em;margin:18px 4px 8px;}
+.field{margin-bottom:12px;}
+.field label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:4px;}
+.field input[type=text],.field input[type=date],.field input[type=time],.field input[type=number],
+.field textarea,.field select{
+  width:100%;padding:11px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:15px;
+  background:#fff;color:var(--text);
+}
+.field textarea{min-height:64px;resize:vertical;font-family:inherit;}
+.row2{display:flex;gap:10px;}
+.row2 .field{flex:1;}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:12px 16px;border-radius:11px;border:none;font-size:15px;font-weight:600;
+  cursor:pointer;text-decoration:none;
+}
+.btn-primary{background:var(--primary);color:#fff;}
+.btn-primary:active{background:var(--primary-dark);}
+.btn-secondary{background:#efe6e3;color:var(--primary-dark);}
+.btn-outline{background:transparent;color:var(--primary);border:1.5px solid var(--primary);}
+.btn-danger{background:var(--bad-bg);color:var(--bad);}
+.btn-ghost{background:transparent;color:var(--muted);}
+.btn-block{width:100%;}
+.btn-row{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;}
+.fab{
+  position:fixed;bottom:22px;right:calc(50% - 300px + 20px);
+  background:var(--primary);color:#fff;border:none;border-radius:50px;
+  padding:15px 22px;font-size:15px;font-weight:700;box-shadow:0 6px 16px rgba(0,0,0,.25);
+  z-index:30;
+}
+@media (max-width:680px){ .fab{right:20px;} }
+.empty{text-align:center;color:var(--muted);padding:50px 20px;font-size:14px;}
+.search-wrap{padding:0 14px 6px;}
+.search-wrap input{width:100%;padding:11px 14px;border-radius:30px;border:1.5px solid var(--border);font-size:14px;background:#fff;}
+.tabs{display:flex;gap:6px;padding:0 14px 10px;overflow-x:auto;}
+.tab{flex:none;padding:7px 13px;border-radius:20px;font-size:12.5px;font-weight:600;
+  background:#efe6e3;color:var(--primary-dark);border:none;white-space:nowrap;}
+.tab.active{background:var(--primary);color:#fff;}
+.record{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:13px 14px;margin-bottom:10px;}
+.record-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+.record-title{font-weight:700;font-size:15.5px;}
+.record-sub{font-size:12.5px;color:var(--muted);margin-top:2px;}
+.badge{font-size:11px;font-weight:700;padding:4px 9px;border-radius:20px;white-space:nowrap;}
+.badge-pre{background:#fdf1de;color:#9a6400;}
+.badge-post{background:#e2ecfb;color:#1f4e8c;}
+.badge-done{background:var(--ok-bg);color:var(--ok);}
+.record .btn-row{margin-top:10px;}
+.record .btn{padding:9px 13px;font-size:13.5px;}
+.checklist-item{border-bottom:1px solid var(--border);padding:11px 0;}
+.checklist-item:last-child{border-bottom:none;}
+.checklist-group-title{font-size:12px;font-weight:700;color:var(--primary-dark);margin:12px 0 2px;}
+.checklist-label{font-size:14px;margin-bottom:8px;line-height:1.35;}
+.checklist-note{font-size:11.5px;color:var(--muted);margin-top:-4px;margin-bottom:8px;}
+.toggle-group{display:flex;gap:8px;}
+.toggle-btn{flex:1;padding:10px;border-radius:9px;border:1.5px solid var(--border);
+  background:#fff;font-weight:700;font-size:13.5px;color:var(--muted);}
+.toggle-btn.si.active{background:var(--ok-bg);border-color:var(--ok);color:var(--ok);}
+.toggle-btn.no.active{background:var(--bad-bg);border-color:var(--bad);color:var(--bad);}
+.sig-wrap{border:1.5px dashed var(--border);border-radius:10px;background:#fff;position:relative;overflow:hidden;}
+.sig-wrap canvas{width:100%;height:170px;display:block;touch-action:none;}
+.sig-empty-msg{position:absolute;top:50%;left:0;right:0;text-align:center;color:#c9c0bd;font-size:13px;
+  transform:translateY(-50%);pointer-events:none;}
+.photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px;}
+.photo-thumb{position:relative;border-radius:10px;overflow:hidden;background:#eee;aspect-ratio:1;}
+.photo-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+.photo-thumb .del{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.55);color:#fff;
+  border:none;border-radius:50%;width:22px;height:22px;font-size:13px;line-height:1;}
+.photo-add{border:1.5px dashed var(--border);border-radius:10px;display:flex;align-items:center;
+  justify-content:center;color:var(--muted);font-size:12px;aspect-ratio:1;flex-direction:column;gap:4px;
+  background:#fbf8f7;}
+.check-inline{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);}
+.check-inline:last-child{border-bottom:none;}
+.check-inline input{width:20px;height:20px;flex:none;}
+.check-inline span{font-size:14px;}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#26201f;color:#fff;
+  padding:10px 18px;border-radius:30px;font-size:13.5px;z-index:100;opacity:0;transition:opacity .25s;
+  box-shadow:0 4px 14px rgba(0,0,0,.3);}
+.toast.show{opacity:1;}
+.print-sheet{display:none;}
+.helptext{font-size:12px;color:var(--muted);margin:6px 4px 0;line-height:1.4;}
+hr.sep{border:none;border-top:1px solid var(--border);margin:16px 0;}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;
+  justify-content:center;z-index:200;padding:20px;}
+.modal{background:#fff;border-radius:16px;padding:20px;max-width:400px;width:100%;}
+.modal h3{margin:0 0 10px;font-size:16px;}
+.modal p{font-size:13.5px;color:var(--muted);margin:0 0 16px;line-height:1.4;}
+
+@media print{
+  body *{visibility:hidden;}
+  #printArea, #printArea *{visibility:visible;}
+  #printArea{position:absolute;top:0;left:0;width:100%;padding:0;}
+  .no-print{display:none !important;}
+}
+.print-doc{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:12px;}
+.print-doc h2{background:var(--primary);color:#fff;padding:8px 12px;border-radius:6px;font-size:15px;margin:0 0 10px;}
+.print-doc table{width:100%;border-collapse:collapse;margin-bottom:12px;font-size:11.5px;}
+.print-doc td,.print-doc th{border:1px solid #999;padding:5px 7px;text-align:left;vertical-align:top;}
+.print-doc th{background:#f0ebe9;}
+.print-doc .sig-img{max-width:260px;max-height:110px;border:1px solid #ccc;display:block;margin-top:4px;}
+.print-doc .photo-print{max-width:150px;max-height:150px;border:1px solid #ccc;margin:4px;display:inline-block;}
+.print-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+.print-header .logo{font-weight:800;color:var(--primary);font-size:18px;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" class="toast"></div>
+<script>
+/* ============================= DATA LAYER (IndexedDB) ============================= */
+const DB_NAME = 'wara_conformidad_db';
+const DB_VERSION = 1;
+const STORE = 'records';
+let dbPromise = null;
+
+function openDB(){
+  if(dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject)=>{
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e)=>{
+      const db = e.target.result;
+      if(!db.objectStoreNames.contains(STORE)){
+        db.createObjectStore(STORE, {keyPath:'id'});
+      }
+    };
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+  return dbPromise;
+}
+
+async function dbGetAll(){
+  const db = await openDB();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(STORE,'readonly');
+    const store = tx.objectStore(STORE);
+    const req = store.getAll();
+    req.onsuccess = ()=> resolve(req.result || []);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function dbGet(id){
+  const db = await openDB();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(STORE,'readonly');
+    const req = tx.objectStore(STORE).get(id);
+    req.onsuccess = ()=> resolve(req.result || null);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function dbPut(record){
+  const db = await openDB();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(STORE,'readwrite');
+    tx.objectStore(STORE).put(record);
+    tx.oncomplete = ()=> resolve(record);
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+async function dbDelete(id){
+  const db = await openDB();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction(STORE,'readwrite');
+    tx.objectStore(STORE).delete(id);
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+
+/* ============================= UTILS ============================= */
+function uuid(){
+  return 'r-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,9);
+}
+function esc(s){
+  if(s===undefined||s===null) return '';
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function getPath(obj, path){
+  return path.split('.').reduce((o,k)=> (o==null? undefined : o[k]), obj);
+}
+function setPath(obj, path, value){
+  const parts = path.split('.');
+  let cur = obj;
+  for(let i=0;i<parts.length-1;i++){
+    if(cur[parts[i]] === undefined || cur[parts[i]] === null) cur[parts[i]] = {};
+    cur = cur[parts[i]];
+  }
+  cur[parts[parts.length-1]] = value;
+}
+function nowLocalDate(){
+  const d = new Date();
+  const p = n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+function nowLocalTime(){
+  const d = new Date();
+  const p = n=>String(n).padStart(2,'0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function fmtDateTime(dateStr, timeStr){
+  if(!dateStr) return '—';
+  return dateStr + (timeStr? ' '+timeStr : '');
+}
+let toastTimer=null;
+function toast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> el.classList.remove('show'), 1800);
+}
+function resizeImage(file, maxDim=1100, quality=0.72){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onload = ()=>{
+        let {width, height} = img;
+        if(width > maxDim || height > maxDim){
+          if(width > height){ height = Math.round(height * (maxDim/width)); width = maxDim; }
+          else{ width = Math.round(width * (maxDim/height)); height = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ============================= MODEL ============================= */
+function emptyChecklist(){
+  return {
+    item1:null, item2:null, item3:null, item4:null, item5:null,
+    item6_airbag:null, item6_guine:null, item6_alternador:null, item6_presion:null,
+    item6_temp:null, item6_falla:null, item7:null, item8:null
+  };
+}
+function emptyPhase(){
+  return { checklist: emptyChecklist(), observaciones:'', fotos:[], firma:null };
+}
+function newRecord(){
+  return {
+    id: uuid(),
+    numero:'',
+    cliente:'',
+    fecha: nowLocalDate(),
+    hora: nowLocalTime(),
+    matricula:'',
+    instalador:'',
+    responsableEmpresa:'',
+    status:'borrador_pre', // borrador_pre -> pendiente_post -> completo
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    pre: emptyPhase(),
+    post: emptyPhase(),
+    equipo: {}
+  };
+}
+
+const CHECKLIST_ITEMS = [
+  {key:'item1', label:'1. Luces de posición, guiñe, balizas, luces altas y bajas e ignición del vehículo.'},
+  {key:'item2', label:'2. Autorización por parte de un responsable para el encendido del vehículo.',
+    note:'Procedimiento: A) Freno de mano puesto. B) Cambio en punto neutro. C) Embrague y freno presionados antes de encender.'},
+  {key:'item3', label:'3. Estado general del vehículo (chapería y pintura).'},
+  {key:'item4', label:'4. Paragolpes traseros y delanteros.'},
+  {key:'item5', label:'5. Tablero y panel del vehículo (fotos del panel antes del desarme).'},
+  {key:'item6_airbag', label:'a) Luz de airbag.', group:'6. Revisión de luces del tablero en general'},
+  {key:'item6_guine', label:'b) Luces de guiñe.'},
+  {key:'item6_alternador', label:'c) Luz de alternador.'},
+  {key:'item6_presion', label:'d) Luz de presión de aceite.'},
+  {key:'item6_temp', label:'e) Luz de temperatura.'},
+  {key:'item6_falla', label:'f) Notificar sobre alguna luz de falla.'},
+  {key:'item7', label:'7. Tornillos de panel y tablero completo.'},
+  {key:'item8', label:'8. Tapizado de asientos delanteros (fotos).'},
+];
+const CHECKLIST_LABELS = {}; CHECKLIST_ITEMS.forEach(i=>CHECKLIST_LABELS[i.key]=i.label);
+
+const EQUIP_GROUPS = [
+  {title:'Datos del equipo', fields:[
+    {key:'modelo', label:'Modelo'},
+    {key:'imei', label:'IMEI'},
+    {key:'antenaGsmInt', label:'Antena GSM (Int)'},
+    {key:'antenaGsmExt', label:'Antena GSM (Ext)'},
+    {key:'antenaGpsInt', label:'Antena GPS (Int)'},
+    {key:'antenaGpsExt', label:'Antena GPS (Ext)'},
+  ]},
+  {title:'Sensores', fields:[
+    {key:'sensorTemperatura', label:'Temperatura'},
+    {key:'sensorAperturaPuertas', label:'Apertura de puertas'},
+    {key:'sensorAperturaPSemi', label:'Apertura p/semi'},
+    {key:'sensorGiro', label:'Sensor de giro'},
+    {key:'canbus', label:'CANBUS'},
+    {key:'trabaRobusta', label:'Traba robusta'},
+    {key:'medComb', label:'Medidor de combustible'},
+    {key:'desAcopSemi', label:'Desacople / semi'},
+  ]},
+  {title:'Módulos', fields:[
+    {key:'modCMotor', label:'Corte de motor'},
+    {key:'modMicrofono', label:'Micrófono'},
+    {key:'modBPanico', label:'Botón de pánico'},
+    {key:'modBuzzerVelocidad', label:'Buzzer velocidad'},
+    {key:'modIdConductor', label:'Id. Conductor'},
+    {key:'modRFID', label:'RFID'},
+    {key:'modDALLAS', label:'DALLAS'},
+    {key:'modPantallaSerie', label:'Pantalla N° serie'},
+  ]},
+  {title:'Entradas / Salidas', fields:[
+    {key:'in1', label:'Input 1'},
+    {key:'in2', label:'Input 2'},
+    {key:'in3', label:'Input 3'},
+    {key:'out1', label:'Output 1'},
+    {key:'out2', label:'Output 2'},
+    {key:'out3', label:'Output 3'},
+  ]},
+  {title:'Control de instalación', fields:[
+    {key:'controlSenalModem', label:'Señal Modem'},
+    {key:'controlCantidadSatGps', label:'Cantidad de Sat. GPS'},
+    {key:'controlBateriaInterna', label:'Batería interna'},
+    {key:'controlAlimentacionExterna', label:'Alimentación externa'},
+  ]},
+];
+const EQUIP_CHECK_FIELDS = [
+  {key:'controlRevisionIgnicion', label:'Revisión de ignición'},
+  {key:'controlRevisionPanico', label:'Revisión de pánico'},
+  {key:'controlConexionRed', label:'Conexión a la red'},
+  {key:'controlFotografiaVehiculo', label:'Fotografía del vehículo'},
+];
+
+/* ============================= APP STATE / ROUTER ============================= */
+let currentRecord = null; // in-memory copy being edited
+let sigPad = null; // active signature pad instance
+let saveDebounceTimer = null;
+
+function route(){
+  const hash = location.hash || '#/home';
+  const parts = hash.replace('#/','').split('/');
+  const view = parts[0] || 'home';
+  const id = parts[1];
+  if(view==='pre') renderFormPre(id);
+  else if(view==='post') renderFormPost(id);
+  else if(view==='print') renderPrint(id);
+  else renderHome();
+}
+window.addEventListener('hashchange', route);
+
+function goto(hash){ location.hash = hash; }
+
+/* ============================= HOME ============================= */
+let homeFilter = 'todos';
+let homeSearch = '';
+
+async function renderHome(){
+  const app = document.getElementById('app');
+  const all = await dbGetAll();
+  all.sort((a,b)=> (b.updatedAt||'').localeCompare(a.updatedAt||''));
+
+  const filtered = all.filter(r=>{
+    if(homeFilter==='pre' && r.status!=='borrador_pre') return false;
+    if(homeFilter==='post' && r.status!=='pendiente_post') return false;
+    if(homeFilter==='done' && r.status!=='completo') return false;
+    if(homeSearch){
+      const s = homeSearch.toLowerCase();
+      const hay = `${r.cliente} ${r.matricula} ${r.instalador} ${r.numero}`.toLowerCase();
+      if(!hay.includes(s)) return false;
+    }
+    return true;
+  });
+
+  const counts = {
+    todos: all.length,
+    pre: all.filter(r=>r.status==='borrador_pre').length,
+    post: all.filter(r=>r.status==='pendiente_post').length,
+    done: all.filter(r=>r.status==='completo').length,
+  };
+
+  app.innerHTML = `
+    <div class="topbar">
+      <h1>Hoja de Conformidad<span class="sub">WARA · Seguimiento y Control</span></h1>
+      <button class="back" id="btnBackup" title="Respaldo">⇄</button>
+    </div>
+    <div class="search-wrap">
+      <input type="text" id="searchInput" placeholder="Buscar por cliente, matrícula, instalador..." value="${esc(homeSearch)}">
+    </div>
+    <div class="tabs">
+      <button class="tab ${homeFilter==='todos'?'active':''}" data-f="todos">Todos (${counts.todos})</button>
+      <button class="tab ${homeFilter==='pre'?'active':''}" data-f="pre">En PRE (${counts.pre})</button>
+      <button class="tab ${homeFilter==='post'?'active':''}" data-f="post">Pendiente POST (${counts.post})</button>
+      <button class="tab ${homeFilter==='done'?'active':''}" data-f="done">Completos (${counts.done})</button>
+    </div>
+    <div class="content" id="listWrap"></div>
+    <button class="fab" id="btnNew">+ Nuevo servicio</button>
+  `;
+
+  const listWrap = document.getElementById('listWrap');
+  if(filtered.length===0){
+    listWrap.innerHTML = `<div class="empty">No hay servicios para mostrar.<br>Tocá "Nuevo servicio" para empezar.</div>`;
+  } else {
+    listWrap.innerHTML = filtered.map(r=>{
+      let badge = '';
+      let actions = '';
+      if(r.status==='borrador_pre'){
+        badge = `<span class="badge badge-pre">PRE en progreso</span>`;
+        actions = `<button class="btn btn-primary" data-act="pre" data-id="${r.id}">Continuar PRE</button>`;
+      } else if(r.status==='pendiente_post'){
+        badge = `<span class="badge badge-post">Pendiente POST</span>`;
+        actions = `<button class="btn btn-primary" data-act="post" data-id="${r.id}">Completar POST</button>
+                   <button class="btn btn-outline" data-act="print" data-id="${r.id}">Ver</button>`;
+      } else {
+        badge = `<span class="badge badge-done">Completo</span>`;
+        actions = `<button class="btn btn-outline" data-act="print" data-id="${r.id}">Ver / Compartir</button>`;
+      }
+      actions += `<button class="btn btn-ghost" data-act="del" data-id="${r.id}">Eliminar</button>`;
+      return `
+        <div class="record">
+          <div class="record-top">
+            <div>
+              <div class="record-title">${esc(r.cliente)||'(Sin nombre de cliente)'}</div>
+              <div class="record-sub">Matrícula: ${esc(r.matricula)||'—'} · ${fmtDateTime(r.fecha,r.hora)}</div>
+              <div class="record-sub">Instalador: ${esc(r.instalador)||'—'} ${r.numero? '· N° '+esc(r.numero):''}</div>
+            </div>
+            ${badge}
+          </div>
+          <div class="btn-row">${actions}</div>
+        </div>`;
+    }).join('');
+  }
+
+  document.getElementById('btnNew').onclick = async ()=>{
+    const rec = newRecord();
+    await dbPut(rec);
+    goto('#/pre/'+rec.id);
+  };
+  document.getElementById('searchInput').oninput = (e)=>{ homeSearch = e.target.value; renderHome(); };
+  document.querySelectorAll('.tab').forEach(t=> t.onclick = ()=>{ homeFilter = t.dataset.f; renderHome(); });
+  document.getElementById('btnBackup').onclick = openBackupModal;
+
+  listWrap.querySelectorAll('[data-act]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const id = btn.dataset.id;
+      const act = btn.dataset.act;
+      if(act==='pre') goto('#/pre/'+id);
+      else if(act==='post') goto('#/post/'+id);
+      else if(act==='print') goto('#/print/'+id);
+      else if(act==='del'){
+        if(confirm('¿Eliminar este servicio? Esta acción no se puede deshacer.')){
+          await dbDelete(id);
+          renderHome();
+        }
+      }
+    };
+  });
+}
+
+function openBackupModal(){
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `
+    <div class="modal">
+      <h3>Respaldo de datos</h3>
+      <p>Exportá todos los servicios guardados a un archivo, o importá un respaldo anterior (por ejemplo para pasar los datos a otro celular).</p>
+      <button class="btn btn-primary btn-block" id="btnExportAll">Exportar respaldo (.json)</button>
+      <div style="height:8px"></div>
+      <label class="btn btn-secondary btn-block" style="display:block;text-align:center;cursor:pointer;">
+        Importar respaldo (.json)
+        <input type="file" accept="application/json" id="importFile" style="display:none;">
+      </label>
+      <div style="height:8px"></div>
+      <button class="btn btn-ghost btn-block" id="btnCloseModal">Cerrar</button>
+    </div>`;
+  document.body.appendChild(bg);
+  bg.querySelector('#btnCloseModal').onclick = ()=> bg.remove();
+  bg.querySelector('#btnExportAll').onclick = async ()=>{
+    const all = await dbGetAll();
+    const blob = new Blob([JSON.stringify({app:'wara-conformidad', exportedAt:new Date().toISOString(), records:all}, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `respaldo_conformidad_${nowLocalDate()}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    toast('Respaldo exportado');
+  };
+  bg.querySelector('#importFile').onchange = async (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    try{
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const records = Array.isArray(data) ? data : (data.records || []);
+      if(!records.length){ toast('El archivo no tiene registros'); return; }
+      if(!confirm(`Se importarán ${records.length} servicio(s). Los que ya existan (mismo ID) se sobrescribirán. ¿Continuar?`)) return;
+      for(const r of records){ await dbPut(r); }
+      toast('Importación completa');
+      bg.remove();
+      renderHome();
+    }catch(err){
+      alert('No se pudo leer el archivo de respaldo. Verificá que sea un JSON exportado desde esta app.');
+    }
+  };
+}
+
+/* ============================= SIGNATURE PAD ============================= */
+function initSignaturePad(canvas, existingDataUrl){
+  const ctx = canvas.getContext('2d');
+  function resize(){
+    const ratio = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * ratio;
+    canvas.height = rect.height * ratio;
+    ctx.scale(ratio, ratio);
+    ctx.lineWidth = 2.4;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#26201f';
+    if(existingDataUrl){
+      const img = new Image();
+      img.onload = ()=> ctx.drawImage(img, 0, 0, rect.width, rect.height);
+      img.src = existingDataUrl;
+    }
+  }
+  resize();
+  let drawing = false, hasDrawn = !!existingDataUrl;
+  const emptyMsg = canvas.parentElement.querySelector('.sig-empty-msg');
+  function updateEmptyMsg(){ if(emptyMsg) emptyMsg.style.display = hasDrawn ? 'none' : 'block'; }
+  updateEmptyMsg();
+  function pos(e){
+    const rect = canvas.getBoundingClientRect();
+    const cx = (e.touches? e.touches[0].clientX : e.clientX) - rect.left;
+    const cy = (e.touches? e.touches[0].clientY : e.clientY) - rect.top;
+    return {x:cx, y:cy};
+  }
+  function start(e){ e.preventDefault(); drawing = true; hasDrawn = true; updateEmptyMsg(); const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); }
+  function move(e){ if(!drawing) return; e.preventDefault(); const p = pos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); }
+  function end(e){ drawing = false; }
+  canvas.addEventListener('pointerdown', start);
+  canvas.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', end);
+  canvas.addEventListener('touchstart', start, {passive:false});
+  canvas.addEventListener('touchmove', move, {passive:false});
+  canvas.addEventListener('touchend', end);
+
+  return {
+    clear(){ const rect = canvas.getBoundingClientRect(); ctx.clearRect(0,0,rect.width,rect.height); hasDrawn=false; updateEmptyMsg(); },
+    isEmpty(){ return !hasDrawn; },
+    toDataURL(){ return canvas.toDataURL('image/png'); },
+  };
+}
+
+/* ============================= CHECKLIST RENDERING ============================= */
+function renderChecklistHTML(record, phase){
+  let html = '';
+  let lastGroup = null;
+  CHECKLIST_ITEMS.forEach(item=>{
+    if(item.group && item.group !== lastGroup){
+      html += `<div class="checklist-group-title">${esc(item.group)}</div>`;
+      lastGroup = item.group;
+    }
+    const val = getPath(record, `${phase}.checklist.${item.key}`);
+    html += `
+      <div class="checklist-item">
+        <div class="checklist-label">${esc(item.label)}</div>
+        ${item.note? `<div class="checklist-note">${esc(item.note)}</div>` : ''}
+        <div class="toggle-group" data-path="${phase}.checklist.${item.key}">
+          <button type="button" class="toggle-btn si ${val==='SI'?'active':''}" data-value="SI">SÍ</button>
+          <button type="button" class="toggle-btn no ${val==='NO'?'active':''}" data-value="NO">NO</button>
+        </div>
+      </div>`;
+  });
+  return html;
+}
+function wireChecklist(container, record, phase, onChange){
+  container.querySelectorAll('.toggle-group').forEach(group=>{
+    const path = group.dataset.path;
+    group.querySelectorAll('.toggle-btn').forEach(btn=>{
+      btn.onclick = ()=>{
+        const val = btn.dataset.value;
+        const current = getPath(record, path);
+        setPath(record, path, current===val ? null : val);
+        group.querySelectorAll('.toggle-btn').forEach(b=>{
+          b.classList.toggle('active', getPath(record,path)===b.dataset.value);
+        });
+        onChange();
+      };
+    });
+  });
+}
+
+/* ============================= PHOTOS ============================= */
+function renderPhotoGridHTML(fotos){
+  let html = '<div class="photo-grid">';
+  (fotos||[]).forEach((f,idx)=>{
+    html += `<div class="photo-thumb"><img src="${f.dataUrl}"><button class="del" data-idx="${idx}">×</button></div>`;
+  });
+  html += `<label class="photo-add">
+      <input type="file" accept="image/*" capture="environment" style="display:none" class="photoInput">
+      <span style="font-size:20px;">＋</span><span>Agregar foto</span>
+    </label>`;
+  html += '</div>';
+  return html;
+}
+function wirePhotoGrid(container, fotosArrRef, onChange){
+  container.querySelectorAll('.del').forEach(btn=>{
+    btn.onclick = ()=>{
+      fotosArrRef.splice(Number(btn.dataset.idx),1);
+      onChange();
+    };
+  });
+  const input = container.querySelector('.photoInput');
+  if(input){
+    input.onchange = async ()=>{
+      const file = input.files[0];
+      if(!file) return;
+      toast('Procesando foto...');
+      try{
+        const dataUrl = await resizeImage(file);
+        fotosArrRef.push({id: uuid(), dataUrl});
+        onChange();
+      }catch(e){ toast('No se pudo procesar la foto'); }
+    };
+  }
+}
+
+/* ============================= FORM: PRE ============================= */
+async function renderFormPre(id){
+  const app = document.getElementById('app');
+  let record = id ? await dbGet(id) : null;
+  if(!record){ goto('#/home'); return; }
+  currentRecord = record;
+
+  app.innerHTML = `
+    <div class="topbar">
+      <button class="back" id="btnHome">←</button>
+      <h1>Pre-instalación<span class="sub">Revisión antes de comenzar</span></h1>
+    </div>
+    <div class="content">
+      <div class="card">
+        <div class="field"><label>N° de hoja (impresa en papel)</label>
+          <input type="text" data-path="numero" value="${esc(record.numero)}" placeholder="Ej: 023751"></div>
+        <div class="field"><label>Cliente</label>
+          <input type="text" data-path="cliente" value="${esc(record.cliente)}" placeholder="Nombre del cliente"></div>
+        <div class="row2">
+          <div class="field"><label>Fecha</label><input type="date" data-path="fecha" value="${esc(record.fecha)}"></div>
+          <div class="field"><label>Hora</label><input type="time" data-path="hora" value="${esc(record.hora)}"></div>
+        </div>
+        <div class="field"><label>Matrícula</label>
+          <input type="text" data-path="matricula" value="${esc(record.matricula)}" placeholder="Patente del vehículo"></div>
+        <div class="field"><label>Instalador</label>
+          <input type="text" data-path="instalador" value="${esc(record.instalador)}" placeholder="Nombre del técnico"></div>
+        <div class="field"><label>Responsable de empresa</label>
+          <input type="text" data-path="responsableEmpresa" value="${esc(record.responsableEmpresa)}" placeholder="Responsable / contacto en la empresa cliente"></div>
+      </div>
+
+      <div class="section-title">Revisión general del vehículo (PRE)</div>
+      <div class="card" id="checklistWrap"></div>
+
+      <div class="section-title">Fotos (panel, asientos, etc.)</div>
+      <div class="card" id="photoWrap"></div>
+
+      <div class="section-title">Observaciones encontradas (PRE)</div>
+      <div class="card">
+        <textarea id="obsPre" placeholder="Detalles que no estén dentro de los ítems anteriores...">${esc(record.pre.observaciones)}</textarea>
+      </div>
+
+      <div class="section-title">Firma del cliente — autoriza inicio y estado de la unidad</div>
+      <div class="card">
+        <div class="sig-wrap"><canvas id="sigCanvas"></canvas><div class="sig-empty-msg">Firmá acá con el dedo</div></div>
+        <div class="btn-row">
+          <button class="btn btn-ghost" id="btnClearSig">Limpiar firma</button>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary btn-block" id="btnSaveDraft">Guardar borrador</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-block" id="btnFinishPre">Finalizar PRE y continuar</button>
+      </div>
+      <p class="helptext">El borrador se guarda automáticamente en este celular aunque no tengas conexión a internet. Al finalizar, el servicio queda "Pendiente de POST" hasta que instales/repares el equipo y completes la segunda parte.</p>
+    </div>
+  `;
+
+  document.getElementById('btnHome').onclick = ()=> goto('#/home');
+
+  function autosave(){
+    record.updatedAt = new Date().toISOString();
+    clearTimeout(saveDebounceTimer);
+    saveDebounceTimer = setTimeout(()=> dbPut(record), 400);
+  }
+
+  app.querySelectorAll('[data-path]').forEach(input=>{
+    input.oninput = ()=>{ setPath(record, input.dataset.path, input.value); autosave(); };
+  });
+
+  const checklistWrap = document.getElementById('checklistWrap');
+  checklistWrap.innerHTML = renderChecklistHTML(record, 'pre');
+  wireChecklist(checklistWrap, record, 'pre', autosave);
+
+  const photoWrap = document.getElementById('photoWrap');
+  function redrawPhotos(){
+    photoWrap.innerHTML = renderPhotoGridHTML(record.pre.fotos);
+    wirePhotoGrid(photoWrap, record.pre.fotos, ()=>{ redrawPhotos(); autosave(); });
+  }
+  redrawPhotos();
+
+  document.getElementById('obsPre').oninput = (e)=>{ record.pre.observaciones = e.target.value; autosave(); };
+
+  sigPad = initSignaturePad(document.getElementById('sigCanvas'), record.pre.firma);
+  document.getElementById('btnClearSig').onclick = ()=> sigPad.clear();
+
+  document.getElementById('btnSaveDraft').onclick = async ()=>{
+    if(!sigPad.isEmpty()) record.pre.firma = sigPad.toDataURL();
+    record.updatedAt = new Date().toISOString();
+    await dbPut(record);
+    toast('Borrador guardado');
+  };
+
+  document.getElementById('btnFinishPre').onclick = async ()=>{
+    const unanswered = CHECKLIST_ITEMS.filter(it=> !getPath(record,'pre.checklist.'+it.key));
+    if(unanswered.length){
+      if(!confirm(`Hay ${unanswered.length} punto(s) del checklist sin responder. ¿Continuar igual?`)) return;
+    }
+    if(sigPad.isEmpty()){
+      alert('Falta la firma del cliente para autorizar el inicio del servicio.');
+      return;
+    }
+    record.pre.firma = sigPad.toDataURL();
+    record.status = 'pendiente_post';
+    record.updatedAt = new Date().toISOString();
+    await dbPut(record);
+    toast('PRE finalizada');
+    goto('#/home');
+  };
+}
+
+/* ============================= FORM: POST ============================= */
+async function renderFormPost(id){
+  const app = document.getElementById('app');
+  let record = id ? await dbGet(id) : null;
+  if(!record){ goto('#/home'); return; }
+  currentRecord = record;
+  if(!record.equipo) record.equipo = {};
+
+  let equipHtml = '';
+  EQUIP_GROUPS.forEach(g=>{
+    equipHtml += `<div class="checklist-group-title">${esc(g.title)}</div>`;
+    g.fields.forEach(f=>{
+      const val = record.equipo[f.key] || '';
+      equipHtml += `<div class="field"><label>${esc(f.label)}</label>
+        <input type="text" data-path="equipo.${f.key}" value="${esc(val)}"></div>`;
+    });
+  });
+  let equipChecks = EQUIP_CHECK_FIELDS.map(f=>{
+    const checked = record.equipo[f.key] ? 'checked' : '';
+    return `<div class="check-inline"><input type="checkbox" data-path="equipo.${f.key}" ${checked}><span>${esc(f.label)}</span></div>`;
+  }).join('');
+
+  app.innerHTML = `
+    <div class="topbar">
+      <button class="back" id="btnHome">←</button>
+      <h1>Post-instalación<span class="sub">${esc(record.cliente)||'Servicio'} · ${esc(record.matricula)||''}</span></h1>
+    </div>
+    <div class="content">
+      <div class="section-title">Revisión general del vehículo (POST)</div>
+      <div class="card" id="checklistWrap"></div>
+
+      <div class="section-title">Datos del equipamiento instalado</div>
+      <div class="card">${equipHtml}</div>
+
+      <div class="section-title">Control de instalación</div>
+      <div class="card">${equipChecks}</div>
+
+      <div class="section-title">Fotos (post instalación)</div>
+      <div class="card" id="photoWrap"></div>
+
+      <div class="section-title">Observaciones encontradas (POST)</div>
+      <div class="card">
+        <textarea id="obsPost" placeholder="Detalles que no estén dentro de los ítems anteriores...">${esc(record.post.observaciones)}</textarea>
+      </div>
+
+      <div class="section-title">Firma del cliente — conformidad final</div>
+      <div class="card">
+        <div class="sig-wrap"><canvas id="sigCanvas"></canvas><div class="sig-empty-msg">Firmá acá con el dedo</div></div>
+        <div class="btn-row">
+          <button class="btn btn-ghost" id="btnClearSig">Limpiar firma</button>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-secondary btn-block" id="btnSaveDraft">Guardar borrador</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-block" id="btnFinishPost">Finalizar servicio</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('btnHome').onclick = ()=> goto('#/home');
+
+  function autosave(){
+    record.updatedAt = new Date().toISOString();
+    clearTimeout(saveDebounceTimer);
+    saveDebounceTimer = setTimeout(()=> dbPut(record), 400);
+  }
+
+  app.querySelectorAll('input[data-path]').forEach(input=>{
+    if(input.type==='checkbox'){
+      input.onchange = ()=>{ setPath(record, input.dataset.path, input.checked); autosave(); };
+    } else {
+      input.oninput = ()=>{ setPath(record, input.dataset.path, input.value); autosave(); };
+    }
+  });
+
+  const checklistWrap = document.getElementById('checklistWrap');
+  checklistWrap.innerHTML = renderChecklistHTML(record, 'post');
+  wireChecklist(checklistWrap, record, 'post', autosave);
+
+  const photoWrap = document.getElementById('photoWrap');
+  function redrawPhotos(){
+    photoWrap.innerHTML = renderPhotoGridHTML(record.post.fotos);
+    wirePhotoGrid(photoWrap, record.post.fotos, ()=>{ redrawPhotos(); autosave(); });
+  }
+  redrawPhotos();
+
+  document.getElementById('obsPost').oninput = (e)=>{ record.post.observaciones = e.target.value; autosave(); };
+
+  sigPad = initSignaturePad(document.getElementById('sigCanvas'), record.post.firma);
+  document.getElementById('btnClearSig').onclick = ()=> sigPad.clear();
+
+  document.getElementById('btnSaveDraft').onclick = async ()=>{
+    if(!sigPad.isEmpty()) record.post.firma = sigPad.toDataURL();
+    record.updatedAt = new Date().toISOString();
+    await dbPut(record);
+    toast('Borrador guardado');
+  };
+
+  document.getElementById('btnFinishPost').onclick = async ()=>{
+    const unanswered = CHECKLIST_ITEMS.filter(it=> !getPath(record,'post.checklist.'+it.key));
+    if(unanswered.length){
+      if(!confirm(`Hay ${unanswered.length} punto(s) del checklist sin responder. ¿Continuar igual?`)) return;
+    }
+    if(sigPad.isEmpty()){
+      alert('Falta la firma del cliente para dar conformidad final.');
+      return;
+    }
+    record.post.firma = sigPad.toDataURL();
+    record.status = 'completo';
+    record.updatedAt = new Date().toISOString();
+    await dbPut(record);
+    toast('Servicio completado');
+    goto('#/print/'+record.id);
+  };
+}
+
+/* ============================= PRINT / VIEW ============================= */
+function checklistTableHTML(record){
+  let rows = '';
+  let lastGroup = null;
+  CHECKLIST_ITEMS.forEach(item=>{
+    const label = item.group ? item.group + ' — ' + item.label : item.label;
+    const pre = getPath(record, 'pre.checklist.'+item.key) || '—';
+    const post = getPath(record, 'post.checklist.'+item.key) || '—';
+    rows += `<tr><td>${esc(label)}</td><td>${esc(pre)}</td><td>${esc(post)}</td></tr>`;
+  });
+  return `<table><tr><th>Ítem</th><th>PRE</th><th>POST</th></tr>${rows}</table>`;
+}
+function equipTableHTML(record){
+  let rows = '';
+  EQUIP_GROUPS.forEach(g=>{
+    rows += `<tr><td colspan="2" style="background:#f7f2f0;font-weight:bold;">${esc(g.title)}</td></tr>`;
+    g.fields.forEach(f=>{
+      rows += `<tr><td>${esc(f.label)}</td><td>${esc(record.equipo[f.key]||'—')}</td></tr>`;
+    });
+  });
+  rows += `<tr><td colspan="2" style="background:#f7f2f0;font-weight:bold;">Verificaciones realizadas</td></tr>`;
+  EQUIP_CHECK_FIELDS.forEach(f=>{
+    rows += `<tr><td>${esc(f.label)}</td><td>${record.equipo[f.key] ? 'Sí' : 'No'}</td></tr>`;
+  });
+  return `<table>${rows}</table>`;
+}
+function photosHTML(fotos, titulo){
+  if(!fotos || !fotos.length) return '';
+  return `<p style="font-weight:bold;margin:8px 0 4px;">${esc(titulo)}</p>` +
+    fotos.map(f=>`<img class="photo-print" src="${f.dataUrl}">`).join('');
+}
+
+async function renderPrint(id){
+  const app = document.getElementById('app');
+  const record = id ? await dbGet(id) : null;
+  if(!record){ goto('#/home'); return; }
+
+  const statusLabel = record.status==='completo' ? 'Completo' : (record.status==='pendiente_post' ? 'Pendiente POST' : 'PRE en progreso');
+
+  app.innerHTML = `
+    <div class="topbar no-print">
+      <button class="back" id="btnHome">←</button>
+      <h1>Ver servicio<span class="sub">${esc(record.cliente)||''}</span></h1>
+    </div>
+    <div class="content no-print">
+      <div class="btn-row">
+        <button class="btn btn-primary btn-block" id="btnPrint">Imprimir / Guardar PDF</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" id="btnShare">Compartir resumen</button>
+        <button class="btn btn-secondary" id="btnExportOne">Descargar respaldo (.json)</button>
+      </div>
+      <p class="helptext">Para enviar la hoja completa por WhatsApp o email: tocá "Imprimir / Guardar PDF", elegí "Guardar como PDF" y luego compartí ese PDF desde tus archivos o galería. Esto funciona sin conexión a internet.</p>
+    </div>
+
+    <div id="printArea">
+      <div class="content print-doc">
+        <div class="print-header">
+          <div class="logo">WARA · Seguimiento y Control</div>
+          <div>N° ${esc(record.numero)||'—'}</div>
+        </div>
+        <h2>Hoja de Conformidad — ${statusLabel}</h2>
+        <table>
+          <tr><th>Cliente</th><td>${esc(record.cliente)}</td><th>Matrícula</th><td>${esc(record.matricula)}</td></tr>
+          <tr><th>Fecha / Hora</th><td>${esc(fmtDateTime(record.fecha,record.hora))}</td><th>Instalador</th><td>${esc(record.instalador)}</td></tr>
+          <tr><th>Responsable empresa</th><td colspan="3">${esc(record.responsableEmpresa)}</td></tr>
+        </table>
+
+        <p style="font-weight:bold;">Revisión general del vehículo (PRE / POST)</p>
+        ${checklistTableHTML(record)}
+
+        <p style="font-weight:bold;">Observaciones PRE instalación</p>
+        <p>${esc(record.pre.observaciones)||'Sin observaciones.'}</p>
+        ${record.pre.firma? `<p style="font-weight:bold;">Firma del cliente (PRE)</p><img class="sig-img" src="${record.pre.firma}">` : ''}
+        ${photosHTML(record.pre.fotos, 'Fotos PRE')}
+
+        <hr>
+        <p style="font-weight:bold;">Datos de equipamiento</p>
+        ${equipTableHTML(record)}
+
+        <p style="font-weight:bold;">Observaciones POST instalación</p>
+        <p>${esc(record.post.observaciones)||'Sin observaciones.'}</p>
+        ${record.post.firma? `<p style="font-weight:bold;">Firma del cliente (POST)</p><img class="sig-img" src="${record.post.firma}">` : ''}
+        ${photosHTML(record.post.fotos, 'Fotos POST')}
+      </div>
+    </div>
+  `;
+
+  document.getElementById('btnHome').onclick = ()=> goto('#/home');
+  document.getElementById('btnPrint').onclick = ()=> window.print();
+  document.getElementById('btnExportOne').onclick = ()=>{
+    const blob = new Blob([JSON.stringify({app:'wara-conformidad', exportedAt:new Date().toISOString(), records:[record]}, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `servicio_${(record.matricula||record.id)}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+  };
+  document.getElementById('btnShare').onclick = async ()=>{
+    const text = `Hoja de Conformidad WARA\nCliente: ${record.cliente}\nMatrícula: ${record.matricula}\nFecha: ${fmtDateTime(record.fecha,record.hora)}\nInstalador: ${record.instalador}\nEstado: ${statusLabel}`;
+    if(navigator.share){
+      try{ await navigator.share({title:'Hoja de Conformidad', text}); }
+      catch(e){ /* usuario canceló */ }
+    } else {
+      try{ await navigator.clipboard.writeText(text); toast('Resumen copiado al portapapeles'); }
+      catch(e){ alert(text); }
+    }
+  };
+}
+
+/* ============================= INIT ============================= */
+route();
+</script>
+</body>
+</html>
