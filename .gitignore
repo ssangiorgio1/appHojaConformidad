@@ -11,3 +11,6 @@ build/
 *serviceAccountKey*.json
 *credentials*
 .claude/
+
+# large brand asset, kept locally but not tracked (exceeds GitHub's recommended size)
+web/public/Wara-manual de marca*.pdf
