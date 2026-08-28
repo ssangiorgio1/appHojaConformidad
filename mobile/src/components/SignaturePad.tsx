@@ -15,8 +15,9 @@ export const SignaturePad = forwardRef<
     onCapture: (dataUrl: string) => void;
     onEmpty?: () => void;
     onClear?: () => void;
+    disabled?: boolean;
   }
->(function SignaturePad({ existingDataUrl, onCapture, onEmpty, onClear }, ref) {
+>(function SignaturePad({ existingDataUrl, onCapture, onEmpty, onClear, disabled }, ref) {
   const inner = useRef<SignatureViewRef>(null);
 
   useImperativeHandle(ref, () => ({
@@ -37,8 +38,12 @@ export const SignaturePad = forwardRef<
         dataURL={existingDataUrl ?? undefined}
         webStyle={webStyle}
         descriptionText=""
+        // The library has no `disabled` prop — react-native-webview does honor
+        // pointerEvents on its own native view, unlike a sibling overlay, which
+        // the WebView's own touch handling simply ignores.
+        webviewProps={{ pointerEvents: disabled ? 'none' : 'auto' }}
       />
-      {!existingDataUrl && (
+      {!existingDataUrl && !disabled && (
         <Text pointerEvents="none" style={styles.hint}>
           Firmá acá con el dedo
         </Text>

@@ -30,19 +30,13 @@ export const requireAuth = asyncHandler(async (req: Request, res: Response, next
     return;
   }
 
-  // Domain restriction is enforced here, server-side — the client's Google `hd`
-  // param is only a UX hint and must never be trusted on its own.
-  if (!email.toLowerCase().endsWith(`@${env.ALLOWED_EMAIL_DOMAIN.toLowerCase()}`)) {
-    res.status(403).json({ error: `Only @${env.ALLOWED_EMAIL_DOMAIN} accounts are allowed` });
-    return;
-  }
-
   let usuario = await UsuarioModel.findOne({ firebaseUid: decoded.uid });
 
   if (!usuario) {
-    // First login for this Firebase account: auto-provision as 'tecnico'.
-    // If a superadmin was pre-seeded by email (no firebaseUid yet), claim it
-    // instead of creating a duplicate account.
+    // First login for this Firebase account: try to claim a user pre-seeded
+    // by email (no firebaseUid yet) instead of creating a duplicate. This is
+    // also how domain exceptions work — a pre-seeded Usuario is allowed in
+    // regardless of email domain, since an admin already vetted it.
     usuario = await UsuarioModel.findOneAndUpdate(
       { email: email.toLowerCase(), firebaseUid: { $exists: false } },
       {
@@ -56,6 +50,15 @@ export const requireAuth = asyncHandler(async (req: Request, res: Response, next
   }
 
   if (!usuario) {
+    // No pre-seeded record for this email — this is a brand-new, unvetted
+    // account, so the domain restriction applies here, server-side. The
+    // client's Google `hd` param is only a UX hint and must never be trusted
+    // on its own.
+    if (!email.toLowerCase().endsWith(`@${env.ALLOWED_EMAIL_DOMAIN.toLowerCase()}`)) {
+      res.status(403).json({ error: `Only @${env.ALLOWED_EMAIL_DOMAIN} accounts are allowed` });
+      return;
+    }
+
     usuario = await UsuarioModel.create({
       firebaseUid: decoded.uid,
       email: email.toLowerCase(),

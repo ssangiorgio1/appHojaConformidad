@@ -5,7 +5,7 @@ export interface AuthUser {
   firebaseUid: string;
   email: string;
   nombre: string;
-  role: 'tecnico' | 'admin' | 'superadmin';
+  role: 'tecnico' | 'admin' | 'superadmin' | 'coordinacion' | 'mesa_ayuda';
 }
 
 declare global {

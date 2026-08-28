@@ -20,7 +20,10 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -28,7 +31,6 @@
     "plugins": [
       "expo-router",
       "expo-sqlite",
-      "expo-web-browser",
       "expo-splash-screen",
       [
         "expo-image-picker",
@@ -36,8 +38,14 @@
           "photosPermission": "WARA Conformidad necesita acceso a tus fotos para adjuntarlas a la hoja de conformidad.",
           "cameraPermission": "WARA Conformidad necesita acceso a la cámara para tomar fotos de la instalación."
         }
-      ],
-      "expo-sharing"
-    ]
+      ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "63f8ca74-035e-4248-a21a-bd752370c0d3"
+      }
+    },
+    "owner": "joaquin51"
   }
 }

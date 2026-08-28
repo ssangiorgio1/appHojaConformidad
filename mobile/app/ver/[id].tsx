@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react';
-import { Alert, Share, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Share, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
-import type { ConformidadRecord } from '@wara/shared';
+import { SATISFACCION_LABELS, type ConformidadRecord } from '@wara/shared';
 import { RequireAuth } from '../../src/auth/RequireAuth';
+import { useAuth } from '../../src/auth/AuthContext';
 import { dbGet } from '../../src/db/database';
+import { syncRecord } from '../../src/sync/sync';
 import { Badge, Button, Card } from '../../src/components/ui';
+import { useToast } from '../../src/components/Toast';
 import { colors } from '../../src/theme';
 import { fmtDateTime } from '../../src/utils/misc';
 import { buildPrintHtml } from '../../src/utils/printHtml';
+import { getLogoDataUri } from '../../src/utils/logo';
 
 export default function VerScreen() {
   return (
@@ -24,7 +28,11 @@ export default function VerScreen() {
 function Ver() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { showToast } = useToast();
+  const { getIdToken } = useAuth();
   const [record, setRecord] = useState<ConformidadRecord | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [odooRetrying, setOdooRetrying] = useState(false);
 
   useEffect(() => {
     dbGet(id).then((r) => {
@@ -41,15 +49,45 @@ function Ver() {
   const statusLabel =
     record.status === 'completo' ? 'Completo' : record.status === 'pendiente_post' ? 'Pendiente POST' : 'PRE en progreso';
   const tone = record.status === 'completo' ? 'done' : record.status === 'pendiente_post' ? 'post' : 'pre';
+  const synced = record.syncStatus === 'SYNCED';
+
+  async function handleSync() {
+    setSyncing(true);
+    try {
+      const ok = await syncRecord(record!, getIdToken);
+      const fresh = await dbGet(id);
+      if (fresh) setRecord(fresh);
+      showToast(
+        ok
+          ? { type: 'success', message: 'Sincronizado con el servidor.' }
+          : { type: 'error', message: 'No se pudo sincronizar. Revisá tu conexión e intentá de nuevo.' },
+      );
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function handleRetryOdoo() {
+    setOdooRetrying(true);
+    try {
+      await syncRecord(record!, getIdToken);
+      const fresh = await dbGet(id);
+      if (fresh) setRecord(fresh);
+    } finally {
+      setOdooRetrying(false);
+    }
+  }
 
   async function handlePrint() {
     try {
-      const { uri } = await Print.printToFileAsync({ html: buildPrintHtml(record!) });
+      const logoDataUri = await getLogoDataUri();
+      const html = await buildPrintHtml(record!, { logoDataUri });
+      const { uri } = await Print.printToFileAsync({ html });
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Hoja de Conformidad' });
       }
     } catch {
-      Alert.alert('Error', 'No se pudo generar el PDF.');
+      showToast({ type: 'error', message: 'No se pudo generar el PDF.' });
     }
   }
 
@@ -74,12 +112,12 @@ function Ver() {
         await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: 'Respaldo del servicio' });
       }
     } catch {
-      Alert.alert('Error', 'No se pudo exportar el respaldo.');
+      showToast({ type: 'error', message: 'No se pudo exportar el respaldo.' });
     }
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.topbar}>
         <Text style={styles.topbarBack} onPress={() => router.replace('/')}>
           ←
@@ -102,15 +140,75 @@ function Ver() {
           {record.numero ? <Text style={styles.summaryLine}>N° hoja: {record.numero}</Text> : null}
         </Card>
 
-        <Button title="Imprimir / Guardar PDF" block onPress={handlePrint} />
-        <View style={styles.btnRow}>
-          <Button title="Compartir resumen" variant="secondary" onPress={handleShareSummary} />
-          <Button title="Descargar respaldo (.json)" variant="secondary" onPress={handleExportJson} />
-        </View>
-        <Text style={styles.helptext}>
-          "Imprimir / Guardar PDF" genera el PDF con checklist, fotos y firmas, y abre el menú para compartirlo por
-          WhatsApp, email o guardarlo en el celular. Funciona sin conexión a internet.
-        </Text>
+        <Card style={styles.syncCard}>
+          <View style={styles.syncRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.syncTitle}>{synced ? 'Sincronizado' : 'Sin sincronizar'}</Text>
+              <Text style={styles.syncSub}>
+                {synced
+                  ? 'Este servicio ya está guardado en el servidor y visible en el panel web.'
+                  : 'Todavía no llegó al servidor — no va a verse en el panel web hasta que sincronice.'}
+              </Text>
+            </View>
+            {!synced &&
+              (syncing ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : (
+                <Button title="Sincronizar" variant="outline" onPress={handleSync} />
+              ))}
+          </View>
+        </Card>
+
+        {record.ticketOdoo && (
+          <Card style={styles.syncCard}>
+            <View style={styles.syncRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.syncTitle}>Ticket Odoo #{record.ticketOdoo.numero}</Text>
+                <Text style={styles.syncSub}>
+                  {record.odooSync.status === 'SYNCED'
+                    ? 'Enviado a Odoo.'
+                    : record.odooSync.status === 'FAILED'
+                      ? `Error al enviar a Odoo${record.odooSync.lastError ? `: ${record.odooSync.lastError}` : ''}`
+                      : record.status === 'completo'
+                        ? 'Pendiente de enviar a Odoo.'
+                        : 'Se enviará a Odoo cuando se complete el POST.'}
+                </Text>
+                {record.post.firma?.satisfaccion && (
+                  <Text style={styles.syncSub}>{SATISFACCION_LABELS[record.post.firma.satisfaccion]}</Text>
+                )}
+              </View>
+              {record.status === 'completo' &&
+                record.odooSync.status !== 'SYNCED' &&
+                (odooRetrying ? (
+                  <ActivityIndicator color={colors.primary} />
+                ) : (
+                  <Button title="Reintentar" variant="outline" onPress={handleRetryOdoo} />
+                ))}
+            </View>
+          </Card>
+        )}
+
+        {record.status === 'completo' ? (
+          <>
+            <Button title="Imprimir / Guardar PDF" block onPress={handlePrint} />
+            <View style={styles.btnRow}>
+              <Button title="Compartir resumen" variant="secondary" onPress={handleShareSummary} />
+              <Button title="Descargar respaldo (.json)" variant="secondary" onPress={handleExportJson} />
+            </View>
+            <Text style={styles.helptext}>
+              "Imprimir / Guardar PDF" genera el PDF con checklist, fotos y firmas, y abre el menú para compartirlo
+              por WhatsApp, email o guardarlo en el celular. Funciona sin conexión a internet.
+            </Text>
+          </>
+        ) : (
+          <>
+            <Button title="Completar POST" block onPress={() => router.push(`/post/${record.id}`)} />
+            <Text style={styles.helptext}>
+              Todavía falta completar la POST-instalación — el PDF y las opciones para compartir se habilitan recién
+              cuando el servicio queda "Completo".
+            </Text>
+          </>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -133,6 +231,10 @@ const styles = StyleSheet.create({
   summaryTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
   summaryTitle: { fontSize: 16, fontWeight: '700', color: colors.text, flex: 1, marginRight: 8 },
   summaryLine: { fontSize: 13, color: colors.muted, marginTop: 2 },
+  syncCard: { marginTop: -2 },
+  syncRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  syncTitle: { fontSize: 13.5, fontWeight: '700', color: colors.text },
+  syncSub: { fontSize: 11.5, color: colors.muted, marginTop: 2, lineHeight: 15 },
   btnRow: { flexDirection: 'row', gap: 10, marginTop: 10, flexWrap: 'wrap' },
   helptext: { fontSize: 12, color: colors.muted, marginTop: 12, lineHeight: 17 },
 });

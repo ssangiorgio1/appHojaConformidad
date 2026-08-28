@@ -56,3 +56,25 @@ export type Checklist = Record<ChecklistKey, ChecklistValue>;
 export function emptyChecklist(): Checklist {
   return Object.fromEntries(CHECKLIST_KEYS.map((key) => [key, null])) as Checklist;
 }
+
+export function missingChecklistItems(checklist: Checklist): ChecklistItemDef[] {
+  return CHECKLIST_ITEMS.filter((item) => !checklist[item.key]);
+}
+
+export interface ChecklistDiffEntry {
+  key: ChecklistKey;
+  label: string;
+  preValue: ChecklistValue;
+  postValue: ChecklistValue;
+}
+
+// Only compares items answered on both sides — a point left blank on either
+// phase isn't a "change", it's just incomplete (handled separately by
+// missingChecklistItems).
+export function diffChecklists(pre: Checklist, post: Checklist): ChecklistDiffEntry[] {
+  return CHECKLIST_ITEMS.filter((item) => {
+    const preValue = pre[item.key];
+    const postValue = post[item.key];
+    return preValue !== null && postValue !== null && preValue !== postValue;
+  }).map((item) => ({ key: item.key, label: item.label, preValue: pre[item.key], postValue: post[item.key] }));
+}

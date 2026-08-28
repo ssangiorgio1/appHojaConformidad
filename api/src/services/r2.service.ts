@@ -6,7 +6,7 @@ import { env } from '../config/env.js';
 const UPLOAD_TTL_SECONDS = 10 * 60;
 
 export type Fase = 'pre' | 'post';
-export type TipoArchivo = 'foto' | 'firma';
+export type TipoArchivo = 'foto' | 'firma' | 'pdf';
 
 export function buildObjectKey(params: {
   codigoActa: string;
@@ -19,6 +19,10 @@ export function buildObjectKey(params: {
   const [year, month] = params.fecha.split('-');
   const ext = params.contentType === 'image/png' ? 'png' : 'jpg';
   const timestamp = Date.now();
+
+  if (params.tipo === 'pdf') {
+    return `reportes/${year}/${month}/${params.codigoActa}.pdf`;
+  }
 
   if (params.tipo === 'firma') {
     return `firmas/${year}/${month}/${params.codigoActa}_${params.fase}_firma.png`;

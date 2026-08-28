@@ -5,17 +5,31 @@ export type EstadoServicio = 'borrador_pre' | 'pendiente_post' | 'completo';
 
 export interface Foto {
   id: string;
-  // Local-only records hold a data URL/URI; once synced this becomes the R2 public URL.
+  // Which guided capture slot this belongs to (see photoSlots.ts).
+  slotKey: string;
+  // Local-only records hold a data URL; once synced this becomes the R2 public URL.
   dataUrl?: string;
   url?: string;
   key?: string;
 }
+
+// Only meaningful on post.firma — whether the client signed satisfied,
+// signed unsatisfied, or refused to sign because they were unsatisfied.
+export type SatisfaccionFirma = 'satisfecho' | 'insatisfecho' | 'no_firma_insatisfecho';
+
+export const SATISFACCION_LABELS: Record<SatisfaccionFirma, string> = {
+  satisfecho: 'Firma conforme',
+  insatisfecho: 'Firma disconforme',
+  no_firma_insatisfecho: 'No firma por disconformidad',
+};
 
 export interface Firma {
   dataUrl?: string;
   url?: string;
   key?: string;
   firmedAt?: string;
+  locked?: boolean;
+  satisfaccion?: SatisfaccionFirma | null;
 }
 
 export interface Phase {
@@ -27,6 +41,31 @@ export interface Phase {
 
 export function emptyPhase(): Phase {
   return { checklist: emptyChecklist(), observaciones: '', fotos: [], firma: null };
+}
+
+// What the técnico typed/picked to identify the Odoo helpdesk ticket for
+// this client. `numero` is always present (even offline, unverified) so
+// linking a ticket never depends on having signal at that moment.
+export interface TicketOdooRef {
+  numero: string;
+  odooId?: number;
+  clienteOdoo?: string;
+  verified: boolean;
+}
+
+export type OdooSyncStatus = 'PENDING' | 'SYNCED' | 'FAILED';
+
+// Written only by the backend (never sent by the client as part of a
+// create/patch body) so the app can't declare a success that didn't happen.
+export interface OdooSync {
+  status: OdooSyncStatus;
+  attempts: number;
+  lastError?: string;
+  syncedAt?: string;
+}
+
+export function emptyOdooSync(): OdooSync {
+  return { status: 'PENDING', attempts: 0 };
 }
 
 export interface ConformidadRecord {
@@ -51,10 +90,22 @@ export interface ConformidadRecord {
   pre: Phase;
   post: Phase;
   equipo: Equipo;
+
+  ticketOdoo: TicketOdooRef | null;
+  odooSync: OdooSync;
+  // The generated PDF hoja de conformidad, once uploaded to R2 — ready to
+  // attach to the Odoo ticket.
+  pdfReporte: { url: string; key: string } | null;
 }
 
-export function newRecord(id: string, now: string): ConformidadRecord {
-  const [fecha, hora] = [now.slice(0, 10), now.slice(11, 16)];
+export function newRecord(id: string, now: Date): ConformidadRecord {
+  // fecha/hora are the técnico's local wall-clock date/time — derived from
+  // Date's local getters, NOT now.toISOString(), which is UTC and would run
+  // 3h ahead of real time for a técnico in Argentina (UTC-3).
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const fecha = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const hora = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const iso = now.toISOString();
   return {
     id,
     numero: '',
@@ -66,10 +117,13 @@ export function newRecord(id: string, now: string): ConformidadRecord {
     responsableEmpresa: '',
     status: 'borrador_pre',
     syncStatus: 'PENDING_SYNC',
-    createdAt: now,
-    updatedAt: now,
+    createdAt: iso,
+    updatedAt: iso,
     pre: emptyPhase(),
     post: emptyPhase(),
     equipo: emptyEquipo(),
+    ticketOdoo: null,
+    odooSync: emptyOdooSync(),
+    pdfReporte: null,
   };
 }

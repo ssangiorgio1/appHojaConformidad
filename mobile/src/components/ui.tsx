@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
-import { colors, radius } from '../theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { colors, radius, cardShadow } from '../theme';
 
 export function Card({ children, style }: { children: React.ReactNode; style?: object }) {
   return <View style={[styles.card, style]}>{children}</View>;
@@ -16,7 +17,7 @@ export function Field({
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput style={styles.input} placeholderTextColor="#b0a6a3" {...inputProps} />
+      <TextInput style={styles.input} placeholderTextColor={colors.muted} {...inputProps} />
     </View>
   );
 }
@@ -36,6 +37,25 @@ export function Button({
   block?: boolean;
   disabled?: boolean;
 }) {
+  if (variant === 'primary') {
+    return (
+      <Pressable
+        onPress={onPress}
+        disabled={disabled}
+        style={({ pressed }) => [block && styles.btnBlock, disabled && styles.btnDisabled, pressed && !disabled && styles.btnPressed]}
+      >
+        <LinearGradient
+          colors={[colors.accent, colors.primary]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.btn}
+        >
+          <Text style={[styles.btnText, variantTextStyles.primary]}>{title}</Text>
+        </LinearGradient>
+      </Pressable>
+    );
+  }
+
   return (
     <Pressable
       onPress={onPress}
@@ -53,7 +73,7 @@ export function Button({
   );
 }
 
-export function Badge({ label, tone }: { label: string; tone: 'pre' | 'post' | 'done' }) {
+export function Badge({ label, tone }: { label: string; tone: 'pre' | 'post' | 'done' | 'warn' }) {
   return (
     <View style={[styles.badge, badgeTone[tone]]}>
       <Text style={[styles.badgeText, badgeTextTone[tone]]}>{label}</Text>
@@ -65,10 +85,9 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.card,
     borderRadius: radius,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
+    padding: 16,
+    marginBottom: 14,
+    ...cardShadow,
   },
   sectionTitle: {
     fontWeight: '700',
@@ -80,21 +99,20 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginHorizontal: 4,
   },
-  field: { marginBottom: 12 },
+  field: { width: '100%', marginBottom: 12 },
   fieldLabel: { fontSize: 12.5, fontWeight: '600', color: colors.muted, marginBottom: 4 },
   input: {
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: 10,
-    padding: 11,
+    borderWidth: 0,
+    borderRadius: radius - 4,
+    padding: 12,
     fontSize: 15,
-    backgroundColor: '#fff',
+    backgroundColor: colors.bg,
     color: colors.text,
   },
   btn: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 11,
+    paddingVertical: 13,
+    paddingHorizontal: 18,
+    borderRadius: radius - 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -108,7 +126,7 @@ const styles = StyleSheet.create({
 
 const variantStyles: Record<ButtonVariant, object> = {
   primary: { backgroundColor: colors.primary },
-  secondary: { backgroundColor: '#efe6e3' },
+  secondary: { backgroundColor: colors.bg },
   outline: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: colors.primary },
   danger: { backgroundColor: colors.badBg },
   ghost: { backgroundColor: 'transparent' },
@@ -122,14 +140,16 @@ const variantTextStyles: Record<ButtonVariant, object> = {
   ghost: { color: colors.muted },
 };
 
-const badgeTone: Record<'pre' | 'post' | 'done', object> = {
+const badgeTone: Record<'pre' | 'post' | 'done' | 'warn', object> = {
   pre: { backgroundColor: '#fdf1de' },
   post: { backgroundColor: '#e2ecfb' },
   done: { backgroundColor: colors.okBg },
+  warn: { backgroundColor: colors.badBg },
 };
 
-const badgeTextTone: Record<'pre' | 'post' | 'done', object> = {
+const badgeTextTone: Record<'pre' | 'post' | 'done' | 'warn', object> = {
   pre: { color: '#9a6400' },
   post: { color: '#1f4e8c' },
   done: { color: colors.ok },
+  warn: { color: colors.bad },
 };

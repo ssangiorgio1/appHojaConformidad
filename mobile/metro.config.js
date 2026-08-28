@@ -10,7 +10,7 @@ const config = getDefaultConfig(projectRoot);
 // Metro only watches/resolves within projectRoot by default. @wara/shared is
 // a symlink pointing outside mobile/ (into ../packages/shared), so the
 // monorepo root needs to be an explicit watch folder for Metro to see it.
-config.watchFolders = [workspaceRoot];
+config.watchFolders = [...config.watchFolders, workspaceRoot];
 
 // packages/shared uses explicit ".js" extensions on relative imports (e.g.
 // `./checklist.js`), as required by the api package's NodeNext TypeScript

@@ -1,0 +1,102 @@
+import type { Checklist, Equipo, SatisfaccionFirma } from '@wara/shared';
+
+// Mirrors api/src/models/Usuario.ts
+export type UsuarioRole = 'tecnico' | 'admin' | 'superadmin' | 'coordinacion' | 'mesa_ayuda';
+
+export interface Usuario {
+  _id: string;
+  firebaseUid?: string;
+  email: string;
+  nombre: string;
+  role: UsuarioRole;
+  legajo: string;
+  activo: boolean;
+  // True for the one superadmin account whose role/activo the API refuses to
+  // change — see api/src/services/usuario.service.ts.
+  protegido: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Mirrors api/src/models/Conformidad.ts — this is the server/Mongo document
+// shape, distinct from @wara/shared's ConformidadRecord (the mobile app's
+// local offline-first record, which carries mobile-only fields like
+// syncStatus and dataUrl-based photos/signatures).
+export type EstadoConformidad = 'borrador_pre' | 'pendiente_post' | 'completo';
+
+export interface Foto {
+  id: string;
+  url: string;
+  key: string;
+}
+
+export interface Firma {
+  url?: string;
+  key?: string;
+  firmedAt?: string;
+  satisfaccion?: SatisfaccionFirma | null;
+}
+
+export interface Phase {
+  checklist: Checklist;
+  observaciones: string;
+  fotos: Foto[];
+  firma: Firma | null;
+}
+
+export interface ConformidadDoc {
+  _id: string;
+  clientId: string;
+  codigoActa: string;
+  numero: string;
+  cliente: string;
+  fecha: string;
+  hora: string;
+  fechaHora?: string;
+  matricula: string;
+  instalador: string;
+  tecnicoId?: string;
+  responsableEmpresa: string;
+  status: EstadoConformidad;
+  origen: string;
+  pre: Phase;
+  post: Phase;
+  equipo: Equipo;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateUsuarioInput {
+  email: string;
+  nombre: string;
+  legajo?: string;
+  role: UsuarioRole;
+  activo: boolean;
+}
+
+export interface CreateUsuarioResponse {
+  usuario: Usuario;
+  tempPassword?: string;
+}
+
+export interface Paginated<T> {
+  data: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+// Mirrors api/src/schemas/conformidad.schema.ts's listConformidadesQuerySchema
+export interface ListConformidadesQuery {
+  page?: number;
+  pageSize?: number;
+  status?: EstadoConformidad;
+  tecnicoId?: string;
+  matricula?: string;
+  imei?: string;
+  numero?: string;
+  fechaDesde?: string;
+  fechaHasta?: string;
+  search?: string;
+}

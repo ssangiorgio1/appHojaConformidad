@@ -51,3 +51,11 @@ export async function dbDelete(id: string): Promise<void> {
   const db = await openDB();
   await db.runAsync('DELETE FROM records WHERE id = ?', [id]);
 }
+
+// Called on sign-out so a técnico logging into a shared device doesn't see
+// the previous técnico's already-submitted hojas. Records still PENDING_SYNC
+// are kept — clearing those would destroy unsaved field work.
+export async function dbClearSynced(): Promise<void> {
+  const db = await openDB();
+  await db.runAsync("DELETE FROM records WHERE syncStatus = 'SYNCED'");
+}

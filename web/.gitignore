@@ -1,0 +1,10 @@
+# Next.js
+/.next/
+/out/
+
+# env files (client Firebase config lives here — not committed)
+.env*.local
+
+# misc
+*.tsbuildinfo
+next-env.d.ts

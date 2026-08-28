@@ -20,6 +20,7 @@ const FirmaSchema = new Schema(
     url: { type: String },
     key: { type: String },
     firmedAt: { type: Date },
+    satisfaccion: { type: String, enum: ['satisfecho', 'insatisfecho', 'no_firma_insatisfecho'], default: null },
   },
   { _id: false },
 );
@@ -36,9 +37,37 @@ const PhaseSchema = new Schema(
 
 const equipoFields = {
   ...Object.fromEntries(EQUIP_TEXT_KEYS.map((key) => [key, { type: String, default: '' }])),
-  ...Object.fromEntries(EQUIP_CHECK_KEYS.map((key) => [key, { type: Boolean, default: false }])),
+  ...Object.fromEntries(EQUIP_CHECK_KEYS.map((key) => [key, { type: String, enum: ['SI', 'NO'], default: null }])),
 };
 const EquipoSchema = new Schema(equipoFields, { _id: false });
+
+const TicketOdooSchema = new Schema(
+  {
+    numero: { type: String, required: true },
+    odooId: { type: Number, default: null },
+    clienteOdoo: { type: String, default: '' },
+    verified: { type: Boolean, default: false },
+  },
+  { _id: false },
+);
+
+const OdooSyncSchema = new Schema(
+  {
+    status: { type: String, enum: ['PENDING', 'SYNCED', 'FAILED'], default: 'PENDING' },
+    attempts: { type: Number, default: 0 },
+    lastError: { type: String, default: '' },
+    syncedAt: { type: Date },
+  },
+  { _id: false },
+);
+
+const PdfReporteSchema = new Schema(
+  {
+    url: { type: String, required: true },
+    key: { type: String, required: true },
+  },
+  { _id: false },
+);
 
 const ConformidadSchema = new Schema(
   {
@@ -67,6 +96,10 @@ const ConformidadSchema = new Schema(
     pre: { type: PhaseSchema, default: () => ({}) },
     post: { type: PhaseSchema, default: () => ({}) },
     equipo: { type: EquipoSchema, default: () => ({}) },
+
+    ticketOdoo: { type: TicketOdooSchema, default: null },
+    odooSync: { type: OdooSyncSchema, default: () => ({}) },
+    pdfReporte: { type: PdfReporteSchema, default: null },
 
     deletedAt: { type: Date, default: null },
   },

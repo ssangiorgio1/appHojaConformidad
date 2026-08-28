@@ -13,11 +13,20 @@ const envSchema = z.object({
 
   ALLOWED_EMAIL_DOMAIN: z.string().min(1).default('waragps.com'),
 
+  // The one superadmin account that no one — not even other admins/superadmins —
+  // can demote or deactivate through the API. Keeps there always being a way in.
+  PROTECTED_SUPERADMIN_EMAIL: z.string().min(1).default('joacosangiorgio1@gmail.com'),
+
   R2_ACCOUNT_ID: z.string().min(1, 'R2_ACCOUNT_ID is required'),
   R2_ACCESS_KEY_ID: z.string().min(1, 'R2_ACCESS_KEY_ID is required'),
   R2_SECRET_ACCESS_KEY: z.string().min(1, 'R2_SECRET_ACCESS_KEY is required'),
   R2_BUCKET_NAME: z.string().min(1, 'R2_BUCKET_NAME is required'),
   R2_PUBLIC_BASE_URL: z.string().min(1, 'R2_PUBLIC_BASE_URL is required'),
+
+  ODOO_URL: z.string().min(1, 'ODOO_URL is required'),
+  ODOO_DB: z.string().min(1, 'ODOO_DB is required'),
+  ODOO_EMAIL: z.string().min(1, 'ODOO_EMAIL is required'),
+  ODOO_API_KEY: z.string().min(1, 'ODOO_API_KEY is required'),
 
   CORS_ORIGINS: z.string().default(''),
 });
@@ -37,4 +46,5 @@ export const env = {
     .filter(Boolean),
   // Render/most dashboards store multi-line PEM keys with literal "\n" sequences
   FIREBASE_PRIVATE_KEY: parsed.data.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+  ODOO_URL: parsed.data.ODOO_URL.replace(/\/+$/, ''),
 };
