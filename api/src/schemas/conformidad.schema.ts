@@ -18,6 +18,7 @@ const firmaSchema = z
     key: z.string().min(1).optional(),
     firmedAt: z.coerce.date().optional(),
     satisfaccion: z.enum(['satisfecho', 'insatisfecho', 'no_firma_insatisfecho']).nullable().optional(),
+    motivo: z.string().optional(),
   })
   .nullable();
 

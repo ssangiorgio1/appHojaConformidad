@@ -12,6 +12,19 @@ const usuarioSchema = new Schema(
     },
     legajo: { type: String, default: '' },
     activo: { type: Boolean, default: true },
+    // Técnico's personal Odoo account, linked from the profile screen so the
+    // hoja de conformidad PDF can be posted to a ticket as them instead of
+    // the shared service account. passwordEnc is AES-256-GCM (see
+    // utils/secretBox.ts) — never sent to the client.
+    odoo: {
+      type: {
+        login: { type: String, required: true },
+        passwordEnc: { type: String, required: true },
+        displayName: { type: String, required: true },
+        linkedAt: { type: Date, required: true },
+      },
+      default: undefined,
+    },
   },
   { timestamps: true },
 );

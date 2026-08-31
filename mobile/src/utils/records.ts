@@ -4,9 +4,10 @@ import { uuid, generateNumeroHoja } from './misc';
 
 const MAX_NUMERO_ATTEMPTS = 5;
 
-export async function newRecordFor(instalador: string): Promise<ConformidadRecord> {
+export async function newRecordFor(instalador: string, ownerUid: string): Promise<ConformidadRecord> {
   const record = newRecord(uuid(), new Date());
   record.instalador = instalador;
+  record.localOwnerUid = ownerUid;
   record.numero = await pickUniqueNumeroHoja();
   return record;
 }

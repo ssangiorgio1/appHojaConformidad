@@ -28,6 +28,9 @@ const envSchema = z.object({
   ODOO_EMAIL: z.string().min(1, 'ODOO_EMAIL is required'),
   ODOO_API_KEY: z.string().min(1, 'ODOO_API_KEY is required'),
 
+  // Encrypts each técnico's personal Odoo password at rest (see utils/secretBox.ts).
+  ODOO_LINK_SECRET: z.string().min(16, 'ODOO_LINK_SECRET is required (min 16 chars)'),
+
   CORS_ORIGINS: z.string().default(''),
 });
 

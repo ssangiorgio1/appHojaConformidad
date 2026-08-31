@@ -35,6 +35,7 @@ export interface Firma {
   key?: string;
   firmedAt?: string;
   satisfaccion?: SatisfaccionFirma | null;
+  motivo?: string;
 }
 
 export interface Phase {
@@ -62,6 +63,9 @@ export interface ConformidadDoc {
   pre: Phase;
   post: Phase;
   equipo: Equipo;
+  // Set once the app has generated and uploaded the PDF report (see
+  // mobile/src/sync/sync.ts) — null until then, e.g. for borrador_pre records.
+  pdfReporte: { url: string; key: string } | null;
   createdAt: string;
   updatedAt: string;
 }

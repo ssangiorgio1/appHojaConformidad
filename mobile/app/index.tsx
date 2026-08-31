@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ConformidadRecord, EstadoServicio } from '@wara/shared';
 import { LinearGradient } from 'expo-linear-gradient';
 import { RequireAuth } from '../src/auth/RequireAuth';
@@ -18,6 +18,31 @@ import { getSavedStep } from '../src/utils/wizardStep';
 
 type Filter = 'todos' | 'pre' | 'post' | 'done';
 
+// Local records created before per-técnico ownership tagging existed have no
+// localOwnerUid — stamp them as belonging to whoever's currently signed in
+// on this device (the common case: it's that técnico's own pre-existing
+// data) rather than hiding them. Records already tagged for a different
+// técnico (left behind on a shared device after an account switch, still
+// PENDING_SYNC) are filtered out here so they never show up — or become
+// editable — in another técnico's list; they reappear once that técnico
+// signs back in.
+async function loadMyRecords(uid: string | undefined): Promise<ConformidadRecord[]> {
+  const all = await dbGetAll();
+  if (!uid) return all;
+
+  const mine: ConformidadRecord[] = [];
+  for (const r of all) {
+    if (!r.localOwnerUid) {
+      const tagged = { ...r, localOwnerUid: uid };
+      await dbPut(tagged);
+      mine.push(tagged);
+    } else if (r.localOwnerUid === uid) {
+      mine.push(r);
+    }
+  }
+  return mine;
+}
+
 export default function HomeScreen() {
   return (
     <RequireAuth>
@@ -28,7 +53,8 @@ export default function HomeScreen() {
 
 function Home() {
   const router = useRouter();
-  const { usuario, getIdToken } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { user, usuario, getIdToken } = useAuth();
   const { confirm } = useConfirm();
   const [records, setRecords] = useState<ConformidadRecord[]>([]);
   const [filter, setFilter] = useState<Filter>('todos');
@@ -36,7 +62,8 @@ function Home() {
   const [deletableIds, setDeletableIds] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
-    const all = await dbGetAll();
+    const uid = user?.uid;
+    const all = await loadMyRecords(uid);
     setRecords(all);
 
     // A borrador_pre can only be deleted while it's still on step 1 (before
@@ -51,18 +78,25 @@ function Home() {
     // failed) — runs in the background, doesn't block the list render. Also
     // retries a record whose Mongo sync already succeeded but whose Odoo
     // push (a separate, independently-tracked step) is still pending/failed.
-    const pending = all.filter(
-      (r) =>
-        (r.syncStatus === 'PENDING_SYNC' && r.status !== 'borrador_pre') ||
-        (r.status === 'completo' && r.ticketOdoo && r.odooSync.status !== 'SYNCED'),
-    );
+    //
+    // TEMP — QA only: disabled while testing the "Reenviar PDF (temp)" button
+    // in ver/[id].tsx — this auto-retry firing on every screen focus raced
+    // with the manual resend (no server-side lock stops concurrent Odoo
+    // pushes for the same record) and caused duplicate attachments on the
+    // ticket. Restore once the temp button is removed.
+    const pending: typeof all = [];
+    // const pending = all.filter(
+    //   (r) =>
+    //     (r.syncStatus === 'PENDING_SYNC' && r.status !== 'borrador_pre') ||
+    //     (r.status === 'completo' && r.ticketOdoo && r.odooSync.status !== 'SYNCED'),
+    // );
     if (pending.length) {
       (async () => {
         let anySynced = false;
         for (const record of pending) {
           if (await syncRecord(record, getIdToken)) anySynced = true;
         }
-        if (anySynced) setRecords(await dbGetAll());
+        if (anySynced) setRecords(await loadMyRecords(uid));
       })();
     }
 
@@ -70,10 +104,11 @@ function Home() {
     // shared-device account switch, a reinstall, etc.) — cheap no-op once
     // the local cache is already complete.
     (async () => {
+      if (!uid) return;
       try {
         const token = await getIdToken();
-        await pullMyConformidades(token);
-        setRecords(await dbGetAll());
+        await pullMyConformidades(token, uid);
+        setRecords(await loadMyRecords(uid));
       } catch {
         // offline or transient failure — next focus retries
       }
@@ -92,9 +127,9 @@ function Home() {
           anyTrimmed = true;
         }
       }
-      if (anyTrimmed) setRecords(await dbGetAll());
+      if (anyTrimmed) setRecords(await loadMyRecords(uid));
     })();
-  }, [getIdToken]);
+  }, [getIdToken, user?.uid]);
 
   useFocusEffect(
     useCallback(() => {
@@ -129,7 +164,7 @@ function Home() {
   const filtered = records.filter(matchesFilter);
 
   async function handleNew() {
-    const rec = await newRecordFor(usuario?.nombre ?? '');
+    const rec = await newRecordFor(usuario?.nombre ?? '', user!.uid);
     await dbPut(rec);
     router.push(`/pre/${rec.id}`);
   }
@@ -147,11 +182,10 @@ function Home() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.topbar}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.topbarTitle}>Hoja de Conformidad</Text>
-          <Text style={styles.topbarSub}>WARA · Seguimiento y Control</Text>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <View style={[styles.topbar, { paddingTop: insets.top + 14 }]}>
+        <View style={{ flex: 1, gap: 2, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}>
+          <Image source={require('../assets/logo-wara.png')} style={styles.logo} />
         </View>
         <Pressable style={styles.iconBtn} onPress={() => router.push('/perfil')}>
           <Text style={styles.iconBtnText}>⋮</Text>
@@ -190,7 +224,7 @@ function Home() {
         )}
       />
 
-      <Pressable style={styles.fabWrap} onPress={handleNew}>
+      <Pressable style={[styles.fabWrap, { bottom: 22 + insets.bottom }]} onPress={handleNew}>
         <LinearGradient colors={[colors.accent, colors.primary]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.fab}>
           <Text style={styles.fabText}>+ Nuevo servicio</Text>
         </LinearGradient>
@@ -253,13 +287,14 @@ const styles = StyleSheet.create({
   topbar: {
     backgroundColor: colors.primaryDark,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
   topbarTitle: { color: '#fff', fontSize: 17, fontWeight: '700' },
   topbarSub: { color: '#fff', opacity: 0.85, fontSize: 11 },
+  logo: { width: 140, height: 36, resizeMode: 'contain' },
   iconBtn: {
     width: 36,
     height: 36,
@@ -297,10 +332,9 @@ const styles = StyleSheet.create({
   recordTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
   recordTitle: { fontWeight: '700', fontSize: 15.5, color: colors.text },
   recordSub: { fontSize: 12.5, color: colors.muted, marginTop: 2 },
-  recordActions: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' },
+  recordActions: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' },
   fabWrap: {
     position: 'absolute',
-    bottom: 22,
     right: 20,
     borderRadius: 50,
     shadowColor: '#000',

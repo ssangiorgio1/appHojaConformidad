@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useKeepAwake } from 'expo-keep-awake';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { missingChecklistItems, PRE_PHOTO_SLOTS, type ChecklistValue, type ConformidadRecord } from '@wara/shared';
 import { RequireAuth } from '../../src/auth/RequireAuth';
 import { useAuth } from '../../src/auth/AuthContext';
@@ -12,7 +11,8 @@ import { ChecklistEditor, type ChecklistEditorHandle } from '../../src/component
 import { SlotPhotoCapture, missingSlotLabels } from '../../src/components/SlotPhotoCapture';
 import { SignaturePad, type SignaturePadHandle } from '../../src/components/SignaturePad';
 import { TicketOdooPicker } from '../../src/components/TicketOdooPicker';
-import { Button, Card, Field, SectionTitle } from '../../src/components/ui';
+import { Button, Card, Field, SectionTitle, TopbarBackButton } from '../../src/components/ui';
+import { DateField, TimeField } from '../../src/components/DateTimeField';
 import { WizardProgress, WizardNav, type WizardStepDef } from '../../src/components/Wizard';
 import { useToast } from '../../src/components/Toast';
 import { useConfirm } from '../../src/components/ConfirmDialog';
@@ -20,6 +20,9 @@ import { colors } from '../../src/theme';
 import { nowIso } from '../../src/utils/misc';
 import { useScrollLock } from '../../src/utils/useScrollLock';
 import { getSavedStep, saveStep, clearStep } from '../../src/utils/wizardStep';
+import { mergeTicketOdooIntoRecord } from '../../src/utils/ticketOdoo';
+import { takeRecoveredFoto } from '../../src/utils/pendingCapture';
+import { useKeepAwakeIdle } from '../../src/utils/useKeepAwakeIdle';
 
 const STEPS: WizardStepDef[] = [
   { key: 'datos', title: 'Datos del servicio' },
@@ -48,13 +51,14 @@ export default function PreScreen() {
 }
 
 function PreForm() {
-  useKeepAwake();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { confirm } = useConfirm();
   const { usuario, getIdToken } = useAuth();
   const [record, setRecord] = useState<ConformidadRecord | null>(null);
+  useKeepAwakeIdle('pre-form', record);
   const [highlightKeys, setHighlightKeys] = useState<string[]>([]);
   const [stepIndex, setStepIndex] = useState(0);
   const [furthestIndex, setFurthestIndex] = useState(0);
@@ -76,6 +80,11 @@ function PreForm() {
       // that rule (e.g. one created before the técnico's account had a name).
       if (!r.instalador?.trim() && usuario?.nombre) {
         r = { ...r, instalador: usuario.nombre, updatedAt: nowIso() };
+        await dbPut(r);
+      }
+      const recoveredFoto = takeRecoveredFoto(id, 'pre');
+      if (recoveredFoto) {
+        r = { ...r, pre: { ...r.pre, fotos: [...r.pre.fotos.filter((f) => f.slotKey !== recoveredFoto.slotKey), recoveredFoto] }, updatedAt: nowIso() };
         await dbPut(r);
       }
       setRecord(r);
@@ -233,14 +242,11 @@ function PreForm() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.topbar}>
-        <Text style={styles.topbarBack} onPress={() => router.replace('/')}>
-          ←
-        </Text>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <View style={[styles.topbar, { paddingTop: insets.top + 14 }]}>
+        <TopbarBackButton onPress={() => router.replace('/')} />
         <View>
           <Text style={styles.topbarTitle}>Pre-instalación</Text>
-          <Text style={styles.topbarSub}>Revisión antes de comenzar</Text>
         </View>
       </View>
 
@@ -254,10 +260,10 @@ function PreForm() {
               <Field label="Cliente *" value={record.cliente} onChangeText={(v) => set('cliente', v)} placeholder="Nombre del cliente" />
               <View style={styles.row2}>
                 <View style={{ flex: 1 }}>
-                  <Field label="Fecha *" value={record.fecha} onChangeText={(v) => set('fecha', v)} placeholder="YYYY-MM-DD" />
+                  <DateField label="Fecha *" value={record.fecha} onChange={(v) => set('fecha', v)} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Field label="Hora *" value={record.hora} onChangeText={(v) => set('hora', v)} placeholder="HH:mm" />
+                  <TimeField label="Hora *" value={record.hora} onChange={(v) => set('hora', v)} />
                 </View>
               </View>
               <Field label="Matrícula *" value={record.matricula} onChangeText={(v) => set('matricula', v)} placeholder="Patente del vehículo" />
@@ -268,7 +274,10 @@ function PreForm() {
                 onChangeText={(v) => set('responsableEmpresa', v)}
                 placeholder="Responsable / contacto en la empresa cliente"
               />
-              <TicketOdooPicker value={record.ticketOdoo} onChange={(ticketOdoo) => set('ticketOdoo', ticketOdoo)} />
+              <TicketOdooPicker
+                value={record.ticketOdoo}
+                onChange={(ticketOdoo) => persist(mergeTicketOdooIntoRecord(record!, ticketOdoo))}
+              />
             </Card>
           )}
 
@@ -288,6 +297,8 @@ function PreForm() {
               <SlotPhotoCapture
                 slots={PRE_PHOTO_SLOTS}
                 fotos={record.pre.fotos}
+                recordId={id}
+                screen="pre"
                 onChange={(fotos) => persist({ ...record, pre: { ...record.pre, fotos } })}
               />
             </Card>
@@ -361,12 +372,11 @@ const styles = StyleSheet.create({
   topbar: {
     backgroundColor: colors.primaryDark,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  topbarBack: { color: '#fff', fontSize: 20, width: 30 },
   topbarTitle: { color: '#fff', fontSize: 17, fontWeight: '700' },
   topbarSub: { color: '#fff', opacity: 0.85, fontSize: 11 },
   content: { padding: 14, paddingBottom: 20 },

@@ -11,8 +11,15 @@ export function isProtectedSuperadmin(email: string): boolean {
 
 // Adds the client-facing `protegido` flag so the UI can grey out role/activo
 // controls for the protected account without hardcoding its email itself.
+// The Odoo link's encrypted password must never reach the client — only
+// whether it's linked and to whom.
 export function serializeUsuario(usuario: InstanceType<typeof UsuarioModel>) {
-  return { ...usuario.toObject(), protegido: isProtectedSuperadmin(usuario.email) };
+  const { odoo, ...rest } = usuario.toObject();
+  return {
+    ...rest,
+    protegido: isProtectedSuperadmin(usuario.email),
+    odoo: odoo ? { linked: true, displayName: odoo.displayName, login: odoo.login } : { linked: false },
+  };
 }
 
 function generatePassword(): string {

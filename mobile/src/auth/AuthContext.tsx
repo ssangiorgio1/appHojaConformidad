@@ -91,14 +91,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await dbClearSynced();
         }
         setLastUid(u.uid);
-        pullMyConformidades(token).catch(() => {});
+        pullMyConformidades(token, u.uid).catch(() => {});
       } catch (err) {
-        // Domain/exception rejected, account disabled, unverified email,
-        // API unreachable... — don't leave a half-authenticated session
-        // hanging around, but say why instead of silently bouncing.
         setAuthError(friendlyError(err));
-        await fbSignOut(auth);
-        setUsuario(null);
+        // Only the API actively rejecting this account (disabled, unverified,
+        // no access) should sign the user out. A network hiccup or unreachable
+        // server — very common at job sites with weak signal, and exactly what
+        // happens right after Android kills/relaunches the app while the camera
+        // was foregrounded — must never sign the técnico out mid-service: they'd
+        // get bounced to /login and lose the in-progress form.
+        if (err instanceof ApiError) {
+          await fbSignOut(auth);
+          setUsuario(null);
+        }
       } finally {
         setLoading(false);
       }

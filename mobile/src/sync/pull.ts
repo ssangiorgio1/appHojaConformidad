@@ -18,12 +18,13 @@ function mapPhase(remote: RemotePhase | undefined): Phase {
           key: remote.firma.key,
           firmedAt: remote.firma.firmedAt,
           satisfaccion: remote.firma.satisfaccion ?? null,
+          motivo: remote.firma.motivo,
         }
       : null,
   };
 }
 
-function mapRemoteToLocal(doc: RemoteConformidad): ConformidadRecord {
+function mapRemoteToLocal(doc: RemoteConformidad, ownerUid: string): ConformidadRecord {
   return {
     id: doc.clientId,
     remoteId: doc._id,
@@ -37,6 +38,7 @@ function mapRemoteToLocal(doc: RemoteConformidad): ConformidadRecord {
     responsableEmpresa: doc.responsableEmpresa ?? '',
     status: doc.status,
     syncStatus: 'SYNCED',
+    localOwnerUid: ownerUid,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
     pre: mapPhase(doc.pre),
@@ -52,13 +54,13 @@ function mapRemoteToLocal(doc: RemoteConformidad): ConformidadRecord {
 // not on this device — e.g. after a reinstall, or after a shared-device
 // account switch cleared the local cache. Never touches a record that's
 // already present locally, so it can't clobber in-progress edits.
-export async function pullMyConformidades(idToken: string): Promise<void> {
+export async function pullMyConformidades(idToken: string, ownerUid: string): Promise<void> {
   let page = 1;
   for (;;) {
     const res = await listConformidades(idToken, page, 200);
     for (const doc of res.data) {
       const existing = await dbGet(doc.clientId);
-      if (!existing) await dbPut(mapRemoteToLocal(doc));
+      if (!existing) await dbPut(mapRemoteToLocal(doc, ownerUid));
     }
     if (page >= res.totalPages) break;
     page++;

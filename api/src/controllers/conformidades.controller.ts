@@ -1,9 +1,12 @@
 import type { Request, Response } from 'express';
 import { ConformidadModel } from '../models/Conformidad.js';
+import { UsuarioModel } from '../models/Usuario.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { HttpError } from '../middleware/error.middleware.js';
 import { deriveCodigoActa } from '../services/codigoActa.service.js';
 import { pushConformidadToTicket, OdooError } from '../services/odoo.service.js';
+import { generateConformidadPdf as renderConformidadPdf } from '../services/pdf.service.js';
+import { decryptSecret } from '../utils/secretBox.js';
 import type {
   CreateConformidadInput,
   PatchConformidadInput,
@@ -119,7 +122,7 @@ export const listConformidades = asyncHandler(async (req: Request, res: Response
 
   if (query.search) {
     const re = new RegExp(query.search, 'i');
-    filter.$or = [{ cliente: re }, { matricula: re }, { instalador: re }, { numero: re }];
+    filter.$or = [{ cliente: re }, { matricula: re }, { instalador: re }, { numero: re }, { 'equipo.imei': re }];
   }
 
   const skip = (query.page - 1) * query.pageSize;
@@ -144,6 +147,26 @@ export const getConformidadById = asyncHandler(async (req: Request, res: Respons
   res.json(record);
 });
 
+// Lets the web dashboard show/share a hoja de conformidad without needing
+// the mobile app to have generated one first (that only happens once a
+// ticket de Odoo is linked — see mobile/src/sync/sync.ts's pushToOdoo).
+// Cached on the record afterwards so repeat views don't re-render it.
+export const generateConformidadPdf = asyncHandler(async (req: Request, res: Response) => {
+  const record = await ConformidadModel.findOne({ _id: req.params.id, deletedAt: null });
+  if (!record) throw new HttpError(404, 'Conformidad not found');
+  assertOwnedByRequester(req, record.tecnicoId);
+
+  if (record.pdfReporte?.url && req.query.force !== '1') {
+    res.json({ pdfReporte: record.pdfReporte });
+    return;
+  }
+
+  const pdfReporte = await renderConformidadPdf(record.toObject() as unknown as Parameters<typeof renderConformidadPdf>[0]);
+  record.pdfReporte = pdfReporte;
+  await record.save();
+  res.json({ pdfReporte });
+});
+
 function esc(s: unknown): string {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
@@ -165,7 +188,15 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
   if (!record.ticketOdoo?.numero) throw new HttpError(400, 'This record has no ticket de Odoo linked');
   if (!record.pdfReporte?.url) throw new HttpError(400, 'This record has no PDF report generated yet');
 
-  if (record.odooSync?.status === 'SYNCED') {
+  // The PDF is posted to Odoo as the técnico, not a shared service account —
+  // they must have linked their own Odoo login from the profile screen first.
+  const usuario = await UsuarioModel.findById(req.user!.usuarioId);
+  if (!usuario?.odoo) throw new HttpError(400, 'Vinculá tu cuenta de Odoo en tu perfil antes de enviar.');
+
+  // TEMP — QA only: `?force=1` bypasses the idempotency guard below so a
+  // record that already synced can be resent while testing the printHtml
+  // PDF layout fix. Remove this query check once QA is done.
+  if (record.odooSync?.status === 'SYNCED' && req.query.force !== '1') {
     res.json({ odooSync: record.odooSync });
     return;
   }
@@ -179,9 +210,11 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
   }
 
   const satisfaccion = record.post.firma?.satisfaccion;
+  const motivo = record.post.firma?.motivo;
   const resumenHtml = `<p><b>Hoja de conformidad completada</b> — ${esc(record.cliente)} (${esc(record.matricula)})</p>
     <p>Fecha: ${esc(record.fecha)} ${esc(record.hora)}<br>Instalador: ${esc(record.instalador)}</p>
-    ${satisfaccion ? `<p>Estado de firma: ${esc(SATISFACCION_LABELS[satisfaccion] ?? satisfaccion)}</p>` : ''}`;
+    ${satisfaccion ? `<p>Estado de firma: ${esc(SATISFACCION_LABELS[satisfaccion] ?? satisfaccion)}</p>` : ''}
+    ${motivo ? `<p>Motivo: ${esc(motivo)}</p>` : ''}`;
 
   try {
     await pushConformidadToTicket({
@@ -189,6 +222,7 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
       pdfUrl: record.pdfReporte.url,
       fileName: `hoja_conformidad_${record.codigoActa}.pdf`,
       resumenHtml,
+      as: { login: usuario.odoo.login, password: decryptSecret(usuario.odoo.passwordEnc) },
     });
     record.odooSync = { status: 'SYNCED', attempts: (record.odooSync?.attempts ?? 0) + 1, syncedAt: new Date(), lastError: '' };
   } catch (err) {

@@ -41,6 +41,8 @@ export interface Usuario {
   activo: boolean;
   createdAt: string;
   updatedAt: string;
+  // Odoo account link — passwordEnc is never sent; only whether it's linked.
+  odoo: { linked: false } | { linked: true; displayName: string; login: string };
 }
 
 export function getMe(idToken: string) {
@@ -69,6 +71,7 @@ export interface RemoteFirma {
   key?: string;
   firmedAt?: string;
   satisfaccion?: SatisfaccionFirma | null;
+  motivo?: string;
 }
 
 export interface RemotePhase {
@@ -181,6 +184,7 @@ export interface OdooTicketResult {
   id: number;
   label: string;
   partnerName: string | null;
+  partnerEmail: string | null;
   stage: string | null;
 }
 
@@ -188,6 +192,15 @@ export function searchOdooTickets(idToken: string, q: string) {
   return apiFetch<{ data: OdooTicketResult[] }>(`/api/odoo/tickets/search?q=${encodeURIComponent(q)}`, idToken);
 }
 
-export function syncConformidadToOdoo(idToken: string, remoteId: string) {
-  return apiFetch<{ odooSync: OdooSync }>(`/api/conformidades/${remoteId}/odoo-sync`, idToken, { method: 'POST' });
+export function syncConformidadToOdoo(idToken: string, remoteId: string, opts?: { force?: boolean }) {
+  const qs = opts?.force ? '?force=1' : '';
+  return apiFetch<{ odooSync: OdooSync }>(`/api/conformidades/${remoteId}/odoo-sync${qs}`, idToken, { method: 'POST' });
+}
+
+export function linkOdooAccount(idToken: string, login: string, password: string) {
+  return apiFetch<Usuario>('/api/odoo/account/link', idToken, { method: 'POST', body: { login, password } });
+}
+
+export function unlinkOdooAccount(idToken: string) {
+  return apiFetch<Usuario>('/api/odoo/account/link', idToken, { method: 'DELETE' });
 }

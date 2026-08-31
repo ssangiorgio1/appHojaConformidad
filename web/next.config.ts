@@ -21,6 +21,7 @@ const nextConfig: NextConfig = {
       './equipo.js': '../packages/shared/src/equipo.ts',
       './photoSlots.js': '../packages/shared/src/photoSlots.ts',
       './types.js': '../packages/shared/src/types.ts',
+      './printHtml.js': '../packages/shared/src/printHtml.ts',
     },
   },
 };

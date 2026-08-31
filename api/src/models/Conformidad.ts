@@ -21,6 +21,7 @@ const FirmaSchema = new Schema(
     key: { type: String },
     firmedAt: { type: Date },
     satisfaccion: { type: String, enum: ['satisfecho', 'insatisfecho', 'no_firma_insatisfecho'], default: null },
+    motivo: { type: String },
   },
   { _id: false },
 );

@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import type { Foto, PhotoSlotDef } from '@wara/shared';
 import { colors, radius } from '../theme';
 import { resizeImageToDataUrl, uuid } from '../utils/misc';
+import { markCaptureStarted, markCaptureFinished, type CaptureScreen } from '../utils/pendingCapture';
 import { useToast } from './Toast';
 
 export function slotsFilled(slots: PhotoSlotDef[], fotos: Foto[]): boolean {
@@ -18,10 +19,14 @@ export function SlotPhotoCapture({
   slots,
   fotos,
   onChange,
+  recordId,
+  screen,
 }: {
   slots: PhotoSlotDef[];
   fotos: Foto[];
   onChange: (fotos: Foto[]) => void;
+  recordId: string;
+  screen: CaptureScreen;
 }) {
   const [processingSlot, setProcessingSlot] = useState<string | null>(null);
   const { showToast } = useToast();
@@ -50,17 +55,23 @@ export function SlotPhotoCapture({
   async function captureFor(slot: PhotoSlotDef) {
     if (!(await ensureCameraPermission())) return;
 
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images' as const], quality: 1 });
-    if (result.canceled || !result.assets?.[0]) return;
-
-    setProcessingSlot(slot.key);
+    // Marked before launching so a killed-and-recreated MainActivity (Android reclaiming
+    // memory while the camera is foregrounded) can recover the photo on next app start.
+    await markCaptureStarted({ recordId, screen, slotKey: slot.key });
     try {
+      // Lower than max quality to reduce the memory the OS holds for the raw capture —
+      // the final image is resized/recompressed by resizeImageToDataUrl anyway.
+      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images' as const], quality: 0.5 });
+      if (result.canceled || !result.assets?.[0]) return;
+
+      setProcessingSlot(slot.key);
       const dataUrl = await resizeImageToDataUrl(result.assets[0].uri);
       replaceSlot(slot.key, { id: uuid(), slotKey: slot.key, dataUrl });
     } catch {
       showToast({ type: 'error', message: 'No se pudo procesar el archivo.' });
     } finally {
       setProcessingSlot(null);
+      await markCaptureFinished();
     }
   }
 

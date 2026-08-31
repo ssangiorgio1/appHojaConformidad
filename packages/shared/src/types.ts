@@ -30,6 +30,9 @@ export interface Firma {
   firmedAt?: string;
   locked?: boolean;
   satisfaccion?: SatisfaccionFirma | null;
+  // Required whenever satisfaccion is 'insatisfecho' or 'no_firma_insatisfecho'
+  // — why the client wasn't satisfied / refused to sign.
+  motivo?: string;
 }
 
 export interface Phase {
@@ -50,6 +53,9 @@ export interface TicketOdooRef {
   numero: string;
   odooId?: number;
   clienteOdoo?: string;
+  clienteEmailOdoo?: string;
+  asunto?: string;
+  etapa?: string;
   verified: boolean;
 }
 
@@ -83,6 +89,13 @@ export interface ConformidadRecord {
 
   status: EstadoServicio;
   syncStatus: 'PENDING_SYNC' | 'SYNCED';
+
+  // Local-only device tag (Firebase uid), never sent to the API — the server
+  // already scopes everything by tecnicoId. This exists purely so a técnico's
+  // still-unsynced record on a shared device doesn't show up (or become
+  // editable) in another técnico's list after an account switch on that
+  // same device — see mobile/app/index.tsx.
+  localOwnerUid?: string;
 
   createdAt: string;
   updatedAt: string;

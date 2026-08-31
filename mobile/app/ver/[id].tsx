@@ -1,21 +1,19 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Share, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Print from 'expo-print';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
 import { SATISFACCION_LABELS, type ConformidadRecord } from '@wara/shared';
 import { RequireAuth } from '../../src/auth/RequireAuth';
 import { useAuth } from '../../src/auth/AuthContext';
 import { dbGet } from '../../src/db/database';
-import { syncRecord } from '../../src/sync/sync';
-import { Badge, Button, Card } from '../../src/components/ui';
+import { syncRecord, debugResendPdf } from '../../src/sync/sync';
+import { Badge, Button, Card, TopbarBackButton } from '../../src/components/ui';
 import { useToast } from '../../src/components/Toast';
 import { colors } from '../../src/theme';
 import { fmtDateTime } from '../../src/utils/misc';
-import { buildPrintHtml } from '../../src/utils/printHtml';
-import { getLogoDataUri } from '../../src/utils/logo';
+import { generateAndShareRecordPdf } from '../../src/utils/generatePdf';
 
 export default function VerScreen() {
   return (
@@ -28,6 +26,7 @@ export default function VerScreen() {
 function Ver() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { getIdToken } = useAuth();
   const [record, setRecord] = useState<ConformidadRecord | null>(null);
@@ -78,14 +77,24 @@ function Ver() {
     }
   }
 
+  // TEMP — QA only, remove once the printHtml PDF layout fix is confirmed.
+  async function handleDebugResendPdf() {
+    setOdooRetrying(true);
+    try {
+      await debugResendPdf(record!, getIdToken);
+      const fresh = await dbGet(id);
+      if (fresh) setRecord(fresh);
+      showToast({ type: 'success', message: 'PDF regenerado y reenviado a Odoo.' });
+    } catch {
+      showToast({ type: 'error', message: 'No se pudo reenviar el PDF.' });
+    } finally {
+      setOdooRetrying(false);
+    }
+  }
+
   async function handlePrint() {
     try {
-      const logoDataUri = await getLogoDataUri();
-      const html = await buildPrintHtml(record!, { logoDataUri });
-      const { uri } = await Print.printToFileAsync({ html });
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Hoja de Conformidad' });
-      }
+      await generateAndShareRecordPdf(record!);
     } catch {
       showToast({ type: 'error', message: 'No se pudo generar el PDF.' });
     }
@@ -117,11 +126,9 @@ function Ver() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.topbar}>
-        <Text style={styles.topbarBack} onPress={() => router.replace('/')}>
-          ←
-        </Text>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <View style={[styles.topbar, { paddingTop: insets.top + 14 }]}>
+        <TopbarBackButton onPress={() => router.replace('/')} />
         <View>
           <Text style={styles.topbarTitle}>Ver servicio</Text>
           <Text style={styles.topbarSub}>{record.cliente || ''}</Text>
@@ -176,7 +183,14 @@ function Ver() {
                 {record.post.firma?.satisfaccion && (
                   <Text style={styles.syncSub}>{SATISFACCION_LABELS[record.post.firma.satisfaccion]}</Text>
                 )}
+                {record.post.firma?.satisfaccion !== 'satisfecho' && record.post.firma?.motivo && (
+                  <Text style={styles.syncSub}>Motivo: {record.post.firma.motivo}</Text>
+                )}
               </View>
+              {/* TEMP — QA only: "Reintentar" commented out while the debug
+                  resend button below exists — having both live at once let
+                  them fire concurrently and post duplicate attachments to
+                  Odoo. Restore this block once the temp button is removed.
               {record.status === 'completo' &&
                 record.odooSync.status !== 'SYNCED' &&
                 (odooRetrying ? (
@@ -184,7 +198,15 @@ function Ver() {
                 ) : (
                   <Button title="Reintentar" variant="outline" onPress={handleRetryOdoo} />
                 ))}
+              */}
             </View>
+            {/* TEMP — QA only, remove once the printHtml PDF layout fix is confirmed. */}
+            {record.status === 'completo' &&
+              (odooRetrying ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : (
+                <Button title="Reenviar PDF (temp)" variant="outline" onPress={handleDebugResendPdf} />
+              ))}
           </Card>
         )}
 
@@ -219,12 +241,11 @@ const styles = StyleSheet.create({
   topbar: {
     backgroundColor: colors.primaryDark,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  topbarBack: { color: '#fff', fontSize: 20, width: 30 },
   topbarTitle: { color: '#fff', fontSize: 17, fontWeight: '700' },
   topbarSub: { color: '#fff', opacity: 0.85, fontSize: 11 },
   content: { padding: 14 },

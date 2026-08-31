@@ -1,13 +1,13 @@
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RequireAuth } from '../src/auth/RequireAuth';
 import { useAuth } from '../src/auth/AuthContext';
-import { Button, Card, Field, SectionTitle } from '../src/components/ui';
+import { Button, Card, Field, SectionTitle, TopbarBackButton } from '../src/components/ui';
 import { useToast } from '../src/components/Toast';
 import { useConfirm } from '../src/components/ConfirmDialog';
-import { updateMe, ApiError } from '../src/api/client';
+import { updateMe, linkOdooAccount, unlinkOdooAccount, ApiError } from '../src/api/client';
 import { colors } from '../src/theme';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -28,6 +28,7 @@ export default function PerfilScreen() {
 
 function Perfil() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user, usuario, signOut, getIdToken, refreshUsuario } = useAuth();
   const { showToast } = useToast();
   const { confirm } = useConfirm();
@@ -68,18 +69,17 @@ function Perfil() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.topbar}>
-        <Text style={styles.topbarBack} onPress={() => router.back()}>
-          ←
-        </Text>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <View style={[styles.topbar, { paddingTop: insets.top + 14 }]}>
+        <TopbarBackButton onPress={() => router.back()} />
         <View style={{ flex: 1 }}>
           <Text style={styles.topbarTitle}>Mi perfil</Text>
           <Text style={styles.topbarSub}>{user?.email}</Text>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Card style={styles.summaryCard}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{(usuario?.nombre || user?.email || '?').trim().charAt(0).toUpperCase()}</Text>
@@ -109,11 +109,16 @@ function Perfil() {
           )}
         </Card>
 
+        
+
+        <SectionTitle>Cuenta de Odoo</SectionTitle>
+        <OdooSection />
         <SectionTitle>Sesión</SectionTitle>
         <Card>
           <Button title="Cerrar sesión" variant="outline" onPress={handleSignOut} block />
         </Card>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -127,17 +132,110 @@ function ReadOnlyField({ label, value, last }: { label: string; value?: string; 
   );
 }
 
+function OdooSection() {
+  const { usuario, getIdToken, refreshUsuario } = useAuth();
+  const { showToast } = useToast();
+  const { confirm } = useConfirm();
+  const [login, setLogin] = useState('');
+  const [password, setPassword] = useState('');
+  const [linking, setLinking] = useState(false);
+  const [unlinking, setUnlinking] = useState(false);
+
+  const linked = usuario?.odoo?.linked === true;
+
+  async function handleLink() {
+    if (!login.trim() || !password.trim()) {
+      showToast({ type: 'error', message: 'Ingresá tu usuario y contraseña de Odoo.' });
+      return;
+    }
+    setLinking(true);
+    try {
+      const idToken = await getIdToken();
+      await linkOdooAccount(idToken, login.trim(), password);
+      await refreshUsuario();
+      setLogin('');
+      setPassword('');
+      showToast({ type: 'success', message: 'Cuenta de Odoo vinculada correctamente.' });
+    } catch (err) {
+      showToast({ type: 'error', message: err instanceof ApiError ? err.message : 'No se pudo vincular la cuenta.' });
+    } finally {
+      setLinking(false);
+    }
+  }
+
+  async function handleUnlink() {
+    const ok = await confirm({
+      title: 'Desvincular cuenta de Odoo',
+      message: '¿Seguro que querés desvincular tu cuenta de Odoo? Ya no se podrán enviar hojas al ticket automáticamente.',
+      confirmLabel: 'Desvincular',
+      destructive: true,
+    });
+    if (!ok) return;
+    setUnlinking(true);
+    try {
+      const idToken = await getIdToken();
+      await unlinkOdooAccount(idToken);
+      await refreshUsuario();
+      showToast({ type: 'success', message: 'Cuenta de Odoo desvinculada.' });
+    } catch (err) {
+      showToast({ type: 'error', message: err instanceof ApiError ? err.message : 'No se pudo desvincular.' });
+    } finally {
+      setUnlinking(false);
+    }
+  }
+
+  if (linked && usuario?.odoo) {
+    const odoo = usuario.odoo as { linked: true; displayName: string; login: string };
+    return (
+      <Card>
+        <View style={styles.odooLinkedRow}>
+          <View style={styles.odooLinkedDot} />
+          <Text style={styles.odooLinkedText}>Vinculada</Text>
+        </View>
+        <ReadOnlyField label="Nombre en Odoo" value={odoo.displayName} />
+        <ReadOnlyField label="Usuario" value={odoo.login} last />
+        <View style={{ marginTop: 12 }}>
+          <Button title="Desvincular cuenta" variant="outline" onPress={handleUnlink} disabled={unlinking} block />
+        </View>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <Text style={styles.odooHint}>
+        Vincular tu cuenta de Odoo permite enviar la hoja de conformidad al ticket del cliente automáticamente al finalizar.
+      </Text>
+      <Field
+        label="Usuario Odoo"
+        value={login}
+        onChangeText={setLogin}
+        placeholder="tu.usuario@waragps.com"
+        keyboardType="email-address"
+        autoCapitalize="none"
+      />
+      <Field
+        label="Contraseña Odoo"
+        value={password}
+        onChangeText={setPassword}
+        placeholder="••••••••"
+        secureTextEntry
+      />
+      <Button title={linking ? 'Verificando...' : 'Vincular cuenta'} onPress={handleLink} disabled={linking} block />
+    </Card>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   topbar: {
     backgroundColor: colors.primaryDark,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  topbarBack: { color: '#fff', fontSize: 20, width: 30 },
   topbarTitle: { color: '#fff', fontSize: 17, fontWeight: '700' },
   topbarSub: { color: '#fff', opacity: 0.85, fontSize: 11 },
   content: { padding: 16, paddingBottom: 40 },
@@ -160,4 +258,8 @@ const styles = StyleSheet.create({
   roFieldLast: { marginBottom: 0 },
   roLabel: { fontSize: 12.5, fontWeight: '600', color: colors.muted, marginBottom: 4 },
   roValue: { fontSize: 15, color: colors.text, paddingVertical: 12, paddingHorizontal: 12, borderRadius: 12, backgroundColor: colors.bg },
+  odooHint: { fontSize: 13, color: colors.muted, marginBottom: 14, lineHeight: 19 },
+  odooLinkedRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
+  odooLinkedDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.ok },
+  odooLinkedText: { fontSize: 13.5, fontWeight: '700', color: colors.ok },
 });

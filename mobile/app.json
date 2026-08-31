@@ -38,6 +38,15 @@
           "photosPermission": "WARA Conformidad necesita acceso a tus fotos para adjuntarlas a la hoja de conformidad.",
           "cameraPermission": "WARA Conformidad necesita acceso a la cámara para tomar fotos de la instalación."
         }
+      ],
+      "@react-native-community/datetimepicker",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "largeHeap": true
+          }
+        }
       ]
     ],
     "extra": {

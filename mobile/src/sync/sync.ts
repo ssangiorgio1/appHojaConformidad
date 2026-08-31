@@ -60,13 +60,16 @@ async function resolveFirma(
   if (firma.url && firma.key) {
     return {
       local: firma,
-      remote: { url: firma.url, key: firma.key, firmedAt: firma.firmedAt, satisfaccion: firma.satisfaccion },
+      remote: { url: firma.url, key: firma.key, firmedAt: firma.firmedAt, satisfaccion: firma.satisfaccion, motivo: firma.motivo },
     };
   }
   if (!firma.dataUrl) {
     // "No firma por disconformidad" never captures a dataUrl — there's
     // nothing to upload, but the outcome itself must still reach the server.
-    return { local: firma, remote: firma.satisfaccion ? { firmedAt: firma.firmedAt, satisfaccion: firma.satisfaccion } : null };
+    return {
+      local: firma,
+      remote: firma.satisfaccion ? { firmedAt: firma.firmedAt, satisfaccion: firma.satisfaccion, motivo: firma.motivo } : null,
+    };
   }
 
   const { url, key } = await uploadAsset(idToken, {
@@ -77,7 +80,7 @@ async function resolveFirma(
     source: firma.dataUrl,
   });
   const local = { ...firma, url, key };
-  return { local, remote: { url, key, firmedAt: firma.firmedAt, satisfaccion: firma.satisfaccion } };
+  return { local, remote: { url, key, firmedAt: firma.firmedAt, satisfaccion: firma.satisfaccion, motivo: firma.motivo } };
 }
 
 async function resolvePhase(
@@ -173,7 +176,12 @@ export async function syncRecord(record: ConformidadRecord, getIdToken: () => Pr
 
 // Generates the finished hoja de conformidad PDF (once), uploads it to R2,
 // and asks the backend to attach it to the linked Odoo ticket.
-async function pushToOdoo(idToken: string, remoteId: string, record: ConformidadRecord): Promise<ConformidadRecord> {
+export async function pushToOdoo(
+  idToken: string,
+  remoteId: string,
+  record: ConformidadRecord,
+  opts?: { force?: boolean },
+): Promise<ConformidadRecord> {
   let working = record;
 
   if (!working.pdfReporte) {
@@ -192,6 +200,23 @@ async function pushToOdoo(idToken: string, remoteId: string, record: Conformidad
     working = { ...working, pdfReporte };
   }
 
-  const { odooSync } = await syncConformidadToOdoo(idToken, remoteId);
+  const { odooSync } = await syncConformidadToOdoo(idToken, remoteId, opts);
   return { ...working, odooSync };
+}
+
+// TEMP — QA only: forces PDF regeneration + Odoo resend even when
+// odooSync.status is already SYNCED, so the printHtml layout can be
+// re-tested against a record that already went through. Remove once the
+// PDF fix is confirmed (see ver/[id].tsx's "Reenviar PDF (temp)" button).
+export async function debugResendPdf(
+  record: ConformidadRecord,
+  getIdToken: () => Promise<string>,
+): Promise<ConformidadRecord> {
+  if (!record.remoteId) throw new Error('Record has no remoteId yet — sync it first.');
+  const idToken = await getIdToken();
+  const cleared = { ...record, pdfReporte: null };
+  await dbPut({ ...cleared, updatedAt: nowIso() });
+  const working = await pushToOdoo(idToken, record.remoteId, cleared, { force: true });
+  await dbPut({ ...working, updatedAt: nowIso() });
+  return working;
 }

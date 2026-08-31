@@ -1,6 +1,15 @@
 import { Pressable, StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, cardShadow } from '../theme';
+
+export function TopbarBackButton({ onPress, color = '#fff' }: { onPress: () => void; color?: string }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={10} style={styles.topbarBack}>
+      <Ionicons name="arrow-back" size={22} color={color} />
+    </Pressable>
+  );
+}
 
 export function Card({ children, style }: { children: React.ReactNode; style?: object }) {
   return <View style={[styles.card, style]}>{children}</View>;
@@ -120,6 +129,7 @@ const styles = StyleSheet.create({
   btnPressed: { opacity: 0.8 },
   btnDisabled: { opacity: 0.5 },
   btnText: { fontSize: 15, fontWeight: '600' },
+  topbarBack: { width: 30 },
   badge: { paddingVertical: 4, paddingHorizontal: 9, borderRadius: 20, alignSelf: 'flex-start' },
   badgeText: { fontSize: 11, fontWeight: '700' },
 });

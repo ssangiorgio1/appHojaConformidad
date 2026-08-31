@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useKeepAwake } from 'expo-keep-awake';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   diffChecklists,
   missingChecklistItems,
@@ -24,7 +23,7 @@ import { syncRecord } from '../../src/sync/sync';
 import { ChecklistEditor, type ChecklistEditorHandle } from '../../src/components/ChecklistEditor';
 import { SlotPhotoCapture, missingSlotLabels } from '../../src/components/SlotPhotoCapture';
 import { SignaturePad, type SignaturePadHandle } from '../../src/components/SignaturePad';
-import { Button, Card, Field, SectionTitle } from '../../src/components/ui';
+import { Button, Card, Field, SectionTitle, TopbarBackButton } from '../../src/components/ui';
 import { WizardProgress, WizardNav, type WizardStepDef } from '../../src/components/Wizard';
 import { useToast } from '../../src/components/Toast';
 import { useConfirm } from '../../src/components/ConfirmDialog';
@@ -32,6 +31,8 @@ import { colors } from '../../src/theme';
 import { nowIso } from '../../src/utils/misc';
 import { useScrollLock } from '../../src/utils/useScrollLock';
 import { getSavedStep, saveStep, clearStep } from '../../src/utils/wizardStep';
+import { takeRecoveredFoto } from '../../src/utils/pendingCapture';
+import { useKeepAwakeIdle } from '../../src/utils/useKeepAwakeIdle';
 
 const STEPS: WizardStepDef[] = [
   { key: 'checklist', title: 'Revisión general del vehículo' },
@@ -59,13 +60,14 @@ export default function PostScreen() {
 }
 
 function PostForm() {
-  useKeepAwake();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { showToast } = useToast();
   const { confirm } = useConfirm();
   const { getIdToken } = useAuth();
   const [record, setRecord] = useState<ConformidadRecord | null>(null);
+  useKeepAwakeIdle('post-form', record);
   const [highlightKeys, setHighlightKeys] = useState<string[]>([]);
   const [stepIndex, setStepIndex] = useState(0);
   const [furthestIndex, setFurthestIndex] = useState(0);
@@ -81,6 +83,11 @@ function PostForm() {
       if (!r) {
         router.replace('/');
         return;
+      }
+      const recoveredFoto = takeRecoveredFoto(id, 'post');
+      if (recoveredFoto) {
+        r = { ...r, post: { ...r.post, fotos: [...r.post.fotos.filter((f) => f.slotKey !== recoveredFoto.slotKey), recoveredFoto] }, updatedAt: nowIso() };
+        await dbPut(r);
       }
       setRecord(r);
       const saved = await getSavedStep(id, 'post');
@@ -117,13 +124,26 @@ function PostForm() {
     persist({ ...record!, post: { ...record!.post, firma: { ...record!.post.firma, satisfaccion } } }, true);
   }
 
+  function setMotivo(motivo: string) {
+    persist({ ...record!, post: { ...record!.post, firma: { ...record!.post.firma, motivo } } });
+  }
+
   function onSignatureCaptured(dataUrl: string) {
     const action = pendingAction.current;
     pendingAction.current = null;
     const locked = action === 'lock' ? true : record!.post.firma?.locked;
     const next: ConformidadRecord = {
       ...record!,
-      post: { ...record!.post, firma: { dataUrl, firmedAt: nowIso(), locked, satisfaccion: record!.post.firma?.satisfaccion } },
+      post: {
+        ...record!.post,
+        firma: {
+          dataUrl,
+          firmedAt: nowIso(),
+          locked,
+          satisfaccion: record!.post.firma?.satisfaccion,
+          motivo: record!.post.firma?.motivo,
+        },
+      },
     };
     if (action === 'finish') {
       finalize(next);
@@ -294,11 +314,22 @@ function PostForm() {
       return;
     }
 
+    if ((satisfaccion === 'insatisfecho' || satisfaccion === 'no_firma_insatisfecho') && !record!.post.firma?.motivo?.trim()) {
+      await blockingMessage('Falta el motivo', [
+        'Indicá por qué el cliente firma disconforme o no firma.',
+      ]);
+      goToStep(LAST_STEP);
+      return;
+    }
+
     if (satisfaccion === 'no_firma_insatisfecho') {
       // No signature is expected for this outcome — skip capture() entirely
       // so the empty-pad path (onSignatureEmpty) never gets a chance to
       // block finishing for a client who's refusing to sign.
-      finalize({ ...record!, post: { ...record!.post, firma: { satisfaccion, firmedAt: nowIso() } } });
+      finalize({
+        ...record!,
+        post: { ...record!.post, firma: { satisfaccion, firmedAt: nowIso(), motivo: record!.post.firma?.motivo } },
+      });
       return;
     }
 
@@ -307,11 +338,9 @@ function PostForm() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.topbar}>
-        <Text style={styles.topbarBack} onPress={() => router.replace('/')}>
-          ←
-        </Text>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <View style={[styles.topbar, { paddingTop: insets.top + 14 }]}>
+        <TopbarBackButton onPress={() => router.replace('/')} />
         <View>
           <Text style={styles.topbarTitle}>Post-instalación</Text>
           <Text style={styles.topbarSub}>
@@ -401,6 +430,8 @@ function PostForm() {
               <SlotPhotoCapture
                 slots={POST_PHOTO_SLOTS}
                 fotos={record.post.fotos}
+                recordId={id}
+                screen="post"
                 onChange={(fotos) => persist({ ...record, post: { ...record.post, fotos } })}
               />
             </Card>
@@ -442,6 +473,17 @@ function PostForm() {
                 })}
               </View>
 
+              {(record.post.firma?.satisfaccion === 'insatisfecho' ||
+                record.post.firma?.satisfaccion === 'no_firma_insatisfecho') && (
+                <Field
+                  label="Motivo *"
+                  value={record.post.firma?.motivo ?? ''}
+                  onChangeText={setMotivo}
+                  placeholder="¿Por qué el cliente no está conforme?"
+                  multiline
+                />
+              )}
+
               {record.post.firma?.satisfaccion === 'no_firma_insatisfecho' ? (
                 <Text style={styles.helptext}>
                   El cliente no va a firmar — se registra la disconformidad sin firma.
@@ -457,7 +499,10 @@ function PostForm() {
                       onClear={() =>
                         persist({
                           ...record,
-                          post: { ...record.post, firma: { satisfaccion: record.post.firma?.satisfaccion } },
+                          post: {
+                            ...record.post,
+                            firma: { satisfaccion: record.post.firma?.satisfaccion, motivo: record.post.firma?.motivo },
+                          },
                         })
                       }
                       disabled={record.post.firma?.locked}
@@ -500,12 +545,11 @@ const styles = StyleSheet.create({
   topbar: {
     backgroundColor: colors.primaryDark,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
   },
-  topbarBack: { color: '#fff', fontSize: 20, width: 30 },
   topbarTitle: { color: '#fff', fontSize: 17, fontWeight: '700' },
   topbarSub: { color: '#fff', opacity: 0.85, fontSize: 11 },
   content: { padding: 14, paddingBottom: 20 },

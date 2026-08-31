@@ -47,6 +47,29 @@ export function invalidateUid(): void {
   uidPromise = null;
 }
 
+// Authenticates a técnico's own Odoo login/password (as opposed to the
+// shared service account above) — used to verify/link an account and to
+// post messages to a ticket "as" that técnico. Not cached: this only runs
+// on the infrequent link/send actions, never on a hot path.
+export async function authenticateOdooCredentials(login: string, password: string): Promise<number> {
+  const uid = await jsonRpc('common', 'authenticate', [env.ODOO_DB, login, password, {}]);
+  if (!uid || typeof uid !== 'number') throw new Error('Odoo rechazó la autenticación (usuario o contraseña incorrectos).');
+  return uid;
+}
+
+export async function executeKwAsCredentials(
+  login: string,
+  password: string,
+  model: string,
+  method: string,
+  args: unknown[] = [],
+  kwargs: Record<string, unknown> = {},
+): Promise<unknown> {
+  const uid = await authenticateOdooCredentials(login, password);
+  const context = { lang: 'es_AR', ...(kwargs.context as Record<string, unknown> | undefined) };
+  return jsonRpc('object', 'execute_kw', [env.ODOO_DB, uid, password, model, method, args, { ...kwargs, context }]);
+}
+
 export async function executeKw(
   model: string,
   method: string,

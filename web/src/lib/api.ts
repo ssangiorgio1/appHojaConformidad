@@ -90,3 +90,7 @@ export function listConformidades(idToken: string, query: ListConformidadesQuery
 export function getConformidad(idToken: string, id: string) {
   return apiFetch<ConformidadDoc>(`/api/conformidades/${id}`, idToken);
 }
+
+export function generateConformidadPdf(idToken: string, id: string) {
+  return apiFetch<{ pdfReporte: { url: string; key: string } }>(`/api/conformidades/${id}/pdf`, idToken, { method: 'POST' });
+}

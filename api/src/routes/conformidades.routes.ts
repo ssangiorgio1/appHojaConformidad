@@ -13,6 +13,7 @@ import {
   getConformidadById,
   deleteConformidad,
   syncConformidadToOdoo,
+  generateConformidadPdf,
 } from '../controllers/conformidades.controller.js';
 
 export const conformidadesRouter = Router();
@@ -24,4 +25,5 @@ conformidadesRouter.get('/', validate(listConformidadesQuerySchema, 'query'), li
 conformidadesRouter.get('/:id', getConformidadById);
 conformidadesRouter.patch('/:id', validate(patchConformidadSchema), patchConformidad);
 conformidadesRouter.post('/:id/odoo-sync', syncConformidadToOdoo);
+conformidadesRouter.post('/:id/pdf', generateConformidadPdf);
 conformidadesRouter.delete('/:id', requireRole(['admin', 'superadmin']), deleteConformidad);

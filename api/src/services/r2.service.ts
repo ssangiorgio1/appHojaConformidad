@@ -3,6 +3,10 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { r2Client } from '../config/r2.js';
 import { env } from '../config/env.js';
 
+function publicUrlFor(key: string): string {
+  return `${env.R2_PUBLIC_BASE_URL.replace(/\/$/, '')}/${key}`;
+}
+
 const UPLOAD_TTL_SECONDS = 10 * 60;
 
 export type Fase = 'pre' | 'post';
@@ -38,6 +42,14 @@ export async function createPresignedUploadUrl(key: string, contentType: string)
     ContentType: contentType,
   });
   const uploadUrl = await getSignedUrl(r2Client, command, { expiresIn: UPLOAD_TTL_SECONDS });
-  const publicUrl = `${env.R2_PUBLIC_BASE_URL.replace(/\/$/, '')}/${key}`;
+  const publicUrl = publicUrlFor(key);
   return { uploadUrl, publicUrl };
+}
+
+// For bytes the API itself produces (e.g. a server-rendered PDF) — no client
+// round-trip needed, unlike the presigned-upload flow above which exists so
+// the mobile app can upload straight from the device.
+export async function uploadBuffer(key: string, body: Buffer, contentType: string): Promise<{ publicUrl: string }> {
+  await r2Client.send(new PutObjectCommand({ Bucket: env.R2_BUCKET_NAME, Key: key, Body: body, ContentType: contentType }));
+  return { publicUrl: publicUrlFor(key) };
 }

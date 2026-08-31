@@ -5,3 +5,10 @@ export const searchTicketsQuerySchema = z.object({
 });
 
 export type SearchTicketsQuery = z.infer<typeof searchTicketsQuerySchema>;
+
+export const linkOdooAccountSchema = z.object({
+  login: z.string().trim().min(1),
+  password: z.string().min(1),
+});
+
+export type LinkOdooAccountInput = z.infer<typeof linkOdooAccountSchema>;
