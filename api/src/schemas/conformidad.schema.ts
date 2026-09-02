@@ -1,20 +1,30 @@
 import { z } from 'zod';
 import { CHECKLIST_KEYS, EQUIP_TEXT_KEYS, EQUIP_CHECK_KEYS } from '@wara/shared';
+import { env } from '../config/env.js';
 
 const checklistShape = Object.fromEntries(
   CHECKLIST_KEYS.map((key) => [key, z.enum(['SI', 'NO']).nullable().optional()]),
 );
 const checklistSchema = z.object(checklistShape).partial();
 
+// foto/firma urls are only ever produced by r2.service.ts's publicUrlFor(),
+// always under this exact prefix — anything else would mean the client is
+// pointing our Puppeteer-rendered PDF (see @wara/shared's printHtml.ts) at an
+// arbitrary URL, which is an SSRF vector since Chromium will actually fetch
+// whatever a <img src> says server-side. Reject it at the door instead of
+// trusting the HTML template's escaping to be the only layer of defense.
+const R2_PUBLIC_BASE = env.R2_PUBLIC_BASE_URL.replace(/\/+$/, '');
+const isR2Url = (url: string) => url.startsWith(`${R2_PUBLIC_BASE}/`);
+
 const fotoSchema = z.object({
   id: z.string().min(1),
-  url: z.string().min(1),
+  url: z.string().min(1).refine(isR2Url, 'url must point to the R2 public bucket'),
   key: z.string().min(1),
 });
 
 const firmaSchema = z
   .object({
-    url: z.string().min(1).optional(),
+    url: z.string().min(1).refine(isR2Url, 'url must point to the R2 public bucket').optional(),
     key: z.string().min(1).optional(),
     firmedAt: z.coerce.date().optional(),
     satisfaccion: z.enum(['satisfecho', 'insatisfecho', 'no_firma_insatisfecho']).nullable().optional(),
@@ -93,12 +103,12 @@ export const listConformidadesQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
   status: z.enum(['borrador_pre', 'pendiente_post', 'completo']).optional(),
   tecnicoId: z.string().optional(),
-  matricula: z.string().optional(),
-  imei: z.string().optional(),
-  numero: z.string().optional(),
+  matricula: z.string().max(100).optional(),
+  imei: z.string().max(100).optional(),
+  numero: z.string().max(100).optional(),
   fechaDesde: z.string().optional(),
   fechaHasta: z.string().optional(),
-  search: z.string().optional(),
+  search: z.string().max(100).optional(),
 });
 
 export type CreateConformidadInput = z.infer<typeof createConformidadSchema>;

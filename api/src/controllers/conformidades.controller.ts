@@ -4,6 +4,7 @@ import { UsuarioModel } from '../models/Usuario.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { HttpError } from '../middleware/error.middleware.js';
 import { deriveCodigoActa } from '../services/codigoActa.service.js';
+import { escapeRegExp } from '../utils/regex.js';
 import { pushConformidadToTicket, OdooError } from '../services/odoo.service.js';
 import { generateConformidadPdf as renderConformidadPdf } from '../services/pdf.service.js';
 import { decryptSecret } from '../utils/secretBox.js';
@@ -13,7 +14,7 @@ import type {
   ListConformidadesQuery,
 } from '../schemas/conformidad.schema.js';
 
-function assertOwnedByRequester(req: Request, tecnicoId: unknown) {
+export function assertOwnedByRequester(req: Request, tecnicoId: unknown) {
   if (req.user!.role === 'tecnico' && String(tecnicoId) !== String(req.user!.usuarioId)) {
     throw new HttpError(403, 'You can only access your own records');
   }
@@ -109,9 +110,9 @@ export const listConformidades = asyncHandler(async (req: Request, res: Response
   }
 
   if (query.status) filter.status = query.status;
-  if (query.matricula) filter.matricula = new RegExp(query.matricula, 'i');
-  if (query.imei) filter['equipo.imei'] = new RegExp(query.imei, 'i');
-  if (query.numero) filter.numero = new RegExp(query.numero, 'i');
+  if (query.matricula) filter.matricula = new RegExp(escapeRegExp(query.matricula), 'i');
+  if (query.imei) filter['equipo.imei'] = new RegExp(escapeRegExp(query.imei), 'i');
+  if (query.numero) filter.numero = new RegExp(escapeRegExp(query.numero), 'i');
 
   if (query.fechaDesde || query.fechaHasta) {
     const range: Record<string, Date> = {};
@@ -121,7 +122,7 @@ export const listConformidades = asyncHandler(async (req: Request, res: Response
   }
 
   if (query.search) {
-    const re = new RegExp(query.search, 'i');
+    const re = new RegExp(escapeRegExp(query.search), 'i');
     filter.$or = [{ cliente: re }, { matricula: re }, { instalador: re }, { numero: re }, { 'equipo.imei': re }];
   }
 

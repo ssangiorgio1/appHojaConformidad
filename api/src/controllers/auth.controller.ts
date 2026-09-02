@@ -42,13 +42,16 @@ export const updateUsuario = asyncHandler(async (req: Request, res: Response) =>
     throw new HttpError(403, 'No se puede desactivar una cuenta superadmin.');
   }
 
+  // Covers both directions — demoting an existing superadmin AND promoting
+  // someone else to superadmin — so a plain admin can never touch the
+  // superadmin role at all, only another superadmin can.
   if (
-    target.role === 'superadmin' &&
     body.role !== undefined &&
     body.role !== target.role &&
+    (target.role === 'superadmin' || body.role === 'superadmin') &&
     req.user!.role !== 'superadmin'
   ) {
-    throw new HttpError(403, 'Solo un superadmin puede cambiar el rol de otra cuenta superadmin.');
+    throw new HttpError(403, 'Solo un superadmin puede otorgar o quitar el rol superadmin.');
   }
 
   const usuario = await UsuarioModel.findByIdAndUpdate(req.params.id, { $set: body }, { new: true });
@@ -67,6 +70,11 @@ export const resetUsuarioPassword = asyncHandler(async (req: Request, res: Respo
 
 export const createUsuario = asyncHandler(async (req: Request, res: Response) => {
   const body = req.body as CreateUsuarioInput;
+
+  if (body.role === 'superadmin' && req.user!.role !== 'superadmin') {
+    throw new HttpError(403, 'Solo un superadmin puede crear una cuenta superadmin.');
+  }
+
   const { uid, tempPassword } = await ensureFirebaseUser(body.email);
   const usuario = await UsuarioModel.findOneAndUpdate(
     { email: body.email },
