@@ -126,6 +126,7 @@ function equipoGrid(record: PrintableConformidad): string {
         `<tr><td colspan="2" class="mini-sub">Entradas / Salidas</td></tr>` +
         fieldRows(equipo, byTitle['Entradas / Salidas'].fields, tipoServicio),
     ),
+    equipCard('Elementos adicionales instalados', fieldRows(equipo, byTitle['Elementos adicionales instalados'].fields, tipoServicio)),
     equipCard(
       'Control de instalación',
       fieldRows(equipo, byTitle['Control de instalación'].fields, tipoServicio) + checkRows(equipo, EQUIP_CHECK_FIELDS),

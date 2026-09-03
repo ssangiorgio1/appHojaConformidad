@@ -83,10 +83,15 @@ export default function ConformidadDetailPage() {
     const equipo = c.equipo as Record<string, string | null | undefined>;
     const fields: { key: string; label: string }[] = [];
     for (const group of EQUIP_GROUPS.slice(1)) {
-      // skip "Datos del equipo" — modelo/imei shown separately
+      // skip "Datos del equipo" (modelo/imei se muestran aparte) y "Control
+      // de instalación" (son campos de texto, no checkboxes)
+      if (group.title === 'Control de instalación') continue;
       for (const f of group.fields) fields.push(f);
     }
-    return fields.filter((f) => equipo[f.key] === 'SI').map((f) => f.label);
+    // Los checkbox de EQUIP_GROUPS guardan 'Sí' (truthy) / '' al desmarcar —
+    // nunca 'SI' (mayúsculas, sin tilde), que es la convención de
+    // EQUIP_CHECK_FIELDS nada más. Comparar contra 'SI' acá nunca matcheaba.
+    return fields.filter((f) => Boolean(equipo[f.key])).map((f) => f.label);
   }, [c]);
 
   const todasLasFotos = useMemo(() => {
@@ -136,7 +141,17 @@ export default function ConformidadDetailPage() {
         </div>
         <div className="flex items-center gap-2.5">
           Ticket:
-          <Badge tone={c.ticketOdoo?.numero ? 'primary' : 'neutral'}>{c.ticketOdoo?.numero || 'sin ticket'}</Badge>
+          {c.ticketOdoo?.numero ? (
+            <a
+              href={`${process.env.NEXT_PUBLIC_ODOO_BASE_URL}/odoo/all-tickets/${c.ticketOdoo.odooId ?? c.ticketOdoo.numero}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Badge tone="primary">{c.ticketOdoo.numero}</Badge>
+            </a>
+          ) : (
+            <Badge tone="neutral">sin ticket</Badge>
+          )}
           Unidad:
           <Badge tone="primary">{c.matricula || 'sin matrícula'}</Badge>
           <Badge tone={ESTADO_TONE[c.status]}>{ESTADO_LABEL[c.status]}</Badge>

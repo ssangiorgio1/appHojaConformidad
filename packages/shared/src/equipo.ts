@@ -58,6 +58,15 @@ export const EQUIP_GROUPS = [
     ],
   },
   {
+    title: 'Elementos adicionales instalados',
+    fields: [
+      { key: 'varillaCombustible', label: 'Varilla de combustible', checkbox: true },
+      { key: 'camarasAdas', label: 'Cámaras ADAS', checkbox: true },
+      { key: 'moduloWifi', label: 'Módulo wifi', checkbox: true },
+      { key: 'antenaStarlink', label: 'Antena Starlink', checkbox: true },
+    ],
+  },
+  {
     title: 'Control de instalación',
     fields: [
       { key: 'controlSenalModem', label: 'Señal Modem' },
