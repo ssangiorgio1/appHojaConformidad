@@ -9,6 +9,11 @@ export const EQUIP_GROUPS = [
     fields: [
       { key: 'modelo', label: 'Modelo', required: true },
       { key: 'imei', label: 'IMEI', required: true },
+      // Solo se piden (y se muestran) cuando tipoServicio es 'cambio_equipo'
+      // — ahí modelo/imei de arriba pasan a describir el equipo que se
+      // retira. Ver la lógica condicional en la PWA's post/[id]/page.tsx.
+      { key: 'modeloInstalado', label: 'Modelo (equipo instalado)' },
+      { key: 'imeiInstalado', label: 'IMEI (equipo instalado)' },
       { key: 'antenaGsmInt', label: 'Antena GSM (Int)', checkbox: true },
       { key: 'antenaGsmExt', label: 'Antena GSM (Ext)', checkbox: true },
       { key: 'antenaGpsInt', label: 'Antena GPS (Int)', checkbox: true },
@@ -59,6 +64,7 @@ export const EQUIP_GROUPS = [
       { key: 'controlCantidadSatGps', label: 'Cantidad de Sat. GPS' },
       { key: 'controlBateriaInterna', label: 'Batería interna' },
       { key: 'controlAlimentacionExterna', label: 'Alimentación externa' },
+      { key: 'controlOdometro', label: 'Odómetro / Horómetro (km o hs)' },
     ],
   },
 ] as const;

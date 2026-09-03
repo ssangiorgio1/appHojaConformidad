@@ -120,7 +120,7 @@ async function photosBlock(slots: PhotoSlotDef[], fotos: Foto[], titulo: string,
       if (!src) {
         return `<div class="photo-cell"><div class="photo video-placeholder">Video adjunto<br>(no incluido en el PDF)</div><div class="photo-caption">${esc(slot.label)}</div></div>`;
       }
-      return `<div class="photo-cell"><img class="photo" src="${src}"><div class="photo-caption">${esc(slot.label)}</div></div>`;
+      return `<div class="photo-cell"><img class="photo" src="${esc(src)}"><div class="photo-caption">${esc(slot.label)}</div></div>`;
     }),
   );
 
@@ -252,8 +252,8 @@ export async function buildPrintHtml(
     <div class="obs-box">${esc(record.pre.observaciones) || 'Sin observaciones.'}</div>
     <div class="sig-row">
       <div class="sig-block">
-        ${sigSrc(record.pre.firma) ? `<img class="sig" src="${sigSrc(record.pre.firma)}">` : '<div class="sig-line"></div>'}
-        <div class="sig-caption">Firma del cliente (PRE)</div>
+        ${sigSrc(record.pre.firma) ? `<img class="sig" src="${esc(sigSrc(record.pre.firma))}">` : '<div class="sig-line"></div>'}
+        <div class="sig-caption">Firma del cliente (PRE)${record.pre.firma?.nombreFirmante ? ` — ${esc(record.pre.firma.nombreFirmante)}` : ''}</div>
       </div>
     </div>
   </div>
@@ -266,13 +266,13 @@ export async function buildPrintHtml(
       <div class="sig-block">
         ${
           sigSrc(record.post.firma)
-            ? `<img class="sig" src="${sigSrc(record.post.firma)}">`
+            ? `<img class="sig" src="${esc(sigSrc(record.post.firma))}">`
             : record.post.firma?.satisfaccion === 'no_firma_insatisfecho'
               ? '<div class="sig-line sig-refused">No firma — disconformidad</div>'
               : '<div class="sig-line"></div>'
         }
         <div class="sig-caption">
-          Firma del cliente (POST)${record.post.firma?.satisfaccion ? ` — ${esc(SATISFACCION_LABELS[record.post.firma.satisfaccion])}` : ''}
+          Firma del cliente (POST)${record.post.firma?.nombreFirmante ? ` — ${esc(record.post.firma.nombreFirmante)}` : ''}${record.post.firma?.satisfaccion ? ` — ${esc(SATISFACCION_LABELS[record.post.firma.satisfaccion])}` : ''}
         </div>
         ${
           record.post.firma?.satisfaccion !== 'satisfecho' && record.post.firma?.motivo

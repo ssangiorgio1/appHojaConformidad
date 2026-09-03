@@ -22,6 +22,7 @@ const FirmaSchema = new Schema(
     firmedAt: { type: Date },
     satisfaccion: { type: String, enum: ['satisfecho', 'insatisfecho', 'no_firma_insatisfecho'], default: null },
     motivo: { type: String },
+    nombreFirmante: { type: String },
   },
   { _id: false },
 );
@@ -74,6 +75,12 @@ const ConformidadSchema = new Schema(
   {
     clientId: { type: String, required: true, unique: true },
     codigoActa: { type: String, required: true, unique: true },
+
+    tipoServicio: {
+      type: String,
+      enum: ['instalacion', 'desinstalacion', 'reparacion', 'cambio_equipo'],
+      default: null,
+    },
 
     numero: { type: String, default: '', index: true },
     cliente: { type: String, default: '' },

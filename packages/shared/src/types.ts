@@ -3,6 +3,18 @@ import { emptyEquipo, type Equipo } from './equipo.js';
 
 export type EstadoServicio = 'borrador_pre' | 'pendiente_post' | 'completo';
 
+// Chosen by the técnico when creating the service — drives what "Datos del
+// equipo" asks for in POST (see equipo.ts's modeloInstalado/imeiInstalado,
+// only used when it's 'cambio_equipo').
+export type TipoServicio = 'instalacion' | 'desinstalacion' | 'reparacion' | 'cambio_equipo';
+
+export const TIPO_SERVICIO_LABELS: Record<TipoServicio, string> = {
+  instalacion: 'Instalación',
+  desinstalacion: 'Desinstalación',
+  reparacion: 'Reparación',
+  cambio_equipo: 'Cambio de equipo',
+};
+
 export interface Foto {
   id: string;
   // Which guided capture slot this belongs to (see photoSlots.ts).
@@ -33,6 +45,8 @@ export interface Firma {
   // Required whenever satisfaccion is 'insatisfecho' or 'no_firma_insatisfecho'
   // — why the client wasn't satisfied / refused to sign.
   motivo?: string;
+  // Name of the person signing — required in PRE and POST unless the client refuses to sign.
+  nombreFirmante?: string;
 }
 
 export interface Phase {
@@ -79,6 +93,8 @@ export interface ConformidadRecord {
   remoteId?: string; // Mongo _id once synced
   codigoActa?: string;
 
+  tipoServicio: TipoServicio | null;
+
   numero: string;
   cliente: string;
   fecha: string; // YYYY-MM-DD
@@ -121,6 +137,7 @@ export function newRecord(id: string, now: Date): ConformidadRecord {
   const iso = now.toISOString();
   return {
     id,
+    tipoServicio: null,
     numero: '',
     cliente: '',
     fecha,

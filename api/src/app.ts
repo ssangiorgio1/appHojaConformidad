@@ -15,7 +15,12 @@ export const app = express();
 app.use(helmet());
 app.use(
   cors({
-    origin: env.CORS_ORIGINS_LIST.length > 0 ? env.CORS_ORIGINS_LIST : true,
+    // Fail-closed en producción: si CORS_ORIGINS no está seteado, se rechaza
+    // todo origin cross-origin en vez de reflejar cualquiera (era el
+    // comportamiento anterior — permisivo por default, silencioso). En
+    // desarrollo sigue siendo permisivo para no tener que setear el env var
+    // localmente. Mobile no manda Origin, así que no lo afecta esto.
+    origin: env.CORS_ORIGINS_LIST.length > 0 ? env.CORS_ORIGINS_LIST : env.NODE_ENV !== 'production',
   }),
 );
 app.use(express.json({ limit: '2mb' }));

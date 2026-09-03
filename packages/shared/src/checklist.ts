@@ -43,7 +43,7 @@ export const CHECKLIST_ITEMS: ChecklistItemDef[] = [
   { key: 'item6_temp', label: 'e) Luz de temperatura.' },
   { key: 'item6_falla', label: 'f) Notificar sobre alguna luz de falla.' },
   { key: 'item7', label: '7. Tornillos de panel y tablero completo.' },
-  { key: 'item8', label: '8. Tapizado de asientos delanteros (fotos).' },
+  { key: 'item8', label: '8. Tapizado de asientos delanteros.' },
 ];
 
 export const CHECKLIST_LABELS: Record<ChecklistKey, string> = Object.fromEntries(

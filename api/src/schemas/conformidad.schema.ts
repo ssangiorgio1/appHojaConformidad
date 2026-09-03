@@ -29,6 +29,7 @@ const firmaSchema = z
     firmedAt: z.coerce.date().optional(),
     satisfaccion: z.enum(['satisfecho', 'insatisfecho', 'no_firma_insatisfecho']).nullable().optional(),
     motivo: z.string().optional(),
+    nombreFirmante: z.string().optional(),
   })
   .nullable();
 
@@ -63,6 +64,8 @@ const equipoSchema = z.object(equipoShape).partial();
 
 const fechaField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'fecha must be YYYY-MM-DD');
 
+const tipoServicioSchema = z.enum(['instalacion', 'desinstalacion', 'reparacion', 'cambio_equipo']).nullable();
+
 const topLevelSchema = z.object({
   numero: z.string(),
   cliente: z.string(),
@@ -86,6 +89,7 @@ export const createConformidadSchema = topLevelSchema
     clientId: z.string().min(1),
     pre: phaseInputSchema,
     ticketOdoo: ticketOdooSchema.optional(),
+    tipoServicio: tipoServicioSchema.optional(),
   });
 
 export const patchConformidadSchema = topLevelSchema.partial().extend({
@@ -93,6 +97,7 @@ export const patchConformidadSchema = topLevelSchema.partial().extend({
   post: phaseInputSchema.optional(),
   equipo: equipoSchema.optional(),
   ticketOdoo: ticketOdooSchema.optional(),
+  tipoServicio: tipoServicioSchema.optional(),
   // odooSync is intentionally NOT accepted here — it's written only by the
   // dedicated /odoo-sync endpoint once Odoo actually confirms success.
   pdfReporte: pdfReporteSchema.optional(),

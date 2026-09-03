@@ -4,7 +4,7 @@ export interface PhotoSlotDef {
   required: boolean;
 }
 
-// Fixed, ordered capture guide for PRE-instalación — all 7 mandatory.
+// Fixed, ordered capture guide for PRE-instalación — all 8 mandatory.
 export const PRE_PHOTO_SLOTS: PhotoSlotDef[] = [
   { key: 'matricula', label: 'Matrícula', required: true },
   { key: 'lateral_izq', label: 'Lateral externo izquierdo (conductor)', required: true },
@@ -12,6 +12,7 @@ export const PRE_PHOTO_SLOTS: PhotoSlotDef[] = [
   { key: 'frente', label: 'Frente de la unidad', required: true },
   { key: 'interior', label: 'Interior de la unidad', required: true },
   { key: 'torpedo', label: 'Torpedo (tablero encendido, luces de check y estado general)', required: true },
+  { key: 'odometro', label: 'Odómetro / horómetro', required: true },
   { key: 'extra', label: 'Extra', required: true },
 ];
 
