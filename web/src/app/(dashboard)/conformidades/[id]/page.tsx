@@ -135,6 +135,8 @@ export default function ConformidadDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2.5">
+          Ticket:
+          <Badge tone={c.ticketOdoo?.numero ? 'primary' : 'neutral'}>{c.ticketOdoo?.numero || 'sin ticket'}</Badge>
           Unidad:
           <Badge tone="primary">{c.matricula || 'sin matrícula'}</Badge>
           <Badge tone={ESTADO_TONE[c.status]}>{ESTADO_LABEL[c.status]}</Badge>

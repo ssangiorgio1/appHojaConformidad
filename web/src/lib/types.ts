@@ -38,6 +38,13 @@ export interface Firma {
   motivo?: string;
 }
 
+export interface TicketOdoo {
+  numero: string;
+  odooId: number | null;
+  clienteOdoo: string;
+  verified: boolean;
+}
+
 export interface Phase {
   checklist: Checklist;
   observaciones: string;
@@ -63,6 +70,7 @@ export interface ConformidadDoc {
   pre: Phase;
   post: Phase;
   equipo: Equipo;
+  ticketOdoo: TicketOdoo | null;
   // Set once the app has generated and uploaded the PDF report (see
   // mobile/src/sync/sync.ts) — null until then, e.g. for borrador_pre records.
   pdfReporte: { url: string; key: string } | null;

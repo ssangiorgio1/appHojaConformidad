@@ -117,8 +117,8 @@ export default function ConformidadesPage() {
       <Card className="p-2.5 pb-4">
         <div className="overflow-x-auto">
           <div className="min-w-[820px]">
-            <div className="grid grid-cols-[1.3fr_1.6fr_1.2fr_1fr_1.1fr_1fr_60px] pb-2.5 pt-4">
-              {['Código acta', 'Cliente', 'Técnico', 'Unidad', 'Fecha', 'Estado', ''].map((h) => (
+            <div className="grid grid-cols-[1.3fr_1.6fr_1.2fr_1fr_1fr_1.1fr_1fr_60px] pb-2.5 pt-4">
+              {['Código acta', 'Cliente', 'Técnico', 'Unidad', 'Ticket', 'Fecha', 'Estado', ''].map((h) => (
                 <div key={h} className="px-3.5 text-[11px] font-extrabold uppercase tracking-wide text-muted">
                   {h}
                 </div>
@@ -132,11 +132,12 @@ export default function ConformidadesPage() {
 
             <div className={`transition-opacity ${loading && data ? 'opacity-60' : ''}`}>
               {data?.data.map((c) => (
-                <div key={c._id} className="grid grid-cols-[1.3fr_1.6fr_1.2fr_1fr_1.1fr_1fr_60px] items-center border-t border-line">
+                <div key={c._id} className="grid grid-cols-[1.3fr_1.6fr_1.2fr_1fr_1fr_1.1fr_1fr_60px] items-center border-t border-line">
                   <div className="p-3.5 text-[13px] font-bold text-primary">{c.codigoActa}</div>
                   <div className="p-3.5 text-[13px] font-semibold">{c.cliente || '—'}</div>
                   <div className="p-3.5 text-[13px] font-semibold text-muted">{tecnicoNombre(c.tecnicoId)}</div>
                   <div className="p-3.5 text-[13px] font-semibold">{c.matricula || '—'}</div>
+                  <div className="p-3.5 text-[13px] font-semibold text-muted">{c.ticketOdoo?.numero || '—'}</div>
                   <div className="p-3.5 text-[13px] font-semibold text-muted">{formatFechaHora(c.fecha)}</div>
                   <div className="p-3.5">
                     <Badge tone={ESTADO_TONE[c.status]}>{ESTADO_LABEL[c.status]}</Badge>

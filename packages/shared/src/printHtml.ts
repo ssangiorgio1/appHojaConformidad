@@ -1,7 +1,7 @@
 import { CHECKLIST_ITEMS, type ChecklistValue } from './checklist.js';
 import { EQUIP_GROUPS, EQUIP_CHECK_FIELDS } from './equipo.js';
 import { PRE_PHOTO_SLOTS, POST_PHOTO_SLOTS, type PhotoSlotDef } from './photoSlots.js';
-import { SATISFACCION_LABELS, type ConformidadRecord, type Firma, type Foto } from './types.js';
+import { SATISFACCION_LABELS, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
 
 // The fields buildPrintHtml actually reads — deliberately narrower than the
 // full ConformidadRecord so both the mobile app's local record and the
@@ -9,7 +9,18 @@ import { SATISFACCION_LABELS, type ConformidadRecord, type Firma, type Foto } fr
 // syncStatus or tecnicoId) can be passed in without an adapter.
 export type PrintableConformidad = Pick<
   ConformidadRecord,
-  'numero' | 'cliente' | 'fecha' | 'hora' | 'matricula' | 'instalador' | 'responsableEmpresa' | 'status' | 'pre' | 'post' | 'equipo'
+  | 'numero'
+  | 'cliente'
+  | 'fecha'
+  | 'hora'
+  | 'matricula'
+  | 'instalador'
+  | 'responsableEmpresa'
+  | 'status'
+  | 'pre'
+  | 'post'
+  | 'equipo'
+  | 'tipoServicio'
 >;
 
 function fmtDateTime(dateStr?: string, timeStr?: string): string {
@@ -63,11 +74,23 @@ function equipCard(title: string, rowsHtml: string): string {
   </div>`;
 }
 
-function fieldRows(equipo: Record<string, unknown>, fields: readonly { key: string; label: string }[]): string {
+// modelo/imei describen el equipo retirado cuando hay un cambio de por medio
+// — mismo criterio que equipoFieldLabel() en la PWA (post/[id]/page.tsx).
+function equipoFieldLabel(f: { key: string; label: string }, tipoServicio: TipoServicio | null): string {
+  const isOutgoing = f.key === 'modelo' || f.key === 'imei';
+  return isOutgoing && tipoServicio === 'cambio_equipo' ? `${f.label} (equipo retirado)` : f.label;
+}
+
+function fieldRows(
+  equipo: Record<string, unknown>,
+  fields: readonly { key: string; label: string }[],
+  tipoServicio: TipoServicio | null,
+): string {
   return fields
     .map((f) => {
       const val = equipo[f.key];
-      return `<tr><td class="k">${esc(f.label)}</td><td class="v">${esc(typeof val === 'string' ? val : '') || '—'}</td></tr>`;
+      const label = equipoFieldLabel(f, tipoServicio);
+      return `<tr><td class="k">${esc(label)}</td><td class="v">${esc(typeof val === 'string' ? val : '') || '—'}</td></tr>`;
     })
     .join('');
 }
@@ -84,20 +107,28 @@ function checkRows(equipo: Record<string, unknown>, fields: readonly { key: stri
 
 function equipoGrid(record: PrintableConformidad): string {
   const equipo = record.equipo as Record<string, unknown>;
+  const tipoServicio = record.tipoServicio ?? null;
   const byTitle = Object.fromEntries(EQUIP_GROUPS.map((g) => [g.title, g])) as Record<string, (typeof EQUIP_GROUPS)[number]>;
 
+  // modeloInstalado/imeiInstalado solo aplican (y solo se muestran) cuando
+  // hay un cambio de equipo de por medio — mismo criterio que el wizard POST.
+  const datosEquipoFields = byTitle['Datos del equipo'].fields.filter(
+    (f) => tipoServicio === 'cambio_equipo' || (f.key !== 'modeloInstalado' && f.key !== 'imeiInstalado'),
+  );
+  const datosEquipoTitle = tipoServicio === 'desinstalacion' ? 'Datos del equipo a desinstalar' : 'Datos del equipo';
+
   const cards = [
-    equipCard('Datos del equipo', fieldRows(equipo, byTitle['Datos del equipo'].fields)),
-    equipCard('Sensores', fieldRows(equipo, byTitle['Sensores'].fields)),
+    equipCard(datosEquipoTitle, fieldRows(equipo, datosEquipoFields, tipoServicio)),
+    equipCard('Sensores', fieldRows(equipo, byTitle['Sensores'].fields, tipoServicio)),
     equipCard(
       'Módulos',
-      fieldRows(equipo, byTitle['Módulos'].fields) +
+      fieldRows(equipo, byTitle['Módulos'].fields, tipoServicio) +
         `<tr><td colspan="2" class="mini-sub">Entradas / Salidas</td></tr>` +
-        fieldRows(equipo, byTitle['Entradas / Salidas'].fields),
+        fieldRows(equipo, byTitle['Entradas / Salidas'].fields, tipoServicio),
     ),
     equipCard(
       'Control de instalación',
-      fieldRows(equipo, byTitle['Control de instalación'].fields) + checkRows(equipo, EQUIP_CHECK_FIELDS),
+      fieldRows(equipo, byTitle['Control de instalación'].fields, tipoServicio) + checkRows(equipo, EQUIP_CHECK_FIELDS),
     ),
   ];
   return `<div class="equip-grid">${cards.join('')}</div>`;
