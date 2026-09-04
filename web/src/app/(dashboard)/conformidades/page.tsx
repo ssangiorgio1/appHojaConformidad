@@ -6,7 +6,9 @@ import { Card } from '@/components/ui/Card';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { IconEye, IconSearch } from '@/components/ui/Icons';
-import { listConformidades, listUsuarios } from '@/lib/api';
+import { AltaCheckToggle, canToggleAlta } from '@/components/AltaCheckToggle';
+import { listConformidades, listUsuarios, setAltaConformidad } from '@/lib/api';
+import { useAuth } from '@/auth/AuthContext';
 import { useApiData } from '@/lib/useApiData';
 import { formatFechaHora } from '@/lib/format';
 import type { EstadoConformidad } from '@/lib/types';
@@ -26,10 +28,13 @@ const ESTADO_TONE: Record<EstadoConformidad, BadgeTone> = {
 const PAGE_SIZE = 20;
 
 export default function ConformidadesPage() {
+  const { usuario, getIdToken } = useAuth();
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [status, setStatus] = useState<EstadoConformidad | ''>('');
   const [tecnicoId, setTecnicoId] = useState('');
+  const [altaMesaAyuda, setAltaMesaAyuda] = useState<'pendiente' | 'hecho' | ''>('');
+  const [altaCoordinacion, setAltaCoordinacion] = useState<'pendiente' | 'hecho' | ''>('');
   const [page, setPage] = useState(1);
 
   // Wait for a pause in typing before hitting the API — avoids firing a
@@ -46,7 +51,7 @@ export default function ConformidadesPage() {
     return (id?: string) => (id && map.get(id)) || (id ? id.slice(-6) : '—');
   }, [usuariosData]);
 
-  const { data, loading, error } = useApiData(
+  const { data, loading, error, setData } = useApiData(
     (idToken) =>
       listConformidades(idToken, {
         page,
@@ -54,9 +59,21 @@ export default function ConformidadesPage() {
         search: debouncedSearch || undefined,
         status: status || undefined,
         tecnicoId: tecnicoId || undefined,
+        altaMesaAyuda: altaMesaAyuda || undefined,
+        altaCoordinacion: altaCoordinacion || undefined,
       }),
-    [page, debouncedSearch, status, tecnicoId],
+    [page, debouncedSearch, status, tecnicoId, altaMesaAyuda, altaCoordinacion],
   );
+
+  // Reemplaza solo la fila tocada con la respuesta del servidor — evita el
+  // refetch de toda la página (que atenuaba la tabla entera con opacity-60
+  // por cada click). Si hay un filtro de alta activo, la fila queda visible
+  // con su estado nuevo hasta el próximo refetch en vez de desaparecer sola.
+  async function handleToggleAlta(id: string, area: 'mesaAyuda' | 'coordinacion', checked: boolean) {
+    const idToken = await getIdToken();
+    const updated = await setAltaConformidad(idToken, id, area, checked);
+    setData((prev) => (prev ? { ...prev, data: prev.data.map((c) => (c._id === id ? updated : c)) } : prev));
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -110,15 +127,41 @@ export default function ConformidadesPage() {
           <option value="pendiente_post">Pendiente POST</option>
           <option value="completo">Completo</option>
         </select>
+
+        <select
+          className="rounded-md bg-surface px-4 py-3 text-sm font-semibold shadow-inset outline-none"
+          value={altaMesaAyuda}
+          onChange={(e) => {
+            setPage(1);
+            setAltaMesaAyuda(e.target.value as 'pendiente' | 'hecho' | '');
+          }}
+        >
+          <option value="">Alta mesa de ayuda: todos</option>
+          <option value="pendiente">Pendiente</option>
+          <option value="hecho">Hecho</option>
+        </select>
+
+        <select
+          className="rounded-md bg-surface px-4 py-3 text-sm font-semibold shadow-inset outline-none"
+          value={altaCoordinacion}
+          onChange={(e) => {
+            setPage(1);
+            setAltaCoordinacion(e.target.value as 'pendiente' | 'hecho' | '');
+          }}
+        >
+          <option value="">Alta coordinación: todos</option>
+          <option value="pendiente">Pendiente</option>
+          <option value="hecho">Hecho</option>
+        </select>
       </Card>
 
       {error && <Card className="p-4 text-sm font-semibold text-bad">{error}</Card>}
 
       <Card className="p-2.5 pb-4">
         <div className="overflow-x-auto">
-          <div className="min-w-[820px]">
-            <div className="grid grid-cols-[1.3fr_1.6fr_1.2fr_1fr_1fr_1.1fr_1fr_60px] pb-2.5 pt-4">
-              {['Código acta', 'Cliente', 'Técnico', 'Unidad', 'Ticket', 'Fecha', 'Estado', ''].map((h) => (
+          <div className="min-w-[1060px]">
+            <div className="grid grid-cols-[1.2fr_1.4fr_1.1fr_0.9fr_0.9fr_1fr_0.9fr_1fr_1fr_60px] pb-2.5 pt-4">
+              {['Código acta', 'Cliente', 'Técnico', 'Unidad', 'Ticket', 'Fecha', 'Estado', 'Alta MA', 'Alta Coord', ''].map((h) => (
                 <div key={h} className="px-3.5 text-[11px] font-extrabold uppercase tracking-wide text-muted">
                   {h}
                 </div>
@@ -132,7 +175,10 @@ export default function ConformidadesPage() {
 
             <div className={`transition-opacity ${loading && data ? 'opacity-60' : ''}`}>
               {data?.data.map((c) => (
-                <div key={c._id} className="grid grid-cols-[1.3fr_1.6fr_1.2fr_1fr_1fr_1.1fr_1fr_60px] items-center border-t border-line">
+                <div
+                  key={c._id}
+                  className="grid grid-cols-[1.2fr_1.4fr_1.1fr_0.9fr_0.9fr_1fr_0.9fr_1fr_1fr_60px] items-center border-t border-line"
+                >
                   <div className="p-3.5 text-[13px] font-bold text-primary">{c.codigoActa}</div>
                   <div className="p-3.5 text-[13px] font-semibold">{c.cliente || '—'}</div>
                   <div className="p-3.5 text-[13px] font-semibold text-muted">{tecnicoNombre(c.tecnicoId)}</div>
@@ -141,6 +187,24 @@ export default function ConformidadesPage() {
                   <div className="p-3.5 text-[13px] font-semibold text-muted">{formatFechaHora(c.fecha)}</div>
                   <div className="p-3.5">
                     <Badge tone={ESTADO_TONE[c.status]}>{ESTADO_LABEL[c.status]}</Badge>
+                  </div>
+                  <div className="p-3.5">
+                    <AltaCheckToggle
+                      area="mesaAyuda"
+                      value={c.altaEquipo.mesaAyuda}
+                      canToggle={canToggleAlta(usuario?.role, 'mesaAyuda')}
+                      usuarioNombre={tecnicoNombre}
+                      onToggle={(checked) => handleToggleAlta(c._id, 'mesaAyuda', checked)}
+                    />
+                  </div>
+                  <div className="p-3.5">
+                    <AltaCheckToggle
+                      area="coordinacion"
+                      value={c.altaEquipo.coordinacion}
+                      canToggle={canToggleAlta(usuario?.role, 'coordinacion')}
+                      usuarioNombre={tecnicoNombre}
+                      onToggle={(checked) => handleToggleAlta(c._id, 'coordinacion', checked)}
+                    />
                   </div>
                   <div className="p-3.5">
                     <Link

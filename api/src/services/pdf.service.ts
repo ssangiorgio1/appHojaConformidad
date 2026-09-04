@@ -6,14 +6,29 @@ import { buildObjectKey, uploadBuffer } from './r2.service.js';
 // would add several seconds to every PDF generation.
 let browserPromise: Promise<Browser> | null = null;
 
-function getBrowser(): Promise<Browser> {
-  if (!browserPromise) {
-    browserPromise = puppeteer.launch({
+// Si el launch() de más abajo rechaza una sola vez (ej. un cold start
+// apretado de recursos en Render), browserPromise quedaba cacheado como una
+// promesa rechazada para siempre — cada PDF después de esa primera falla
+// tiraba "Internal server error" sin volver a intentar levantar Chromium,
+// hasta que el proceso se reiniciara solo. Ahora se limpia el caché ante
+// cualquier falla (de lanzamiento o de una instancia que se desconectó) para
+// que el próximo pedido reintente con un browser nuevo.
+async function getBrowser(): Promise<Browser> {
+  if (browserPromise) {
+    const existing = await browserPromise.catch(() => null);
+    if (existing?.connected) return existing;
+    browserPromise = null;
+  }
+  browserPromise = puppeteer
+    .launch({
       headless: true,
       // Required to run Chromium as root in most container hosts (e.g. Render).
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    })
+    .catch((err) => {
+      browserPromise = null;
+      throw err;
     });
-  }
   return browserPromise;
 }
 

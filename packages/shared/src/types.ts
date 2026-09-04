@@ -82,6 +82,9 @@ export interface OdooSync {
   attempts: number;
   lastError?: string;
   syncedAt?: string;
+  // Cuándo fue el último intento (éxito o falla) — usado para no reintentar
+  // en automático un envío a Odoo que falló hace segundos.
+  lastAttemptAt?: string;
 }
 
 export function emptyOdooSync(): OdooSync {

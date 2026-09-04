@@ -9,6 +9,9 @@ const ChecklistSchema = new Schema(checklistFields, { _id: false });
 const FotoSchema = new Schema(
   {
     id: { type: String, required: true },
+    // De qué slot de captura guiada vino (ver @wara/shared's photoSlots.ts) —
+    // ausente en fotos sincronizadas antes de que este campo existiera.
+    slotKey: { type: String },
     url: { type: String, required: true },
     key: { type: String, required: true },
   },
@@ -37,6 +40,23 @@ const PhaseSchema = new Schema(
   { _id: false },
 );
 
+const AltaCheckSchema = new Schema(
+  {
+    checked: { type: Boolean, default: false },
+    usuarioId: { type: Schema.Types.ObjectId, ref: 'Usuario', default: null },
+    fecha: { type: Date, default: null },
+  },
+  { _id: false },
+);
+
+const AltaEquipoSchema = new Schema(
+  {
+    mesaAyuda: { type: AltaCheckSchema, default: () => ({}) },
+    coordinacion: { type: AltaCheckSchema, default: () => ({}) },
+  },
+  { _id: false },
+);
+
 const equipoFields = {
   ...Object.fromEntries(EQUIP_TEXT_KEYS.map((key) => [key, { type: String, default: '' }])),
   ...Object.fromEntries(EQUIP_CHECK_KEYS.map((key) => [key, { type: String, enum: ['SI', 'NO'], default: null }])),
@@ -59,6 +79,9 @@ const OdooSyncSchema = new Schema(
     attempts: { type: Number, default: 0 },
     lastError: { type: String, default: '' },
     syncedAt: { type: Date },
+    // Cuándo fue el último intento (éxito o falla) — usado para no reintentar
+    // un envío a Odoo que falló hace segundos en cada auto-retry del cliente.
+    lastAttemptAt: { type: Date },
   },
   { _id: false },
 );
@@ -104,6 +127,7 @@ const ConformidadSchema = new Schema(
     pre: { type: PhaseSchema, default: () => ({}) },
     post: { type: PhaseSchema, default: () => ({}) },
     equipo: { type: EquipoSchema, default: () => ({}) },
+    altaEquipo: { type: AltaEquipoSchema, default: () => ({}) },
 
     ticketOdoo: { type: TicketOdooSchema, default: null },
     odooSync: { type: OdooSyncSchema, default: () => ({}) },

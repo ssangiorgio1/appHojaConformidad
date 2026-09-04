@@ -18,7 +18,15 @@ authRouter.get('/me', requireAuth, getMe);
 
 authRouter.patch('/me', requireAuth, validate(updateMeSchema), updateMe);
 
-authRouter.get('/usuarios', requireAuth, requireRole(['admin', 'superadmin']), listUsuarios);
+// Solo lectura — mesa_ayuda/coordinación la necesitan para resolver nombres
+// (técnico asignado, quién dio de alta un equipo) en el panel; crear/editar
+// usuarios sigue exclusivo de admin/superadmin más abajo.
+authRouter.get(
+  '/usuarios',
+  requireAuth,
+  requireRole(['admin', 'superadmin', 'coordinacion', 'mesa_ayuda']),
+  listUsuarios,
+);
 
 authRouter.post(
   '/usuarios',

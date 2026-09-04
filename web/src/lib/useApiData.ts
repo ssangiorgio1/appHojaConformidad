@@ -52,5 +52,5 @@ export function useApiData<T>(fn: (idToken: string) => Promise<T>, deps: unknown
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `depsKey` stands in for the caller's own deps array
   }, [depsKey]);
 
-  return { data, error, loading, refetch: run };
+  return { data, error, loading, refetch: run, setData };
 }

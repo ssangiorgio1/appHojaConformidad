@@ -18,6 +18,7 @@ const isR2Url = (url: string) => url.startsWith(`${R2_PUBLIC_BASE}/`);
 
 const fotoSchema = z.object({
   id: z.string().min(1),
+  slotKey: z.string().optional(),
   url: z.string().min(1).refine(isR2Url, 'url must point to the R2 public bucket'),
   key: z.string().min(1),
 });
@@ -114,8 +115,16 @@ export const listConformidadesQuerySchema = z.object({
   fechaDesde: z.string().optional(),
   fechaHasta: z.string().optional(),
   search: z.string().max(100).optional(),
+  altaMesaAyuda: z.enum(['pendiente', 'hecho']).optional(),
+  altaCoordinacion: z.enum(['pendiente', 'hecho']).optional(),
+});
+
+export const altaConformidadSchema = z.object({
+  area: z.enum(['mesaAyuda', 'coordinacion']),
+  checked: z.boolean(),
 });
 
 export type CreateConformidadInput = z.infer<typeof createConformidadSchema>;
 export type PatchConformidadInput = z.infer<typeof patchConformidadSchema>;
 export type ListConformidadesQuery = z.infer<typeof listConformidadesQuerySchema>;
+export type AltaConformidadInput = z.infer<typeof altaConformidadSchema>;

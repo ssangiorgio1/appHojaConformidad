@@ -12,6 +12,7 @@ import type {
   CreateConformidadInput,
   PatchConformidadInput,
   ListConformidadesQuery,
+  AltaConformidadInput,
 } from '../schemas/conformidad.schema.js';
 
 export function assertOwnedByRequester(req: Request, tecnicoId: unknown) {
@@ -99,6 +100,29 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
   res.json(record);
 });
 
+// Separate from patchConformidad on purpose — this writes audit fields
+// (quién y cuándo) as a side effect and is gated by area-vs-role, not by
+// ownership like the técnico-facing PATCH.
+export const setAltaConformidad = asyncHandler(async (req: Request, res: Response) => {
+  const { area, checked } = req.body as AltaConformidadInput;
+
+  const role = req.user!.role;
+  const allowedArea = role === 'mesa_ayuda' ? 'mesaAyuda' : role === 'coordinacion' ? 'coordinacion' : null;
+  if (allowedArea && area !== allowedArea) {
+    throw new HttpError(403, `Tu rol solo puede marcar el check de ${allowedArea === 'mesaAyuda' ? 'mesa de ayuda' : 'coordinación'}`);
+  }
+
+  const record = await ConformidadModel.findOne({ _id: req.params.id, deletedAt: null });
+  if (!record) throw new HttpError(404, 'Conformidad not found');
+
+  record.altaEquipo[area] = checked
+    ? { checked: true, usuarioId: req.user!.usuarioId, fecha: new Date() }
+    : { checked: false, usuarioId: null, fecha: null };
+
+  await record.save();
+  res.json(record);
+});
+
 export const listConformidades = asyncHandler(async (req: Request, res: Response) => {
   const query = req.query as unknown as ListConformidadesQuery;
 
@@ -111,6 +135,8 @@ export const listConformidades = asyncHandler(async (req: Request, res: Response
   }
 
   if (query.status) filter.status = query.status;
+  if (query.altaMesaAyuda) filter['altaEquipo.mesaAyuda.checked'] = query.altaMesaAyuda === 'hecho';
+  if (query.altaCoordinacion) filter['altaEquipo.coordinacion.checked'] = query.altaCoordinacion === 'hecho';
   if (query.matricula) filter.matricula = new RegExp(escapeRegExp(query.matricula), 'i');
   if (query.imei) filter['equipo.imei'] = new RegExp(escapeRegExp(query.imei), 'i');
   if (query.numero) filter.numero = new RegExp(escapeRegExp(query.numero), 'i');
@@ -127,9 +153,19 @@ export const listConformidades = asyncHandler(async (req: Request, res: Response
     filter.$or = [{ cliente: re }, { matricula: re }, { instalador: re }, { numero: re }, { 'equipo.imei': re }];
   }
 
+  // Cuando se pide "altaMesaAyuda=hecho"/"altaCoordinacion=hecho" el caso de
+  // uso es ver las últimas altas dadas — eso quiere decir ordenar por cuándo
+  // se marcó el check, no por la fecha del servicio (fechaHora, el default).
+  const sort: Record<string, 1 | -1> =
+    query.altaMesaAyuda === 'hecho'
+      ? { 'altaEquipo.mesaAyuda.fecha': -1 }
+      : query.altaCoordinacion === 'hecho'
+        ? { 'altaEquipo.coordinacion.fecha': -1 }
+        : { fechaHora: -1 };
+
   const skip = (query.page - 1) * query.pageSize;
   const [data, total] = await Promise.all([
-    ConformidadModel.find(filter).sort({ fechaHora: -1 }).skip(skip).limit(query.pageSize),
+    ConformidadModel.find(filter).sort(sort).skip(skip).limit(query.pageSize),
     ConformidadModel.countDocuments(filter),
   ]);
 
@@ -205,7 +241,12 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
 
   const ticketId = record.ticketOdoo.odooId ?? Number(record.ticketOdoo.numero);
   if (!Number.isFinite(ticketId)) {
-    record.odooSync = { status: 'FAILED', attempts: (record.odooSync?.attempts ?? 0) + 1, lastError: 'Ticket sin id numérico válido' };
+    record.odooSync = {
+      status: 'FAILED',
+      attempts: (record.odooSync?.attempts ?? 0) + 1,
+      lastError: 'Ticket sin id numérico válido',
+      lastAttemptAt: new Date(),
+    };
     await record.save();
     res.json({ odooSync: record.odooSync });
     return;
@@ -226,11 +267,22 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
       resumenHtml,
       as: { login: usuario.odoo.login, password: decryptSecret(usuario.odoo.passwordEnc) },
     });
-    record.odooSync = { status: 'SYNCED', attempts: (record.odooSync?.attempts ?? 0) + 1, syncedAt: new Date(), lastError: '' };
+    record.odooSync = {
+      status: 'SYNCED',
+      attempts: (record.odooSync?.attempts ?? 0) + 1,
+      syncedAt: new Date(),
+      lastError: '',
+      lastAttemptAt: new Date(),
+    };
   } catch (err) {
     const message = err instanceof OdooError ? `${err.code}: ${err.message}` : err instanceof Error ? err.message : String(err);
     console.error('ODOO_SYNC_FAILURE', record.id, message);
-    record.odooSync = { status: 'FAILED', attempts: (record.odooSync?.attempts ?? 0) + 1, lastError: message };
+    record.odooSync = {
+      status: 'FAILED',
+      attempts: (record.odooSync?.attempts ?? 0) + 1,
+      lastError: message,
+      lastAttemptAt: new Date(),
+    };
   }
 
   await record.save();

@@ -94,3 +94,7 @@ export function getConformidad(idToken: string, id: string) {
 export function generateConformidadPdf(idToken: string, id: string) {
   return apiFetch<{ pdfReporte: { url: string; key: string } }>(`/api/conformidades/${id}/pdf`, idToken, { method: 'POST' });
 }
+
+export function setAltaConformidad(idToken: string, id: string, area: 'mesaAyuda' | 'coordinacion', checked: boolean) {
+  return apiFetch<ConformidadDoc>(`/api/conformidades/${id}/alta`, idToken, { method: 'POST', body: { area, checked } });
+}

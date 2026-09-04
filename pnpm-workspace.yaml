@@ -3,6 +3,7 @@ packages:
   - "mobile"
   - "web"
   - "packages/*"
+virtualStoreDir: ".vs"
 allowBuilds:
   '@firebase/util': true
   esbuild: true

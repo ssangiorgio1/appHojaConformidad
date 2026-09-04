@@ -1,4 +1,4 @@
-import type { Checklist, Equipo, SatisfaccionFirma } from '@wara/shared';
+import type { Checklist, Equipo, SatisfaccionFirma, TipoServicio } from '@wara/shared';
 
 // Mirrors api/src/models/Usuario.ts
 export type UsuarioRole = 'tecnico' | 'admin' | 'superadmin' | 'coordinacion' | 'mesa_ayuda';
@@ -26,6 +26,9 @@ export type EstadoConformidad = 'borrador_pre' | 'pendiente_post' | 'completo';
 
 export interface Foto {
   id: string;
+  // Ausente en fotos sincronizadas antes de que el servidor empezara a
+  // persistir este campo.
+  slotKey?: string;
   url: string;
   key: string;
 }
@@ -36,6 +39,17 @@ export interface Firma {
   firmedAt?: string;
   satisfaccion?: SatisfaccionFirma | null;
   motivo?: string;
+}
+
+export interface AltaCheck {
+  checked: boolean;
+  usuarioId: string | null;
+  fecha: string | null;
+}
+
+export interface AltaEquipo {
+  mesaAyuda: AltaCheck;
+  coordinacion: AltaCheck;
 }
 
 export interface TicketOdoo {
@@ -56,6 +70,7 @@ export interface ConformidadDoc {
   _id: string;
   clientId: string;
   codigoActa: string;
+  tipoServicio: TipoServicio | null;
   numero: string;
   cliente: string;
   fecha: string;
@@ -70,6 +85,7 @@ export interface ConformidadDoc {
   pre: Phase;
   post: Phase;
   equipo: Equipo;
+  altaEquipo: AltaEquipo;
   ticketOdoo: TicketOdoo | null;
   // Set once the app has generated and uploaded the PDF report (see
   // mobile/src/sync/sync.ts) — null until then, e.g. for borrador_pre records.
@@ -111,4 +127,6 @@ export interface ListConformidadesQuery {
   fechaDesde?: string;
   fechaHasta?: string;
   search?: string;
+  altaMesaAyuda?: 'pendiente' | 'hecho';
+  altaCoordinacion?: 'pendiente' | 'hecho';
 }

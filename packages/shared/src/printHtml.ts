@@ -1,7 +1,7 @@
 import { CHECKLIST_ITEMS, type ChecklistValue } from './checklist.js';
 import { EQUIP_GROUPS, EQUIP_CHECK_FIELDS } from './equipo.js';
 import { PRE_PHOTO_SLOTS, POST_PHOTO_SLOTS, type PhotoSlotDef } from './photoSlots.js';
-import { SATISFACCION_LABELS, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
+import { SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
 
 // The fields buildPrintHtml actually reads — deliberately narrower than the
 // full ConformidadRecord so both the mobile app's local record and the
@@ -142,17 +142,27 @@ const defaultResolvePhotoSrc: PhotoSrcResolver = (foto) => foto.dataUrl ?? foto.
 async function photosBlock(slots: PhotoSlotDef[], fotos: Foto[], titulo: string, resolvePhotoSrc: PhotoSrcResolver): Promise<string> {
   if (!fotos.length) return '';
 
-  const matched = slots
-    .map((slot) => ({ slot, foto: fotos.find((f) => f.slotKey === slot.key) }))
-    .filter((x): x is { slot: PhotoSlotDef; foto: Foto } => !!x.foto);
+  const matched: { foto: Foto; label: string }[] = [];
+  for (const slot of slots) {
+    const foto = fotos.find((f) => f.slotKey === slot.key);
+    if (foto) matched.push({ foto, label: slot.label });
+  }
+  // Fotos sin slotKey reconocido (registros sincronizados antes de que el
+  // servidor empezara a persistirlo, o cualquier otro desfasaje) igual se
+  // imprimen en vez de desaparecer sin aviso del PDF — con una leyenda
+  // genérica en lugar de la del slot.
+  const matchedIds = new Set(matched.map((m) => m.foto.id));
+  for (const foto of fotos) {
+    if (!matchedIds.has(foto.id)) matched.push({ foto, label: 'Foto adicional' });
+  }
 
   const cells = await Promise.all(
-    matched.map(async ({ slot, foto }) => {
+    matched.map(async ({ foto, label }) => {
       const src = await resolvePhotoSrc(foto);
       if (!src) {
-        return `<div class="photo-cell"><div class="photo video-placeholder">Video adjunto<br>(no incluido en el PDF)</div><div class="photo-caption">${esc(slot.label)}</div></div>`;
+        return `<div class="photo-cell"><div class="photo video-placeholder">Video adjunto<br>(no incluido en el PDF)</div><div class="photo-caption">${esc(label)}</div></div>`;
       }
-      return `<div class="photo-cell"><img class="photo" src="${esc(src)}"><div class="photo-caption">${esc(slot.label)}</div></div>`;
+      return `<div class="photo-cell"><img class="photo" src="${esc(src)}"><div class="photo-caption">${esc(label)}</div></div>`;
     }),
   );
 
@@ -166,6 +176,7 @@ export async function buildPrintHtml(
   const resolvePhotoSrc = opts?.resolvePhotoSrc ?? defaultResolvePhotoSrc;
   const statusLabel =
     record.status === 'completo' ? 'Completo' : record.status === 'pendiente_post' ? 'Pendiente POST' : 'PRE en progreso';
+  const tipoServicioLabel = record.tipoServicio ? TIPO_SERVICIO_LABELS[record.tipoServicio] : null;
 
   const [prePhotos, postPhotos] = await Promise.all([
     photosBlock(PRE_PHOTO_SLOTS, record.pre.fotos, 'Fotos PRE', resolvePhotoSrc),
@@ -197,6 +208,7 @@ export async function buildPrintHtml(
 
   .title-banner { background: var(--primary); color: #fff; border-radius: 6px; padding: 9px 14px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; page-break-after: avoid; break-after: avoid; }
   .title-banner .t { font-weight: 800; font-size: 15px; letter-spacing: 0.3px; text-transform: uppercase; }
+  .banner-pills { display: flex; align-items: center; gap: 6px; }
   .status-pill { background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.5); border-radius: 20px; padding: 3px 11px; font-size: 10.5px; font-weight: 600; }
 
   .info-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 11.5px; page-break-inside: avoid; break-inside: avoid; }
@@ -258,7 +270,10 @@ export async function buildPrintHtml(
   </div>
   <div class="title-banner">
     <span class="t">Hoja de Conformidad</span>
-    <span class="status-pill">${esc(statusLabel)}</span>
+    <div class="banner-pills">
+      ${tipoServicioLabel ? `<span class="status-pill">${esc(tipoServicioLabel)}</span>` : ''}
+      <span class="status-pill">${esc(statusLabel)}</span>
+    </div>
   </div>
 
   <div class="keep-together">

@@ -1,15 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { CHECKLIST_ITEMS } from '@wara/shared/src/checklist';
 import { EQUIP_CHECK_FIELDS, EQUIP_GROUPS } from '@wara/shared/src/equipo';
-import { SATISFACCION_LABELS, type ChecklistValue, type SatisfaccionFirma } from '@wara/shared';
+import { PRE_PHOTO_SLOTS, POST_PHOTO_SLOTS } from '@wara/shared/src/photoSlots';
+import { SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, type ChecklistValue, type SatisfaccionFirma } from '@wara/shared';
 import { Card } from '@/components/ui/Card';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { IconCamera, IconChevronDown, IconChevronLeft, IconLock, IconDocument, IconX } from '@/components/ui/Icons';
-import { getConformidad, generateConformidadPdf } from '@/lib/api';
+import { AltaCheckToggle, canToggleAlta } from '@/components/AltaCheckToggle';
+import { getConformidad, generateConformidadPdf, listUsuarios, setAltaConformidad } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
 import { useApiData } from '@/lib/useApiData';
 import { formatFechaHora, formatIsoDateTime } from '@/lib/format';
@@ -39,11 +41,46 @@ function checklistTone(value: ChecklistValue): BadgeTone {
   return 'neutral';
 }
 
+const PHOTO_SLOT_LABELS: Record<'pre' | 'post', Record<string, string>> = {
+  pre: Object.fromEntries(PRE_PHOTO_SLOTS.map((s) => [s.key, s.label])),
+  post: Object.fromEntries(POST_PHOTO_SLOTS.map((s) => [s.key, s.label])),
+};
+
+// Fotos sincronizadas antes de que el servidor empezara a persistir slotKey
+// no van a tener match acá — se muestran sin descripción en vez de romper.
+function fotoLabel(fase: 'pre' | 'post', slotKey?: string): string | null {
+  if (!slotKey) return null;
+  return PHOTO_SLOT_LABELS[fase][slotKey] ?? null;
+}
+
+function InfoField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="text-[10.5px] font-extrabold uppercase tracking-wide text-muted">{label}</div>
+      <div className="mt-0.5 text-sm font-bold">{children}</div>
+    </div>
+  );
+}
+
 export default function ConformidadDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { getIdToken } = useAuth();
+  const { getIdToken, usuario } = useAuth();
   const [fase, setFase] = useState<'pre' | 'post'>('pre');
-  const { data: c, loading, error, refetch } = useApiData((idToken) => getConformidad(idToken, id), [id]);
+  const { data: c, loading, error, refetch, setData } = useApiData((idToken) => getConformidad(idToken, id), [id]);
+  const { data: usuariosData } = useApiData((idToken) => listUsuarios(idToken), []);
+  const usuarioNombre = useMemo(() => {
+    const map = new Map((usuariosData ?? []).map((u) => [u._id, u.nombre || u.email]));
+    return (usuarioId: string) => map.get(usuarioId) ?? usuarioId.slice(-6);
+  }, [usuariosData]);
+
+  // Actualiza con la respuesta del servidor en vez de refetchear todo el
+  // registro — evita que la página entera vuelva a mostrar "Cargando..."
+  // (loading pisa el `c` ya cargado) solo por tildar un check.
+  async function handleToggleAlta(area: 'mesaAyuda' | 'coordinacion', checked: boolean) {
+    const idToken = await getIdToken();
+    const updated = await setAltaConformidad(idToken, id, area, checked);
+    setData(updated);
+  }
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [resumenOpen, setResumenOpen] = useState(false);
@@ -63,6 +100,12 @@ export default function ConformidadDetailPage() {
   }, [lightboxUrl]);
 
   const phase: Phase | undefined = c?.[fase];
+  const tipoServicioLabel = c?.tipoServicio ? TIPO_SERVICIO_LABELS[c.tipoServicio] : null;
+  const esInstalacion = !c?.tipoServicio || c.tipoServicio === 'instalacion';
+  // modelo/imei del equipo describen el que se retira cuando el servicio es
+  // una desinstalación o un cambio de equipo (ver equipo.ts en @wara/shared).
+  const equipoLabelSuffix =
+    c?.tipoServicio === 'desinstalacion' ? ' (desinstalado)' : c?.tipoServicio === 'cambio_equipo' ? ' (retirado)' : '';
 
   async function handleGeneratePdf() {
     setGeneratingPdf(true);
@@ -119,7 +162,7 @@ export default function ConformidadDetailPage() {
     return rows;
   }, [phase]);
 
-  if (loading) return <div className="p-6 text-sm font-semibold text-muted">Cargando...</div>;
+  if (loading && !c) return <div className="p-6 text-sm font-semibold text-muted">Cargando...</div>;
   if (error || !c) return <div className="p-6 text-sm font-semibold text-bad">{error || 'No encontrado'}</div>;
 
   return (
@@ -131,74 +174,111 @@ export default function ConformidadDetailPage() {
         <span className="font-bold text-text">{c.codigoActa}</span>
       </Link>
 
-      <Card className="flex flex-wrap items-center justify-between gap-4 p-6">
-        <div>
-          
+      <Card className="flex flex-col gap-4 p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="text-lg font-extrabold">{c.cliente || 'Sin nombre de cliente'}</div>
-          <div className="mt-1 text-[12.5px] font-semibold">
-            Instalador: <Badge tone="primary">{c.instalador || '—'}</Badge>    ·   {formatFechaHora(c.fecha, c.hora)}
+          <div className="flex items-center gap-2.5">
+            <Badge tone={ESTADO_TONE[c.status]}>{ESTADO_LABEL[c.status]}</Badge>
+            {c.pdfReporte?.url ? (
+              <a
+                href={c.pdfReporte.url}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 rounded-md bg-surface px-3 py-2 text-[12.5px] font-bold shadow-soft-sm"
+              >
+                <IconDocument />
+                Ver PDF
+              </a>
+            ) : (
+              <button
+                onClick={handleGeneratePdf}
+                disabled={generatingPdf}
+                className="flex items-center gap-1.5 rounded-md bg-surface px-3 py-2 text-[12.5px] font-bold shadow-soft-sm disabled:opacity-60"
+              >
+                <IconDocument />
+                {generatingPdf ? 'Generando...' : 'Generar PDF'}
+              </button>
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-2.5">
-          Ticket:
-          {c.ticketOdoo?.numero ? (
-            <a
-              href={`${process.env.NEXT_PUBLIC_ODOO_BASE_URL}/odoo/all-tickets/${c.ticketOdoo.odooId ?? c.ticketOdoo.numero}`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Badge tone="primary">{c.ticketOdoo.numero}</Badge>
-            </a>
-          ) : (
-            <Badge tone="neutral">sin ticket</Badge>
-          )}
-          Unidad:
-          <Badge tone="primary">{c.matricula || 'sin matrícula'}</Badge>
-          <Badge tone={ESTADO_TONE[c.status]}>{ESTADO_LABEL[c.status]}</Badge>
-          {c.pdfReporte?.url ? (
-            <a
-              href={c.pdfReporte.url}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1.5 rounded-md bg-surface px-3 py-2 text-[12.5px] font-bold shadow-soft-sm"
-            >
-              <IconDocument />
-              Ver PDF
-            </a>
-          ) : (
-            <button
-              onClick={handleGeneratePdf}
-              disabled={generatingPdf}
-              className="flex items-center gap-1.5 rounded-md bg-surface px-3 py-2 text-[12.5px] font-bold shadow-soft-sm disabled:opacity-60"
-            >
-              <IconDocument />
-              {generatingPdf ? 'Generando...' : 'Generar PDF'}
-            </button>
-          )}
+
+        <div className="flex flex-wrap gap-x-8 gap-y-3 border-t border-line pt-4">
+          <InfoField label="Instalador">{c.instalador || '—'}</InfoField>
+          <InfoField label="Fecha">{formatFechaHora(c.fecha, c.hora)}</InfoField>
+          <InfoField label="Tipo de servicio">{tipoServicioLabel || '—'}</InfoField>
+          <InfoField label="Unidad">{c.matricula || 'Sin matrícula'}</InfoField>
+          <InfoField label="Ticket">
+            {c.ticketOdoo?.numero ? (
+              <a
+                href={`${process.env.NEXT_PUBLIC_ODOO_BASE_URL}/odoo/all-tickets/${c.ticketOdoo.odooId ?? c.ticketOdoo.numero}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                {c.ticketOdoo.numero}
+              </a>
+            ) : (
+              <span className="text-muted">Sin ticket</span>
+            )}
+          </InfoField>
         </div>
-        {pdfError && <div className="w-full text-right text-[11.5px] font-semibold text-bad">{pdfError}</div>}
+
+        {pdfError && <div className="text-right text-[11.5px] font-semibold text-bad">{pdfError}</div>}
+      </Card>
+
+      <Card className="flex flex-col gap-3 p-6">
+        <div>
+          <div className="text-[15px] font-extrabold">Alta de equipo</div>
+          <div className="mt-1 text-[11.5px] font-semibold text-muted">
+            Marcá cuando ya cargaste este equipo en el sistema correspondiente (VisionBLO, etc.).
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-x-8 gap-y-3 border-t border-line pt-3.5">
+          {(['mesaAyuda', 'coordinacion'] as const).map((area) => (
+            <InfoField key={area} label={area === 'mesaAyuda' ? 'Mesa de ayuda' : 'Coordinación'}>
+              <AltaCheckToggle
+                area={area}
+                value={c.altaEquipo[area]}
+                canToggle={canToggleAlta(usuario?.role, area)}
+                usuarioNombre={usuarioNombre}
+                onToggle={(checked) => handleToggleAlta(area, checked)}
+                showDetail
+              />
+            </InfoField>
+          ))}
+        </div>
       </Card>
 
       <Card className="p-6">
         <button
           onClick={() => setResumenOpen((v) => !v)}
-          className="flex w-full items-center justify-between gap-3"
+          className="flex w-full items-start justify-between gap-3"
         >
-          <div className="text-[15px] font-extrabold">Resumen de instalación</div>
-          <IconChevronDown className={`text-muted transition-transform ${resumenOpen ? 'rotate-180' : ''}`} />
+          <div>
+            <div className="text-[15px] font-extrabold">{esInstalacion ? 'Resumen de instalación' : 'Resumen del servicio'}</div>
+            {!esInstalacion && tipoServicioLabel && (
+              <div className="mt-1 text-[11.5px] font-semibold text-muted">
+                Tipo de servicio: <span className="font-extrabold text-text">{tipoServicioLabel}</span>
+              </div>
+            )}
+          </div>
+          <IconChevronDown className={`mt-0.5 text-muted transition-transform ${resumenOpen ? 'rotate-180' : ''}`} />
         </button>
 
-        {resumenOpen && (
-          <div className="mt-4 flex flex-col gap-4">
+        <div
+          aria-hidden={!resumenOpen}
+          className={`mt-4 grid overflow-hidden transition-[grid-template-rows] duration-300 ease-in-out ${resumenOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+        >
+          <div className="flex min-h-0 flex-col gap-4">
             <div className="flex flex-wrap gap-x-8 gap-y-3">
-              <div>
-                <div className="text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Modelo</div>
-                <div className="text-sm font-bold">{c.equipo.modelo || '—'}</div>
-              </div>
-              <div>
-                <div className="text-[10.5px] font-extrabold uppercase tracking-wide text-muted">IMEI</div>
-                <div className="text-sm font-bold">{c.equipo.imei || '—'}</div>
-              </div>
+              <InfoField label={`Modelo${equipoLabelSuffix}`}>{c.equipo.modelo || '—'}</InfoField>
+              <InfoField label={`IMEI${equipoLabelSuffix}`}>{c.equipo.imei || '—'}</InfoField>
+              {c.tipoServicio === 'cambio_equipo' && (
+                <>
+                  <InfoField label="Modelo (instalado)">{c.equipo.modeloInstalado || '—'}</InfoField>
+                  <InfoField label="IMEI (instalado)">{c.equipo.imeiInstalado || '—'}</InfoField>
+                </>
+              )}
             </div>
 
             <div>
@@ -244,20 +324,27 @@ export default function ConformidadDetailPage() {
                 <div className="text-[11.5px] font-bold text-muted">{todasLasFotos.length}</div>
               </div>
               {todasLasFotos.length > 0 ? (
-                <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-8">
-                  {todasLasFotos.map((foto) => (
-                    <button
-                      key={`${foto.fase}-${foto.id}`}
-                      onClick={() => setLightboxUrl(foto.url)}
-                      className="relative aspect-square overflow-hidden rounded-sm shadow-inset"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={foto.url} alt="" className="h-full w-full object-cover" />
-                      <span className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5 text-center text-[9px] font-bold text-white">
-                        {foto.fase}
-                      </span>
-                    </button>
-                  ))}
+                <div className="grid grid-cols-4 gap-x-2.5 gap-y-3 sm:grid-cols-8">
+                  {todasLasFotos.map((foto) => {
+                    const label = fotoLabel(foto.fase === 'PRE' ? 'pre' : 'post', foto.slotKey);
+                    return (
+                      <button
+                        key={`${foto.fase}-${foto.id}`}
+                        onClick={() => setLightboxUrl(foto.url)}
+                        title={label ? `${foto.fase} · ${label}` : foto.fase}
+                        className="flex flex-col gap-1 text-left"
+                      >
+                        <span className="relative block aspect-square overflow-hidden rounded-sm shadow-inset">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={foto.url} alt="" className="h-full w-full object-cover" />
+                          <span className="absolute left-1 top-1 rounded-sm bg-black/60 px-1 py-0.5 text-[8.5px] font-extrabold text-white">
+                            {foto.fase}
+                          </span>
+                        </span>
+                        <span className="truncate text-[10px] font-semibold text-muted">{label ?? 'Foto'}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="flex aspect-[8/1] items-center justify-center rounded-sm text-muted shadow-inset">
@@ -267,7 +354,7 @@ export default function ConformidadDetailPage() {
               )}
             </div>
           </div>
-        )}
+        </div>
       </Card>
 
       <div className="inline-flex w-fit gap-1 rounded-md bg-surface p-1.5 shadow-inset">
@@ -322,17 +409,24 @@ export default function ConformidadDetailPage() {
               <div className="text-[11.5px] font-bold text-muted">{phase?.fotos.length ?? 0}</div>
             </div>
             {phase && phase.fotos.length > 0 ? (
-              <div className="grid grid-cols-4 gap-2.5 sm:grid-cols-6">
-                {phase.fotos.map((foto) => (
-                  <button
-                    key={foto.id}
-                    onClick={() => setLightboxUrl(foto.url)}
-                    className="aspect-square overflow-hidden rounded-sm shadow-inset"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={foto.url} alt="" className="h-full w-full object-cover" />
-                  </button>
-                ))}
+              <div className="grid grid-cols-4 gap-x-2.5 gap-y-3 sm:grid-cols-6">
+                {phase.fotos.map((foto) => {
+                  const label = fotoLabel(fase, foto.slotKey);
+                  return (
+                    <button
+                      key={foto.id}
+                      onClick={() => setLightboxUrl(foto.url)}
+                      title={label ?? undefined}
+                      className="flex flex-col gap-1 text-left"
+                    >
+                      <span className="block aspect-square overflow-hidden rounded-sm shadow-inset">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={foto.url} alt="" className="h-full w-full object-cover" />
+                      </span>
+                      <span className="truncate text-[10px] font-semibold text-muted">{label ?? 'Foto'}</span>
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <div className="flex aspect-[5/1] items-center justify-center rounded-sm text-muted shadow-inset">
