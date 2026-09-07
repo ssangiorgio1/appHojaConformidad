@@ -21,6 +21,7 @@ export type PrintableConformidad = Pick<
   | 'post'
   | 'equipo'
   | 'tipoServicio'
+  | 'ticketOdoo'
 >;
 
 function fmtDateTime(dateStr?: string, timeStr?: string): string {
@@ -218,6 +219,8 @@ export async function buildPrintHtml(
   .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; page-break-after: avoid; break-after: avoid; }
   .logo-img { height: 30px; display: block; }
   .logo-fallback { font-weight: 800; color: var(--primary); font-size: 17px; }
+  .header-badges { display: flex; align-items: center; gap: 8px; }
+  .ticket-badge { background: var(--tint); border: 1px solid var(--secondary); color: var(--secondary); font-weight: 700; font-size: 11.5px; padding: 5px 12px; border-radius: 4px; letter-spacing: 0.2px; }
   .numero-badge { background: var(--dark); color: #fff; font-weight: 700; font-size: 12.5px; padding: 6px 14px; border-radius: 4px; letter-spacing: 0.3px; }
 
   .title-banner { background: var(--primary); color: #fff; border-radius: 6px; padding: 9px 14px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; page-break-after: avoid; break-after: avoid; }
@@ -280,11 +283,15 @@ export async function buildPrintHtml(
 <body>
   <div class="header">
     ${opts?.logoDataUri ? `<img class="logo-img" src="${esc(opts.logoDataUri)}">` : '<div class="logo-fallback">WARA · Seguimiento y Control</div>'}
-    <div class="numero-badge">N° ${esc(record.numero) || '—'}</div>
+    <div class="header-badges">
+      ${record.ticketOdoo?.numero ? `<div class="ticket-badge">Ticket Odoo: #${esc(record.ticketOdoo.numero)}</div>` : ''}
+      <div class="numero-badge">N° ${esc(record.numero) || '—'}</div>
+    </div>
   </div>
   <div class="title-banner">
     <span class="t">Hoja de Conformidad</span>
     <div class="banner-pills">
+      ${record.ticketOdoo?.numero ? `<span class="status-pill">Ticket #${esc(record.ticketOdoo.numero)}</span>` : ''}
       ${tipoServicioLabel ? `<span class="status-pill">${esc(tipoServicioLabel)}</span>` : ''}
       <span class="status-pill">${esc(statusLabel)}</span>
     </div>
@@ -294,7 +301,11 @@ export async function buildPrintHtml(
     <table class="info-table">
       <tr><td class="k">Cliente</td><td class="v">${esc(record.cliente)}</td><td class="k">Matrícula</td><td class="v">${esc(record.matricula)}</td></tr>
       <tr><td class="k">Fecha y hora</td><td class="v">${esc(fmtDateTime(record.fecha, record.hora))}</td><td class="k">Instalador</td><td class="v">${esc(record.instalador)}</td></tr>
-      <tr><td class="k">Responsable empresa</td><td class="v" colspan="3">${esc(record.responsableEmpresa)}</td></tr>
+      <tr>
+        <td class="k">Responsable empresa</td>
+        <td class="v"${record.ticketOdoo?.numero ? '' : ' colspan="3"'}>${esc(record.responsableEmpresa)}</td>
+        ${record.ticketOdoo?.numero ? `<td class="k">Ticket Odoo</td><td class="v" style="font-weight: 700; color: var(--secondary);">#${esc(record.ticketOdoo.numero)}</td>` : ''}
+      </tr>
     </table>
   </div>
 
