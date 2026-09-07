@@ -303,10 +303,10 @@ function KpiCard({
   loading: boolean;
 }) {
   const toneClasses: Record<string, string> = {
-    primary: 'bg-line text-primary',
-    ok: 'bg-ok-bg text-ok',
-    warn: 'bg-warn-bg text-warn',
-    neutral: 'bg-line text-muted',
+    primary: 'bg-primary-50 text-primary-700',
+    ok: 'bg-success-50 text-success-700',
+    warn: 'bg-warning-50 text-warning-700',
+    neutral: 'bg-neutral-100 text-neutral-700',
   };
   return (
     <Card className="flex flex-col gap-4 p-5">

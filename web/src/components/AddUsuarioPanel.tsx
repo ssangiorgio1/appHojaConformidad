@@ -71,7 +71,7 @@ export function AddUsuarioPanel({ onClose, onCreated }: { onClose: () => void; o
 
   return (
     <div className="fixed inset-0 z-20">
-      <div className="absolute inset-0 bg-[#26201f]/28" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/45" onClick={onClose} />
       <Card className="absolute bottom-6 right-6 top-6 flex w-[440px] flex-col p-5">
         <div className="flex items-center justify-between">
           <div className="text-lg font-extrabold">{result ? 'Usuario creado' : 'Dar de alta usuario'}</div>
@@ -149,14 +149,14 @@ export function AddUsuarioPanel({ onClose, onCreated }: { onClose: () => void; o
 
             <div>
               <div className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wide text-muted">Rol</div>
-              <div className="flex gap-1.5 rounded-md bg-surface p-1 shadow-inset">
+              <div className="flex gap-1.5 rounded-md bg-neutral-50 p-1">
                 {ROLE_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
                     type="button"
                     onClick={() => setRole(opt.value)}
                     className={`flex-1 rounded-md px-2 py-2 text-xs font-bold transition ${
-                      role === opt.value ? 'bg-surface text-primary shadow-soft-sm' : 'text-muted'
+                      role === opt.value ? 'bg-primary-600 text-white' : 'text-muted'
                     }`}
                   >
                     {opt.label}

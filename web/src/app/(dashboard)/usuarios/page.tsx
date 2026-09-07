@@ -112,7 +112,7 @@ export default function UsuariosPage() {
               {filtered.map((u) => (
                 <div key={u._id} className="grid grid-cols-[1.8fr_1fr_1fr_60px] items-center border-t border-line">
                   <div className="flex items-center gap-3 p-3.5">
-                    <div className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-gradient-to-br from-[#d8cfc9] to-[#efe9e5] text-xs font-extrabold text-primary">
+                    <div className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-primary-50 text-xs font-extrabold text-primary-700">
                       {initials(u)}
                     </div>
                     <div className="min-w-0">
@@ -122,7 +122,7 @@ export default function UsuariosPage() {
                   </div>
                   <div className="p-3.5">
                     <select
-                      className="rounded-md bg-surface px-2.5 py-1.5 text-xs font-bold shadow-inset outline-none disabled:opacity-50"
+                      className="rounded-md bg-surface px-2.5 py-1.5 text-xs font-bold shadow-inset outline-none disabled:opacity-40"
                       value={u.role}
                       disabled={
                         pendingId === u._id ||

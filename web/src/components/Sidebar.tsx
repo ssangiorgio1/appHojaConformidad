@@ -45,8 +45,8 @@ export function Sidebar() {
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-3 rounded-md px-4 py-3 text-sm font-semibold transition ${
-                active ? 'bg-surface text-primary shadow-inset' : 'text-muted hover:text-text'
+              className={`flex items-center gap-3 rounded-md border-l-[3px] px-3.5 py-3 text-sm font-semibold transition ${
+                active ? 'border-primary-600 bg-primary-50 text-primary-700' : 'border-transparent text-muted hover:text-text'
               }`}
             >
               <Icon />
@@ -58,7 +58,7 @@ export function Sidebar() {
 
       <div className="mt-auto flex items-center gap-2.5 rounded-md bg-surface p-2.5 shadow-inset">
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <div className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-full bg-gradient-to-br from-[#d8cfc9] to-[#efe9e5] text-[13px] font-extrabold text-primary">
+          <div className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-full bg-primary-50 text-[13px] font-extrabold text-primary-700">
             {initials}
           </div>
           <div className="min-w-0 flex-1">

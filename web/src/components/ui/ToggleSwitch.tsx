@@ -17,8 +17,7 @@ export function ToggleSwitch({
       disabled={disabled}
       title={title}
       onClick={() => onChange(!checked)}
-      className="relative h-[22px] w-10 flex-none rounded-full shadow-inset transition disabled:opacity-50"
-      style={{ background: checked ? 'linear-gradient(145deg, var(--color-accent), var(--color-primary))' : undefined }}
+      className={`relative h-[22px] w-10 flex-none rounded-full transition disabled:opacity-40 ${checked ? 'bg-primary-600' : 'shadow-inset'}`}
     >
       <span
         className="absolute top-[3px] h-4 w-4 rounded-full bg-white shadow transition-all"

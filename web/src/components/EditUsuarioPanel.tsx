@@ -74,7 +74,7 @@ export function EditUsuarioPanel({
 
   return (
     <div className="fixed inset-0 z-20">
-      <div className="absolute inset-0 bg-[#26201f]/28" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/45" onClick={onClose} />
       <Card className="absolute bottom-6 right-6 top-6 flex w-[440px] flex-col p-5">
         <div className="flex items-center justify-between">
           <div className="text-lg font-extrabold">Editar usuario</div>
