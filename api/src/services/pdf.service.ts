@@ -1,6 +1,35 @@
 import puppeteer, { type Browser } from 'puppeteer';
+import sharp from 'sharp';
 import { buildPrintHtml, type PrintableConformidad } from '@wara/shared';
 import { buildObjectKey, uploadBuffer } from './r2.service.js';
+
+// Las fotos ya vienen resizeadas a ~1100px/JPEG 72% del lado del técnico
+// (para poder hacer zoom en el panel web) — pero en el PDF se imprimen en
+// cajas de apenas 120x120px, y Chromium al exportar a PDF embebe el archivo
+// fuente completo tal cual lo carga, no lo reescala a lo que realmente se ve
+// impreso. Un acta con 15-19 fotos terminaba pesando varios MB. Se vuelven a
+// re-encodar acá, server-side, a un tamaño apropiado para ese layout — el
+// original en R2 nunca se toca, sigue sirviendo para el zoom del panel.
+const PDF_PHOTO_MAX_DIM = 420;
+const PDF_PHOTO_QUALITY = 60;
+
+async function resizePhotoForPdf(url: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return undefined;
+    const original = Buffer.from(await res.arrayBuffer());
+    const resized = await sharp(original)
+      .rotate() // respeta la orientación EXIF antes de descartarla al re-encodar
+      .resize(PDF_PHOTO_MAX_DIM, PDF_PHOTO_MAX_DIM, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: PDF_PHOTO_QUALITY })
+      .toBuffer();
+    return `data:image/jpeg;base64,${resized.toString('base64')}`;
+  } catch {
+    // Si falla el resize (foto corrupta, R2 momentáneamente inaccesible, etc.)
+    // mejor imprimir la foto pesada que dejar el PDF sin esa foto.
+    return undefined;
+  }
+}
 
 // One Chromium instance shared across requests — launching it per-request
 // would add several seconds to every PDF generation.
@@ -33,7 +62,12 @@ async function getBrowser(): Promise<Browser> {
 }
 
 async function renderPdfBuffer(record: PrintableConformidad): Promise<Buffer> {
-  const html = await buildPrintHtml(record);
+  const html = await buildPrintHtml(record, {
+    resolvePhotoSrc: async (foto) => {
+      if (!foto.url) return foto.dataUrl;
+      return (await resizePhotoForPdf(foto.url)) ?? foto.url;
+    },
+  });
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
