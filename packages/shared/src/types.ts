@@ -51,13 +51,14 @@ export interface Firma {
 
 export interface Phase {
   checklist: Checklist;
+  fallaDetalle?: string;
   observaciones: string;
   fotos: Foto[];
   firma: Firma | null;
 }
 
 export function emptyPhase(): Phase {
-  return { checklist: emptyChecklist(), observaciones: '', fotos: [], firma: null };
+  return { checklist: emptyChecklist(), fallaDetalle: '', observaciones: '', fotos: [], firma: null };
 }
 
 // What the técnico typed/picked to identify the Odoo helpdesk ticket for

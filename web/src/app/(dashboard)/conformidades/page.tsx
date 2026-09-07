@@ -273,7 +273,15 @@ export default function ConformidadesPage() {
                 const expandHint = 'Desplegá la fila (flecha a la izquierda) para revisar el resumen antes de marcarla.';
                 return (
                   <div key={c._id} className="border-t border-line">
-                    <div className="grid grid-cols-[32px_1.2fr_1.4fr_1.1fr_0.9fr_0.9fr_1fr_0.9fr_1fr_1fr_60px] items-center">
+                    <div
+                      onClick={(e) => {
+                        const selection = window.getSelection()?.toString();
+                        if (selection && selection.trim().length > 0) return;
+                        const target = e.target as HTMLElement | null;
+                        if (target?.closest('button, a, input, [role="button"], label')) return;
+                        toggleExpanded(c._id);
+                      }}
+                      className="grid grid-cols-[32px_1.2fr_1.4fr_1.1fr_0.9fr_0.9fr_1fr_0.9fr_1fr_1fr_60px] items-center cursor-pointer hover:bg-neutral-50/70">
                       <div className="flex justify-center">
                         <button
                           type="button"

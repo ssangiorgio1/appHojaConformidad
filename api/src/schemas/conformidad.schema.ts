@@ -36,6 +36,7 @@ const firmaSchema = z
 
 const phaseInputSchema = z.object({
   checklist: checklistSchema.optional(),
+  fallaDetalle: z.string().optional(),
   observaciones: z.string().optional(),
   fotos: z.array(fotoSchema).optional(),
   firma: firmaSchema.optional(),

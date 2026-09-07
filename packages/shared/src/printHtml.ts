@@ -55,8 +55,14 @@ function checklistTable(record: PrintableConformidad): string {
     const indented = item.key.startsWith('item6_');
     const pre = record.pre.checklist[item.key] ?? null;
     const post = record.post.checklist[item.key] ?? null;
+    const isFalla = item.key === 'item6_falla';
     rows += `<tr>
-      <td class="item-label${indented ? ' indent' : ''}">${esc(item.label)}${item.note ? `<div class="note">${esc(item.note)}</div>` : ''}</td>
+      <td class="item-label${indented ? ' indent' : ''}">
+        ${esc(item.label)}
+        ${item.note ? `<div class="note">${esc(item.note)}</div>` : ''}
+        ${isFalla && record.pre.fallaDetalle ? `<div class="note"><strong>Falla PRE:</strong> ${esc(record.pre.fallaDetalle)}</div>` : ''}
+        ${isFalla && record.post.fallaDetalle ? `<div class="note"><strong>Falla POST:</strong> ${esc(record.post.fallaDetalle)}</div>` : ''}
+      </td>
       <td class="opt-cell">${siNoBadge(pre)}</td>
       <td class="opt-cell">${siNoBadge(post)}</td>
     </tr>`;

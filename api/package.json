@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc --noEmit",
+    "build": "puppeteer browsers install chrome && tsc --noEmit",
     "start": "tsx src/server.ts",
     "lint": "eslint src",
     "test": "vitest run",

@@ -14,3 +14,5 @@ build/
 
 # large brand asset, kept locally but not tracked (exceeds GitHub's recommended size)
 web/public/Wara-manual de marca*.pdf
+
+.cache/

@@ -268,15 +268,18 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
 
   const satisfaccion = record.post.firma?.satisfaccion;
   const motivo = record.post.firma?.motivo;
+  const preFalla = record.pre?.fallaDetalle ? `<p><b>Falla notificada (PRE):</b> ${esc(record.pre.fallaDetalle)}</p>` : '';
+  const postFalla = record.post?.fallaDetalle ? `<p><b>Falla notificada (POST):</b> ${esc(record.post.fallaDetalle)}</p>` : '';
   const resumenHtml = `<p><b>Hoja de conformidad completada</b> — ${esc(record.cliente)} (${esc(record.matricula)})</p>
     <p>Fecha: ${esc(record.fecha)} ${esc(record.hora)}<br>Instalador: ${esc(record.instalador)}</p>
     ${satisfaccion ? `<p>Estado de firma: ${esc(SATISFACCION_LABELS[satisfaccion] ?? satisfaccion)}</p>` : ''}
-    ${motivo ? `<p>Motivo: ${esc(motivo)}</p>` : ''}`;
-
-  // Generar el PDF en memoria para adjuntarlo a Odoo — no se guarda en R2.
-  const pdfBuffer = await renderConformidadPdf(record.toObject() as unknown as Parameters<typeof renderConformidadPdf>[0]);
+    ${motivo ? `<p>Motivo: ${esc(motivo)}</p>` : ''}
+    ${preFalla}
+    ${postFalla}`;
 
   try {
+    // Generar el PDF en memoria para adjuntarlo a Odoo — no se guarda en R2.
+    const pdfBuffer = await renderConformidadPdf(record.toObject() as unknown as Parameters<typeof renderConformidadPdf>[0]);
     await pushConformidadToTicket({
       ticketId,
       pdfBuffer,

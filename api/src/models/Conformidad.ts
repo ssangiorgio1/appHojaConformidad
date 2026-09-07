@@ -33,6 +33,7 @@ const FirmaSchema = new Schema(
 const PhaseSchema = new Schema(
   {
     checklist: { type: ChecklistSchema, default: () => ({}) },
+    fallaDetalle: { type: String, default: '' },
     observaciones: { type: String, default: '' },
     fotos: { type: [FotoSchema], default: [] },
     firma: { type: FirmaSchema, default: null },
