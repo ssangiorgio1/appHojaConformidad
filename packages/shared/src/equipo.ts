@@ -55,6 +55,15 @@ export const EQUIP_GROUPS = [
       { key: 'out1', label: 'Output 1', checkbox: true },
       { key: 'out2', label: 'Output 2', checkbox: true },
       { key: 'out3', label: 'Output 3', checkbox: true },
+      { key: 'io1', label: 'Entrada digital 1 (IO1)', checkbox: true },
+      // Solo se pide (y se muestra) cuando io1 está tildado — ver dependsOn.
+      { key: 'io1Detalle', label: 'Detalle entrada digital 1 (IO1)', dependsOn: 'io1' },
+      { key: 'io2', label: 'Entrada digital 2 (IO2)', checkbox: true },
+      { key: 'io2Detalle', label: 'Detalle entrada digital 2 (IO2)', dependsOn: 'io2' },
+      { key: 'ao1', label: 'Entrada analógica 1 (AO1)', checkbox: true },
+      { key: 'ao1Detalle', label: 'Detalle entrada analógica 1 (AO1)', dependsOn: 'ao1' },
+      { key: 'ao2', label: 'Entrada analógica 2 (AO2)', checkbox: true },
+      { key: 'ao2Detalle', label: 'Detalle entrada analógica 2 (AO2)', dependsOn: 'ao2' },
     ],
   },
   {
@@ -95,6 +104,13 @@ export type Equipo = Partial<Record<EquipoTextKey, string>> & Partial<Record<Equ
 
 export function emptyEquipo(): Equipo {
   return {};
+}
+
+// Campos con `dependsOn` (ej. los detalles de IO1/IO2/AO1/AO2) solo se
+// muestran — en el wizard, en el resumen del panel, o donde sea — cuando el
+// checkbox del que dependen está tildado.
+export function isEquipoFieldVisible(field: { key: string; dependsOn?: string }, equipo: Equipo): boolean {
+  return !field.dependsOn || Boolean(equipo[field.dependsOn as EquipoTextKey | EquipoCheckKey]);
 }
 
 export function missingRequiredEquipoLabels(equipo: Equipo): string[] {

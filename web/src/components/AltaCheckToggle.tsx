@@ -27,6 +27,7 @@ export function AltaCheckToggle({
   usuarioNombre,
   onToggle,
   showDetail = false,
+  titleOverride,
 }: {
   area: 'mesaAyuda' | 'coordinacion';
   value: AltaCheck;
@@ -37,6 +38,11 @@ export function AltaCheckToggle({
   // hover) — para la card de detalle, donde no alcanza con un tooltip poco
   // descubrible. Las vistas compactas (listado, dashboard) lo dejan en false.
   showDetail?: boolean;
+  // Pisa el título por defecto cuando canToggle es false por una razón
+  // distinta al rol (ej. el listado, que exige desplegar la fila primero) —
+  // sin esto, un usuario con permiso vería "pendiente de alta" sin pista de
+  // por qué no puede tocar el botón.
+  titleOverride?: string;
 }) {
   const [saving, setSaving] = useState(false);
 
@@ -56,9 +62,11 @@ export function AltaCheckToggle({
       }`
     : null;
 
-  const title = value.checked
-    ? `${AREA_LABEL[area]}: dado de alta${quienYCuando ? ` por ${quienYCuando}` : ''}`
-    : `${AREA_LABEL[area]}: pendiente de alta`;
+  const title =
+    titleOverride ??
+    (value.checked
+      ? `${AREA_LABEL[area]}: dado de alta${quienYCuando ? ` por ${quienYCuando}` : ''}`
+      : `${AREA_LABEL[area]}: pendiente de alta`);
 
   const badge = (
     <Badge tone={value.checked ? 'ok' : 'neutral'}>

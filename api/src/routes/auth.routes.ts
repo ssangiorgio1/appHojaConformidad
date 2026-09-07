@@ -41,6 +41,7 @@ authRouter.patch(
   '/usuarios/:id',
   requireAuth,
   requireRole(['admin', 'superadmin']),
+  authMutationLimiter,
   validate(updateUsuarioSchema),
   updateUsuario,
 );

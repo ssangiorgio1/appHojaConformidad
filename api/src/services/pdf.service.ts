@@ -82,11 +82,12 @@ async function renderPdfBuffer(record: PrintableConformidad): Promise<Buffer> {
   }
 }
 
-export async function generateConformidadPdf(
-  record: PrintableConformidad & { codigoActa: string },
-): Promise<{ url: string; key: string }> {
-  const buffer = await renderPdfBuffer(record);
-  const key = buildObjectKey({ codigoActa: record.codigoActa, fecha: record.fecha, fase: 'post', tipo: 'pdf', contentType: 'application/pdf' });
-  const { publicUrl } = await uploadBuffer(key, buffer, 'application/pdf');
-  return { url: publicUrl, key };
+// Genera el buffer del PDF sin subirlo a R2 — usado por los endpoints que
+// responden con streaming binario o adjuntan el PDF directamente a Odoo en
+// memoria, sin almacenamiento persistente.
+export async function buildConformidadPdfBuffer(
+  record: PrintableConformidad,
+): Promise<Buffer> {
+  return renderPdfBuffer(record);
 }
+

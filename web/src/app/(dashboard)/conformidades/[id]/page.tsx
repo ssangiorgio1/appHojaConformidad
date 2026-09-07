@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { CHECKLIST_ITEMS } from '@wara/shared/src/checklist';
@@ -9,8 +9,9 @@ import { PRE_PHOTO_SLOTS, POST_PHOTO_SLOTS } from '@wara/shared/src/photoSlots';
 import { SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, type ChecklistValue, type SatisfaccionFirma } from '@wara/shared';
 import { Card } from '@/components/ui/Card';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
-import { IconCamera, IconChevronDown, IconChevronLeft, IconLock, IconDocument, IconX } from '@/components/ui/Icons';
+import { IconCamera, IconChevronLeft, IconLock, IconDocument, IconX } from '@/components/ui/Icons';
 import { AltaCheckToggle, canToggleAlta } from '@/components/AltaCheckToggle';
+import { ConformidadResumen, InfoField, isEquipoFieldVisible } from '@/components/ConformidadResumen';
 import { getConformidad, generateConformidadPdf, listUsuarios, setAltaConformidad } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
 import { useApiData } from '@/lib/useApiData';
@@ -53,15 +54,6 @@ function fotoLabel(fase: 'pre' | 'post', slotKey?: string): string | null {
   return PHOTO_SLOT_LABELS[fase][slotKey] ?? null;
 }
 
-function InfoField({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div>
-      <div className="text-[10.5px] font-extrabold uppercase tracking-wide text-muted">{label}</div>
-      <div className="mt-0.5 text-sm font-bold">{children}</div>
-    </div>
-  );
-}
-
 export default function ConformidadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { getIdToken, usuario } = useAuth();
@@ -101,11 +93,6 @@ export default function ConformidadDetailPage() {
 
   const phase: Phase | undefined = c?.[fase];
   const tipoServicioLabel = c?.tipoServicio ? TIPO_SERVICIO_LABELS[c.tipoServicio] : null;
-  const esInstalacion = !c?.tipoServicio || c.tipoServicio === 'instalacion';
-  // modelo/imei del equipo describen el que se retira cuando el servicio es
-  // una desinstalación o un cambio de equipo (ver equipo.ts en @wara/shared).
-  const equipoLabelSuffix =
-    c?.tipoServicio === 'desinstalacion' ? ' (desinstalado)' : c?.tipoServicio === 'cambio_equipo' ? ' (retirado)' : '';
 
   async function handleGeneratePdf() {
     setGeneratingPdf(true);
@@ -120,30 +107,6 @@ export default function ConformidadDetailPage() {
       setGeneratingPdf(false);
     }
   }
-
-  const instaladosResumen = useMemo(() => {
-    if (!c) return [];
-    const equipo = c.equipo as Record<string, string | null | undefined>;
-    const fields: { key: string; label: string }[] = [];
-    for (const group of EQUIP_GROUPS.slice(1)) {
-      // skip "Datos del equipo" (modelo/imei se muestran aparte) y "Control
-      // de instalación" (son campos de texto, no checkboxes)
-      if (group.title === 'Control de instalación') continue;
-      for (const f of group.fields) fields.push(f);
-    }
-    // Los checkbox de EQUIP_GROUPS guardan 'Sí' (truthy) / '' al desmarcar —
-    // nunca 'SI' (mayúsculas, sin tilde), que es la convención de
-    // EQUIP_CHECK_FIELDS nada más. Comparar contra 'SI' acá nunca matcheaba.
-    return fields.filter((f) => Boolean(equipo[f.key])).map((f) => f.label);
-  }, [c]);
-
-  const todasLasFotos = useMemo(() => {
-    if (!c) return [];
-    return [
-      ...c.pre.fotos.map((foto) => ({ ...foto, fase: 'PRE' as const })),
-      ...c.post.fotos.map((foto) => ({ ...foto, fase: 'POST' as const })),
-    ];
-  }, [c]);
 
   const checklistRows = useMemo(() => {
     if (!phase) return [];
@@ -250,111 +213,7 @@ export default function ConformidadDetailPage() {
       </Card>
 
       <Card className="p-6">
-        <button
-          onClick={() => setResumenOpen((v) => !v)}
-          className="flex w-full items-start justify-between gap-3"
-        >
-          <div>
-            <div className="text-[15px] font-extrabold">{esInstalacion ? 'Resumen de instalación' : 'Resumen del servicio'}</div>
-            {!esInstalacion && tipoServicioLabel && (
-              <div className="mt-1 text-[11.5px] font-semibold text-muted">
-                Tipo de servicio: <span className="font-extrabold text-text">{tipoServicioLabel}</span>
-              </div>
-            )}
-          </div>
-          <IconChevronDown className={`mt-0.5 text-muted transition-transform ${resumenOpen ? 'rotate-180' : ''}`} />
-        </button>
-
-        <div
-          aria-hidden={!resumenOpen}
-          className={`mt-4 grid overflow-hidden transition-[grid-template-rows] duration-300 ease-in-out ${resumenOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
-        >
-          <div className="flex min-h-0 flex-col gap-4">
-            <div className="flex flex-wrap gap-x-8 gap-y-3">
-              <InfoField label={`Modelo${equipoLabelSuffix}`}>{c.equipo.modelo || '—'}</InfoField>
-              <InfoField label={`IMEI${equipoLabelSuffix}`}>{c.equipo.imei || '—'}</InfoField>
-              {c.tipoServicio === 'cambio_equipo' && (
-                <>
-                  <InfoField label="Modelo (instalado)">{c.equipo.modeloInstalado || '—'}</InfoField>
-                  <InfoField label="IMEI (instalado)">{c.equipo.imeiInstalado || '—'}</InfoField>
-                </>
-              )}
-            </div>
-
-            <div>
-              <div className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">
-                Sensores / módulos instalados
-              </div>
-              {instaladosResumen.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {instaladosResumen.map((label) => (
-                    <Badge key={label} tone="ok">
-                      {label}
-                    </Badge>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-[12.5px] font-semibold text-muted">Ninguno marcado.</div>
-              )}
-            </div>
-
-            <div>
-              <div className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">
-                Control de instalación
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {EQUIP_CHECK_FIELDS.map((f) => {
-                  const value = c.equipo[f.key];
-                  const tone = value === 'SI' ? 'ok' : value === 'NO' ? 'bad' : 'neutral';
-                  const label = value === 'SI' ? 'Sí' : value === 'NO' ? 'No' : 'Sin responder';
-                  return (
-                    <Badge key={f.key} tone={tone}>
-                      {f.label}: {label}
-                    </Badge>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <div className="text-[10.5px] font-extrabold uppercase tracking-wide text-muted">
-                  Todas las fotos (PRE + POST)
-                </div>
-                <div className="text-[11.5px] font-bold text-muted">{todasLasFotos.length}</div>
-              </div>
-              {todasLasFotos.length > 0 ? (
-                <div className="grid grid-cols-4 gap-x-2.5 gap-y-3 sm:grid-cols-8">
-                  {todasLasFotos.map((foto) => {
-                    const label = fotoLabel(foto.fase === 'PRE' ? 'pre' : 'post', foto.slotKey);
-                    return (
-                      <button
-                        key={`${foto.fase}-${foto.id}`}
-                        onClick={() => setLightboxUrl(foto.url)}
-                        title={label ? `${foto.fase} · ${label}` : foto.fase}
-                        className="flex flex-col gap-1 text-left"
-                      >
-                        <span className="relative block aspect-square overflow-hidden rounded-sm shadow-inset">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={foto.url} alt="" className="h-full w-full object-cover" />
-                          <span className="absolute left-1 top-1 rounded-sm bg-black/60 px-1 py-0.5 text-[8.5px] font-extrabold text-white">
-                            {foto.fase}
-                          </span>
-                        </span>
-                        <span className="truncate text-[10px] font-semibold text-muted">{label ?? 'Foto'}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="flex aspect-[8/1] items-center justify-center rounded-sm text-muted shadow-inset">
-                  <IconCamera />
-                  <span className="ml-2 text-xs font-semibold">Sin fotos cargadas</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <ConformidadResumen c={c} open={resumenOpen} onToggle={() => setResumenOpen((v) => !v)} />
       </Card>
 
       <div className="inline-flex w-fit gap-1 rounded-md bg-surface p-1.5 shadow-inset">
@@ -481,12 +340,14 @@ export default function ConformidadDetailPage() {
               {EQUIP_GROUPS.map((group) => (
                 <div key={group.title}>
                   <div className="mb-1 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">{group.title}</div>
-                  {group.fields.map((f) => (
-                    <div key={f.key} className="flex justify-between border-b border-line py-1.5 last:border-none">
-                      <span className="font-semibold text-muted">{f.label}</span>
-                      <span className="font-bold">{c.equipo[f.key] || '—'}</span>
-                    </div>
-                  ))}
+                  {group.fields
+                    .filter((f) => isEquipoFieldVisible(f, c.equipo))
+                    .map((f) => (
+                      <div key={f.key} className="flex justify-between border-b border-line py-1.5 last:border-none">
+                        <span className="font-semibold text-muted">{f.label}</span>
+                        <span className="font-bold">{c.equipo[f.key] || '—'}</span>
+                      </div>
+                    ))}
                 </div>
               ))}
               <div>

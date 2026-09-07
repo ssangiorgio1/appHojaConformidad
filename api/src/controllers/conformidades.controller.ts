@@ -5,8 +5,8 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { HttpError } from '../middleware/error.middleware.js';
 import { deriveCodigoActa } from '../services/codigoActa.service.js';
 import { escapeRegExp } from '../utils/regex.js';
-import { pushConformidadToTicket, OdooError } from '../services/odoo.service.js';
-import { generateConformidadPdf as renderConformidadPdf } from '../services/pdf.service.js';
+import { pushConformidadToTicket, verifyTicketExists, OdooError } from '../services/odoo.service.js';
+import { buildConformidadPdfBuffer as renderConformidadPdf } from '../services/pdf.service.js';
 import { decryptSecret } from '../utils/secretBox.js';
 import type {
   CreateConformidadInput,
@@ -70,7 +70,6 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
   }
 
   if (body.ticketOdoo !== undefined) record.ticketOdoo = body.ticketOdoo as typeof record.ticketOdoo;
-  if (body.pdfReporte !== undefined) record.pdfReporte = body.pdfReporte as typeof record.pdfReporte;
 
   if (body.pre) {
     if (body.pre.checklist) Object.assign(record.pre.checklist, body.pre.checklist);
@@ -185,24 +184,22 @@ export const getConformidadById = asyncHandler(async (req: Request, res: Respons
   res.json(record);
 });
 
-// Lets the web dashboard show/share a hoja de conformidad without needing
-// the mobile app to have generated one first (that only happens once a
-// ticket de Odoo is linked — see mobile/src/sync/sync.ts's pushToOdoo).
-// Cached on the record afterwards so repeat views don't re-render it.
+// Genera el PDF de la conformidad en memoria con Puppeteer y lo devuelve como
+// stream binario (application/pdf). No se guarda en R2 ni en MongoDB — el PDF
+// se produce bajo demanda cada vez. Esto elimina el almacenamiento en R2 y
+// garantiza que el PDF siempre refleja el estado actual del registro.
 export const generateConformidadPdf = asyncHandler(async (req: Request, res: Response) => {
   const record = await ConformidadModel.findOne({ _id: req.params.id, deletedAt: null });
   if (!record) throw new HttpError(404, 'Conformidad not found');
   assertOwnedByRequester(req, record.tecnicoId);
 
-  if (record.pdfReporte?.url && req.query.force !== '1') {
-    res.json({ pdfReporte: record.pdfReporte });
-    return;
-  }
+  const pdfBuffer = await renderConformidadPdf(record.toObject() as unknown as Parameters<typeof renderConformidadPdf>[0]);
 
-  const pdfReporte = await renderConformidadPdf(record.toObject() as unknown as Parameters<typeof renderConformidadPdf>[0]);
-  record.pdfReporte = pdfReporte;
-  await record.save();
-  res.json({ pdfReporte });
+  const filename = `Conformidad-${record.numero || record.id}.pdf`;
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+  res.setHeader('Content-Length', pdfBuffer.length);
+  res.send(pdfBuffer);
 });
 
 function esc(s: unknown): string {
@@ -224,7 +221,6 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
   assertOwnedByRequester(req, record.tecnicoId);
 
   if (!record.ticketOdoo?.numero) throw new HttpError(400, 'This record has no ticket de Odoo linked');
-  if (!record.pdfReporte?.url) throw new HttpError(400, 'This record has no PDF report generated yet');
 
   // The PDF is posted to Odoo as the técnico, not a shared service account —
   // they must have linked their own Odoo login from the profile screen first.
@@ -252,6 +248,24 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
     return;
   }
 
+  // ticketOdoo llega del PATCH general (el técnico lo tipea/elige al vincular
+  // el ticket) y nunca se re-valida contra Odoo después de eso — sin este
+  // chequeo, un id manipulado o simplemente viejo/borrado terminaba
+  // intentando adjuntar el PDF a un ticket que ya no existe, o a uno
+  // cualquiera con solo ese número.
+  const ticket = await verifyTicketExists(ticketId);
+  if (!ticket) {
+    record.odooSync = {
+      status: 'FAILED',
+      attempts: (record.odooSync?.attempts ?? 0) + 1,
+      lastError: 'El ticket de Odoo vinculado ya no existe',
+      lastAttemptAt: new Date(),
+    };
+    await record.save();
+    res.json({ odooSync: record.odooSync });
+    return;
+  }
+
   const satisfaccion = record.post.firma?.satisfaccion;
   const motivo = record.post.firma?.motivo;
   const resumenHtml = `<p><b>Hoja de conformidad completada</b> — ${esc(record.cliente)} (${esc(record.matricula)})</p>
@@ -259,10 +273,13 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
     ${satisfaccion ? `<p>Estado de firma: ${esc(SATISFACCION_LABELS[satisfaccion] ?? satisfaccion)}</p>` : ''}
     ${motivo ? `<p>Motivo: ${esc(motivo)}</p>` : ''}`;
 
+  // Generar el PDF en memoria para adjuntarlo a Odoo — no se guarda en R2.
+  const pdfBuffer = await renderConformidadPdf(record.toObject() as unknown as Parameters<typeof renderConformidadPdf>[0]);
+
   try {
     await pushConformidadToTicket({
       ticketId,
-      pdfUrl: record.pdfReporte.url,
+      pdfBuffer,
       fileName: `hoja_conformidad_${record.codigoActa}.pdf`,
       resumenHtml,
       as: { login: usuario.odoo.login, password: decryptSecret(usuario.odoo.passwordEnc) },

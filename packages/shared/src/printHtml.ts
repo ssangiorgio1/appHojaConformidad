@@ -1,5 +1,5 @@
 import { CHECKLIST_ITEMS, type ChecklistValue } from './checklist.js';
-import { EQUIP_GROUPS, EQUIP_CHECK_FIELDS } from './equipo.js';
+import { EQUIP_GROUPS, EQUIP_CHECK_FIELDS, isEquipoFieldVisible } from './equipo.js';
 import { PRE_PHOTO_SLOTS, POST_PHOTO_SLOTS, type PhotoSlotDef } from './photoSlots.js';
 import { SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
 
@@ -124,7 +124,15 @@ function equipoGrid(record: PrintableConformidad): string {
       'Módulos',
       fieldRows(equipo, byTitle['Módulos'].fields, tipoServicio) +
         `<tr><td colspan="2" class="mini-sub">Entradas / Salidas</td></tr>` +
-        fieldRows(equipo, byTitle['Entradas / Salidas'].fields, tipoServicio),
+        // Los detalles de IO1/IO2/AO1/AO2 (dependsOn) no se imprimen cuando
+        // su checkbox no está tildado — mismo criterio que el wizard POST y
+        // el resumen del panel, para no mostrar texto viejo de un campo que
+        // el técnico llegó a tipear y después destildó.
+        fieldRows(
+          equipo,
+          byTitle['Entradas / Salidas'].fields.filter((f) => isEquipoFieldVisible(f, record.equipo)),
+          tipoServicio,
+        ),
     ),
     equipCard('Elementos adicionales instalados', fieldRows(equipo, byTitle['Elementos adicionales instalados'].fields, tipoServicio)),
     equipCard(
@@ -265,7 +273,7 @@ export async function buildPrintHtml(
 </style></head>
 <body>
   <div class="header">
-    ${opts?.logoDataUri ? `<img class="logo-img" src="${opts.logoDataUri}">` : '<div class="logo-fallback">WARA · Seguimiento y Control</div>'}
+    ${opts?.logoDataUri ? `<img class="logo-img" src="${esc(opts.logoDataUri)}">` : '<div class="logo-fallback">WARA · Seguimiento y Control</div>'}
     <div class="numero-badge">N° ${esc(record.numero) || '—'}</div>
   </div>
   <div class="title-banner">

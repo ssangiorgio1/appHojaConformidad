@@ -50,9 +50,13 @@ const ticketOdooSchema = z
   })
   .nullable();
 
+// Mismo motivo que foto/firma de arriba: sin este refine, un técnico podía
+// PATCHear su propia hoja con pdfReporte.url apuntando a una URL interna
+// arbitraria y después disparar /odoo-sync, que hace fetch() server-side de
+// esa URL y sube el resultado como adjunto a un ticket — un SSRF real.
 const pdfReporteSchema = z
   .object({
-    url: z.string().min(1),
+    url: z.string().min(1).refine(isR2Url, 'url must point to the R2 public bucket'),
     key: z.string().min(1),
   })
   .nullable();

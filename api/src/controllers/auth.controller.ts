@@ -75,6 +75,15 @@ export const createUsuario = asyncHandler(async (req: Request, res: Response) =>
     throw new HttpError(403, 'Solo un superadmin puede crear una cuenta superadmin.');
   }
 
+  // Este endpoint hace upsert por email (findOneAndUpdate más abajo) — sin
+  // este chequeo, cualquier admin podía "crear" un usuario con el email del
+  // superadmin protegido y pisarle el rol/activo, exactamente lo que
+  // isProtectedSuperadmin dice que nunca debería poder pasar (ver el mismo
+  // chequeo en updateUsuario).
+  if (isProtectedSuperadmin(body.email)) {
+    throw new HttpError(403, 'Esta cuenta es intocable: no se puede crear ni editar por acá.');
+  }
+
   const { uid, tempPassword } = await ensureFirebaseUser(body.email);
   const usuario = await UsuarioModel.findOneAndUpdate(
     { email: body.email },

@@ -129,16 +129,13 @@ export async function verifyOdooLogin(login: string, password: string): Promise<
 // under their Odoo identity, not the shared service account.
 export async function pushConformidadToTicket(params: {
   ticketId: number;
-  pdfUrl: string;
+  pdfBuffer: Buffer;
   fileName: string;
   resumenHtml: string;
   as: { login: string; password: string };
 }): Promise<void> {
   try {
-    const pdfRes = await fetch(params.pdfUrl);
-    if (!pdfRes.ok) throw new OdooError('UNKNOWN', `No se pudo descargar el PDF (${pdfRes.status})`);
-    const buffer = Buffer.from(await pdfRes.arrayBuffer());
-    const base64 = buffer.toString('base64');
+    const base64 = params.pdfBuffer.toString('base64');
 
     // message_post's `attachments` kwarg expects raw content and
     // base64-encodes it itself — feeding it an already-base64 string double

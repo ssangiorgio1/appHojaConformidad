@@ -15,13 +15,7 @@ describe('pushConformidadToTicket', () => {
 
   beforeEach(() => {
     executeKwAsCredentials.mockReset();
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        arrayBuffer: async () => pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength),
-      }),
-    );
+    // fetch ya no se usa — pushConformidadToTicket recibe el Buffer directo.
   });
 
   it('creates the attachment with single-base64-encoded PDF bytes, then links it by id', async () => {
@@ -30,7 +24,7 @@ describe('pushConformidadToTicket', () => {
 
     await pushConformidadToTicket({
       ticketId: 99,
-      pdfUrl: 'https://r2.example.com/reportes/x.pdf',
+      pdfBuffer: pdfBytes,
       fileName: 'hoja_conformidad_X.pdf',
       resumenHtml: '<p><b>Hola</b></p>',
       as: { login: 'tecnico@wara.com', password: 'secret' },
@@ -62,19 +56,20 @@ describe('pushConformidadToTicket', () => {
     expect(postKwargs.attachments).toBeUndefined();
   });
 
-  it('wraps a download failure as an OdooError instead of posting a broken attachment', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }));
+  it('adjunta el buffer correctamente aunque el PDF tenga contenido vacío', async () => {
+    const emptyBuffer = Buffer.alloc(0);
+    executeKwAsCredentials.mockResolvedValueOnce(1);
+    executeKwAsCredentials.mockResolvedValueOnce(true);
 
-    await expect(
-      pushConformidadToTicket({
-        ticketId: 1,
-        pdfUrl: 'https://r2.example.com/missing.pdf',
-        fileName: 'x.pdf',
-        resumenHtml: '<p>x</p>',
-        as: { login: 'a', password: 'b' },
-      }),
-    ).rejects.toThrow(/404/);
+    await pushConformidadToTicket({
+      ticketId: 1,
+      pdfBuffer: emptyBuffer,
+      fileName: 'x.pdf',
+      resumenHtml: '<p>x</p>',
+      as: { login: 'a', password: 'b' },
+    });
 
-    expect(executeKwAsCredentials).not.toHaveBeenCalled();
+    const [, , , , attachArgs] = executeKwAsCredentials.mock.calls[0];
+    expect(attachArgs[0].datas).toBe('');
   });
 });

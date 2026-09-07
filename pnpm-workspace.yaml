@@ -4,6 +4,18 @@ packages:
   - "web"
   - "packages/*"
 virtualStoreDir: ".vs"
+# qs (transitive via express/express-rate-limit) has two moderate DoS CVEs
+# fixed in 6.16.0 — safe, mature API, no breaking changes expected. Left out
+# a similar override for the `uuid` CVE flagged in a security review
+# (transitive via firebase-admin's gaxios, and separately via mobile's old
+# Expo/xcode build tooling): the vulnerable code path only triggers when a
+# caller passes a custom `buf` argument to uuid v3/v5/v6, which none of our
+# dependencies do internally — low practical risk — while forcing uuid to
+# the >=11.1.1 patched line would jump mobile's xcode@3.0.1 (pinned to
+# uuid@7, a different major API) several majors and risk breaking its
+# already-fragile native build tooling for a legacy app being phased out.
+overrides:
+  qs: ^6.16.0
 allowBuilds:
   '@firebase/util': true
   esbuild: true

@@ -25,7 +25,16 @@ conformidadesRouter.use(requireAuth);
 conformidadesRouter.post('/', validate(createConformidadSchema), createConformidad);
 conformidadesRouter.get('/', validate(listConformidadesQuerySchema, 'query'), listConformidades);
 conformidadesRouter.get('/:id', getConformidadById);
-conformidadesRouter.patch('/:id', validate(patchConformidadSchema), patchConformidad);
+// coordinacion/mesa_ayuda solo deberían poder tocar el check de /alta más
+// abajo — sin este requireRole, este PATCH genérico (checklist, firma,
+// fotos, ticketOdoo) quedaba abierto a cualquier rol autenticado, muy por
+// encima de lo que la UI les habilita a hacer.
+conformidadesRouter.patch(
+  '/:id',
+  requireRole(['tecnico', 'admin', 'superadmin']),
+  validate(patchConformidadSchema),
+  patchConformidad,
+);
 conformidadesRouter.post('/:id/odoo-sync', syncConformidadToOdoo);
 conformidadesRouter.post('/:id/pdf', generateConformidadPdf);
 conformidadesRouter.post(

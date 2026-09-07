@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
-import { IconEye, IconSearch } from '@/components/ui/Icons';
+import { Select } from '@/components/ui/Select';
+import { IconChevronDown, IconEye, IconSearch, IconX } from '@/components/ui/Icons';
 import { AltaCheckToggle, canToggleAlta } from '@/components/AltaCheckToggle';
+import { ConformidadResumenBody } from '@/components/ConformidadResumen';
 import { listConformidades, listUsuarios, setAltaConformidad } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
 import { useApiData } from '@/lib/useApiData';
@@ -36,6 +38,20 @@ export default function ConformidadesPage() {
   const [altaMesaAyuda, setAltaMesaAyuda] = useState<'pendiente' | 'hecho' | ''>('');
   const [altaCoordinacion, setAltaCoordinacion] = useState<'pendiente' | 'hecho' | ''>('');
   const [page, setPage] = useState(1);
+  // Fila desplegada para ver el resumen (equipo, control de instalación,
+  // fotos) sin salir del listado — el check de alta de esa fila solo se
+  // puede tocar mientras está desplegada, para forzar a revisarla antes de
+  // marcarla en vez de tildar en cadena sin mirar (ver handleToggleAlta).
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  function toggleExpanded(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   // Wait for a pause in typing before hitting the API — avoids firing a
   // request on every keystroke.
@@ -75,6 +91,37 @@ export default function ConformidadesPage() {
     setData((prev) => (prev ? { ...prev, data: prev.data.map((c) => (c._id === id ? updated : c)) } : prev));
   }
 
+  // Chips removibles para que se vea de un vistazo qué filtros están activos
+  // sin tener que abrir cada select — y "Limpiar filtros" los saca todos de una.
+  const activeFilters = useMemo(
+    () =>
+      [
+        search && { key: 'search', label: `Buscar: "${search}"`, onRemove: () => setSearch('') },
+        tecnicoId && { key: 'tecnico', label: `Técnico: ${tecnicoNombre(tecnicoId)}`, onRemove: () => setTecnicoId('') },
+        status && { key: 'status', label: `Estado: ${ESTADO_LABEL[status]}`, onRemove: () => setStatus('') },
+        altaMesaAyuda && {
+          key: 'altaMA',
+          label: `Alta MA: ${altaMesaAyuda === 'hecho' ? 'Hecho' : 'Pendiente'}`,
+          onRemove: () => setAltaMesaAyuda(''),
+        },
+        altaCoordinacion && {
+          key: 'altaCoord',
+          label: `Alta Coord: ${altaCoordinacion === 'hecho' ? 'Hecho' : 'Pendiente'}`,
+          onRemove: () => setAltaCoordinacion(''),
+        },
+      ].filter((f): f is { key: string; label: string; onRemove: () => void } => Boolean(f)),
+    [search, tecnicoId, status, altaMesaAyuda, altaCoordinacion, tecnicoNombre],
+  );
+
+  function clearAllFilters() {
+    setPage(1);
+    setSearch('');
+    setTecnicoId('');
+    setStatus('');
+    setAltaMesaAyuda('');
+    setAltaCoordinacion('');
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -84,8 +131,25 @@ export default function ConformidadesPage() {
         </div>
       </div>
 
-      <Card small className="flex flex-wrap items-center gap-3 p-4">
-        <div className="relative min-w-[220px] flex-1">
+      <Card small className="flex flex-col gap-4 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <div className="text-[13px] font-extrabold">Filtros</div>
+            {activeFilters.length > 0 && <Badge tone="primary">{activeFilters.length}</Badge>}
+          </div>
+          {activeFilters.length > 0 && (
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="flex items-center gap-1 text-[11.5px] font-bold text-muted hover:text-text"
+            >
+              <IconX size={12} />
+              Limpiar filtros
+            </button>
+          )}
+        </div>
+
+        <div className="relative">
           <IconSearch className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
           <Input
             className="pl-10"
@@ -98,74 +162,102 @@ export default function ConformidadesPage() {
           />
         </div>
 
-        <select
-          className="rounded-md bg-surface px-4 py-3 text-sm font-semibold shadow-inset outline-none"
-          value={tecnicoId}
-          onChange={(e) => {
-            setPage(1);
-            setTecnicoId(e.target.value);
-          }}
-        >
-          <option value="">Técnico: todos</option>
-          {tecnicos.map((t) => (
-            <option key={t._id} value={t._id}>
-              {t.nombre || t.email}
-            </option>
-          ))}
-        </select>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div>
+            <div className="mb-1 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Técnico</div>
+            <Select
+              value={tecnicoId}
+              onChange={(e) => {
+                setPage(1);
+                setTecnicoId(e.target.value);
+              }}
+            >
+              <option value="">Todos</option>
+              {tecnicos.map((t) => (
+                <option key={t._id} value={t._id}>
+                  {t.nombre || t.email}
+                </option>
+              ))}
+            </Select>
+          </div>
 
-        <select
-          className="rounded-md bg-surface px-4 py-3 text-sm font-semibold shadow-inset outline-none"
-          value={status}
-          onChange={(e) => {
-            setPage(1);
-            setStatus(e.target.value as EstadoConformidad | '');
-          }}
-        >
-          <option value="">Estado: todos</option>
-          <option value="borrador_pre">Borrador PRE</option>
-          <option value="pendiente_post">Pendiente POST</option>
-          <option value="completo">Completo</option>
-        </select>
+          <div>
+            <div className="mb-1 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Estado</div>
+            <Select
+              value={status}
+              onChange={(e) => {
+                setPage(1);
+                setStatus(e.target.value as EstadoConformidad | '');
+              }}
+            >
+              <option value="">Todos</option>
+              <option value="borrador_pre">Borrador PRE</option>
+              <option value="pendiente_post">Pendiente POST</option>
+              <option value="completo">Completo</option>
+            </Select>
+          </div>
 
-        <select
-          className="rounded-md bg-surface px-4 py-3 text-sm font-semibold shadow-inset outline-none"
-          value={altaMesaAyuda}
-          onChange={(e) => {
-            setPage(1);
-            setAltaMesaAyuda(e.target.value as 'pendiente' | 'hecho' | '');
-          }}
-        >
-          <option value="">Alta mesa de ayuda: todos</option>
-          <option value="pendiente">Pendiente</option>
-          <option value="hecho">Hecho</option>
-        </select>
+          <div>
+            <div className="mb-1 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Alta mesa de ayuda</div>
+            <Select
+              value={altaMesaAyuda}
+              onChange={(e) => {
+                setPage(1);
+                setAltaMesaAyuda(e.target.value as 'pendiente' | 'hecho' | '');
+              }}
+            >
+              <option value="">Todos</option>
+              <option value="pendiente">Pendiente</option>
+              <option value="hecho">Hecho</option>
+            </Select>
+          </div>
 
-        <select
-          className="rounded-md bg-surface px-4 py-3 text-sm font-semibold shadow-inset outline-none"
-          value={altaCoordinacion}
-          onChange={(e) => {
-            setPage(1);
-            setAltaCoordinacion(e.target.value as 'pendiente' | 'hecho' | '');
-          }}
-        >
-          <option value="">Alta coordinación: todos</option>
-          <option value="pendiente">Pendiente</option>
-          <option value="hecho">Hecho</option>
-        </select>
+          <div>
+            <div className="mb-1 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Alta coordinación</div>
+            <Select
+              value={altaCoordinacion}
+              onChange={(e) => {
+                setPage(1);
+                setAltaCoordinacion(e.target.value as 'pendiente' | 'hecho' | '');
+              }}
+            >
+              <option value="">Todos</option>
+              <option value="pendiente">Pendiente</option>
+              <option value="hecho">Hecho</option>
+            </Select>
+          </div>
+        </div>
+
+        {activeFilters.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 border-t border-line pt-3">
+            {activeFilters.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={f.onRemove}
+                className="flex items-center gap-1.5 rounded-full bg-bg px-3 py-1 text-[11.5px] font-bold text-text shadow-inset"
+              >
+                {f.label}
+                <IconX size={11} />
+              </button>
+            ))}
+          </div>
+        )}
       </Card>
 
       {error && <Card className="p-4 text-sm font-semibold text-bad">{error}</Card>}
 
       <Card className="p-2.5 pb-4">
         <div className="overflow-x-auto">
-          <div className="min-w-[1060px]">
-            <div className="grid grid-cols-[1.2fr_1.4fr_1.1fr_0.9fr_0.9fr_1fr_0.9fr_1fr_1fr_60px] pb-2.5 pt-4">
-              {['Código acta', 'Cliente', 'Técnico', 'Unidad', 'Ticket', 'Fecha', 'Estado', 'Alta MA', 'Alta Coord', ''].map((h) => (
-                <div key={h} className="px-3.5 text-[11px] font-extrabold uppercase tracking-wide text-muted">
-                  {h}
-                </div>
-              ))}
+          <div className="min-w-[1110px]">
+            <div className="grid grid-cols-[32px_1.2fr_1.4fr_1.1fr_0.9fr_0.9fr_1fr_0.9fr_1fr_1fr_60px] pb-2.5 pt-4">
+              {['', 'Código acta', 'Cliente', 'Técnico', 'Unidad', 'Ticket', 'Fecha', 'Estado', 'Alta MA', 'Alta Coord', ''].map(
+                (h, i) => (
+                  <div key={i} className="px-3.5 text-[11px] font-extrabold uppercase tracking-wide text-muted">
+                    {h}
+                  </div>
+                ),
+              )}
             </div>
 
             {loading && !data && <div className="px-3 py-6 text-sm font-semibold text-muted">Cargando...</div>}
@@ -174,48 +266,73 @@ export default function ConformidadesPage() {
             )}
 
             <div className={`transition-opacity ${loading && data ? 'opacity-60' : ''}`}>
-              {data?.data.map((c) => (
-                <div
-                  key={c._id}
-                  className="grid grid-cols-[1.2fr_1.4fr_1.1fr_0.9fr_0.9fr_1fr_0.9fr_1fr_1fr_60px] items-center border-t border-line"
-                >
-                  <div className="p-3.5 text-[13px] font-bold text-primary">{c.codigoActa}</div>
-                  <div className="p-3.5 text-[13px] font-semibold">{c.cliente || '—'}</div>
-                  <div className="p-3.5 text-[13px] font-semibold text-muted">{tecnicoNombre(c.tecnicoId)}</div>
-                  <div className="p-3.5 text-[13px] font-semibold">{c.matricula || '—'}</div>
-                  <div className="p-3.5 text-[13px] font-semibold text-muted">{c.ticketOdoo?.numero || '—'}</div>
-                  <div className="p-3.5 text-[13px] font-semibold text-muted">{formatFechaHora(c.fecha)}</div>
-                  <div className="p-3.5">
-                    <Badge tone={ESTADO_TONE[c.status]}>{ESTADO_LABEL[c.status]}</Badge>
+              {data?.data.map((c) => {
+                const expanded = expandedIds.has(c._id);
+                const roleCanToggleMA = canToggleAlta(usuario?.role, 'mesaAyuda');
+                const roleCanToggleCoord = canToggleAlta(usuario?.role, 'coordinacion');
+                const expandHint = 'Desplegá la fila (flecha a la izquierda) para revisar el resumen antes de marcarla.';
+                return (
+                  <div key={c._id} className="border-t border-line">
+                    <div className="grid grid-cols-[32px_1.2fr_1.4fr_1.1fr_0.9fr_0.9fr_1fr_0.9fr_1fr_1fr_60px] items-center">
+                      <div className="flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(c._id)}
+                          title={expanded ? 'Ocultar resumen' : 'Ver resumen'}
+                          className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-bg"
+                        >
+                          <IconChevronDown className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                        </button>
+                      </div>
+                      <div className="p-3.5 text-[13px] font-bold text-primary">{c.codigoActa}</div>
+                      <div className="p-3.5 text-[13px] font-semibold">{c.cliente || '—'}</div>
+                      <div className="p-3.5 text-[13px] font-semibold text-muted">{tecnicoNombre(c.tecnicoId)}</div>
+                      <div className="p-3.5 text-[13px] font-semibold">{c.matricula || '—'}</div>
+                      <div className="p-3.5 text-[13px] font-semibold text-muted">{c.ticketOdoo?.numero || '—'}</div>
+                      <div className="p-3.5 text-[13px] font-semibold text-muted">{formatFechaHora(c.fecha)}</div>
+                      <div className="p-3.5">
+                        <Badge tone={ESTADO_TONE[c.status]}>{ESTADO_LABEL[c.status]}</Badge>
+                      </div>
+                      <div className="p-3.5">
+                        <AltaCheckToggle
+                          area="mesaAyuda"
+                          value={c.altaEquipo.mesaAyuda}
+                          canToggle={roleCanToggleMA && expanded}
+                          usuarioNombre={tecnicoNombre}
+                          onToggle={(checked) => handleToggleAlta(c._id, 'mesaAyuda', checked)}
+                          titleOverride={roleCanToggleMA && !expanded ? expandHint : undefined}
+                          showDetail
+                        />
+                      </div>
+                      <div className="p-3.5">
+                        <AltaCheckToggle
+                          area="coordinacion"
+                          value={c.altaEquipo.coordinacion}
+                          canToggle={roleCanToggleCoord && expanded}
+                          usuarioNombre={tecnicoNombre}
+                          onToggle={(checked) => handleToggleAlta(c._id, 'coordinacion', checked)}
+                          titleOverride={roleCanToggleCoord && !expanded ? expandHint : undefined}
+                          showDetail
+                        />
+                      </div>
+                      <div className="p-3.5">
+                        <Link
+                          href={`/conformidades/${c._id}`}
+                          className="flex h-[34px] w-[34px] items-center justify-center rounded-md bg-surface shadow-soft-sm"
+                        >
+                          <IconEye />
+                        </Link>
+                      </div>
+                    </div>
+
+                    {expanded && (
+                      <div className="border-t border-line bg-bg px-4 py-4">
+                        <ConformidadResumenBody c={c} />
+                      </div>
+                    )}
                   </div>
-                  <div className="p-3.5">
-                    <AltaCheckToggle
-                      area="mesaAyuda"
-                      value={c.altaEquipo.mesaAyuda}
-                      canToggle={canToggleAlta(usuario?.role, 'mesaAyuda')}
-                      usuarioNombre={tecnicoNombre}
-                      onToggle={(checked) => handleToggleAlta(c._id, 'mesaAyuda', checked)}
-                    />
-                  </div>
-                  <div className="p-3.5">
-                    <AltaCheckToggle
-                      area="coordinacion"
-                      value={c.altaEquipo.coordinacion}
-                      canToggle={canToggleAlta(usuario?.role, 'coordinacion')}
-                      usuarioNombre={tecnicoNombre}
-                      onToggle={(checked) => handleToggleAlta(c._id, 'coordinacion', checked)}
-                    />
-                  </div>
-                  <div className="p-3.5">
-                    <Link
-                      href={`/conformidades/${c._id}`}
-                      className="flex h-[34px] w-[34px] items-center justify-center rounded-md bg-surface shadow-soft-sm"
-                    >
-                      <IconEye />
-                    </Link>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
