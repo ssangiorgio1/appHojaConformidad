@@ -4,8 +4,10 @@ import { useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
 import { IconX } from '@/components/ui/Icons';
-import { updateUsuario, resetUsuarioPassword, ApiError } from '@/lib/api';
+import { updateUsuario, resetUsuarioPassword, listTechnicians, ApiError } from '@/lib/api';
+import { useApiData } from '@/lib/useApiData';
 import { useAuth } from '@/auth/AuthContext';
 import type { Usuario } from '@/lib/types';
 
@@ -21,8 +23,10 @@ export function EditUsuarioPanel({
   const { getIdToken } = useAuth();
   const [nombre, setNombre] = useState(usuario.nombre);
   const [legajo, setLegajo] = useState(usuario.legajo);
+  const [odooUserId, setOdooUserId] = useState(usuario.odooUserId != null ? String(usuario.odooUserId) : '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { data: technicians } = useApiData(listTechnicians, []);
 
   const [resetting, setResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
@@ -38,7 +42,11 @@ export function EditUsuarioPanel({
     setError(null);
     try {
       const token = await getIdToken();
-      await updateUsuario(token, usuario._id, { nombre: nombre.trim(), legajo: legajo.trim() });
+      await updateUsuario(token, usuario._id, {
+        nombre: nombre.trim(),
+        legajo: legajo.trim(),
+        odooUserId: odooUserId === '' ? null : Number(odooUserId),
+      });
       onUpdated();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No se pudo guardar.');
@@ -101,6 +109,24 @@ export function EditUsuarioPanel({
           <div>
             <div className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wide text-muted">Legajo</div>
             <Input value={legajo} onChange={(e) => setLegajo(e.target.value)} placeholder="Legajo" />
+          </div>
+
+          <div>
+            <div className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wide text-muted">
+              Cuenta Odoo (calendario)
+            </div>
+            <Select value={odooUserId} onChange={(e) => setOdooUserId(e.target.value)}>
+              <option value="">(sin vincular)</option>
+              {technicians?.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </Select>
+            <div className="mt-1.5 text-[11.5px] font-semibold text-muted">
+              Vincula esta cuenta con el técnico de Odoo para que el calendario de Field Service lo
+              muestre con este nombre.
+            </div>
           </div>
 
           {error && <div className="text-[12.5px] font-semibold text-bad">{error}</div>}

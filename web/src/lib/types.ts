@@ -11,6 +11,9 @@ export interface Usuario {
   role: UsuarioRole;
   legajo: string;
   activo: boolean;
+  // Mirrors api/src/models/Usuario.ts's odooUserId — el res.users de Odoo
+  // que representa a este técnico en el calendario de Field Service.
+  odooUserId: number | null;
   // True for the one superadmin account whose role/activo the API refuses to
   // change — see api/src/services/usuario.service.ts.
   protegido: boolean;
@@ -115,6 +118,43 @@ export interface Paginated<T> {
   totalPages: number;
 }
 
+// Mirrors api/src/services/calendarTask.service.ts
+export interface CalendarSubtask {
+  id: number;
+  name: string;
+  stage: string | null;
+  technicianName: string | null;
+  isClosed: boolean;
+  description: string | null;
+  odooUrl: string;
+}
+
+export interface CalendarTask {
+  id: number;
+  title: string;
+  start: string;
+  end: string | null;
+  technicianId: number | null;
+  technicianName: string | null;
+  partnerName: string | null;
+  stage: string | null;
+  description: string | null;
+  odooUrl: string;
+  subtaskCount: number;
+  subtasks: CalendarSubtask[];
+}
+
+export interface OdooTechnician {
+  id: number;
+  name: string;
+}
+
+export interface ListCalendarTasksQuery {
+  from: string;
+  to: string;
+  technicianIds?: number[];
+}
+
 // Mirrors api/src/schemas/conformidad.schema.ts's listConformidadesQuerySchema
 export interface ListConformidadesQuery {
   page?: number;
@@ -129,4 +169,77 @@ export interface ListConformidadesQuery {
   search?: string;
   altaMesaAyuda?: 'pendiente' | 'hecho';
   altaCoordinacion?: 'pendiente' | 'hecho';
+}
+
+// Mirrors api/src/schemas/reporte.schema.ts
+export interface ReporteVisitasQuery {
+  tecnicoId?: string;
+  fechaDesde?: string;
+  fechaHasta?: string;
+}
+
+// Mirrors api/src/services/reportes.service.ts — un renglón por VIAJE
+// (VisitaNotificacion), no por Conformidad: una tarea de lote genera varias
+// Conformidades para el mismo viaje, así que agrupar por Conformidad inflaba
+// "visitas" y duplicaba Salió/Llegó/Terminó. Cliente/tarea siguen viniendo
+// de una Conformidad (de exhibición nomás) porque VisitaNotificacion no los
+// tiene.
+export interface ReporteVisita {
+  visitaId: string;
+  tareaOdooId: number;
+  tareaNombre: string | null;
+  cliente: string | null;
+  tecnico: string | null;
+  estado: 'pendiente' | 'en_camino' | 'en_sitio' | 'completo' | null;
+  // false = el técnico cortó este viaje (canceló el borrador antes de
+  // terminar, o nunca volvió) sin llegar a 'completo' — sigue siendo un
+  // viaje real, no se borra, pero conviene distinguirlo de uno en curso.
+  abierta: boolean;
+  fecha: string | null;
+  hora: string | null;
+  enCaminoAt: string | null;
+  enSitioAt: string | null;
+  completoAt: string | null;
+  minutosTraslado: number | null;
+  minutosEnSitio: number | null;
+}
+
+// Mirrors api/src/services/reportes.service.ts getReporteTecnicos — un
+// renglón por técnico (no por visita) con sus promedios de tiempo de campo
+// y la carga de tareas/subtareas asignada en Odoo Field Service.
+export interface ReporteTecnico {
+  tecnicoId: string;
+  tecnico: string;
+  vinculadoOdoo: boolean;
+  visitas: number;
+  minutosTrasladoProm: number | null;
+  minutosEnSitioProm: number | null;
+  tareasTotal: number;
+  tareasCompletadas: number;
+  tareasPendientes: number;
+  subtareasTotal: number;
+  subtareasCompletadas: number;
+  subtareasPendientes: number;
+}
+
+// Mirrors api/src/models/SubtareaIncidencia.ts — una unidad de un lote que el
+// técnico no encontró en el lugar (no genera Conformidad, ver
+// ALCANCE_BACKOFFICE.md §14). Coordinación la ve acá para reprogramarla en
+// Odoo y marcarla resuelta.
+export type EstadoSubtareaIncidencia = 'pendiente_reprogramar' | 'reprogramada';
+
+export interface SubtareaIncidencia {
+  _id: string;
+  tareaOdooId: number;
+  subtareaOdooId: number;
+  subtareaNombre: string;
+  // Populado server-side (nombre/email) — ver getSubtareaIncidencias.
+  tecnicoId: { _id: string; nombre: string; email: string } | null;
+  fecha: string;
+  motivo: string;
+  estado: EstadoSubtareaIncidencia;
+  resueltaPor: string | null;
+  resueltaAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

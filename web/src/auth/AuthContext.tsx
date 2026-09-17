@@ -1,7 +1,13 @@
 'use client';
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut as fbSignOut, type User } from 'firebase/auth';
+import {
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signOut as fbSignOut,
+  type User,
+} from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { ApiError, getMe } from '@/lib/api';
 import type { Usuario } from '@/lib/types';
@@ -49,6 +55,7 @@ interface AuthContextValue {
   // login page shows this so a bounce-back to /login isn't unexplained.
   authError: string | null;
   signIn: (email: string, password: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   getIdToken: () => Promise<string>;
   refreshUsuario: () => Promise<void>;
@@ -101,6 +108,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           setAuthError(null);
           await signInWithEmailAndPassword(auth, email.trim(), password);
+        } catch (err) {
+          throw new Error(friendlyError(err));
+        }
+      },
+      resetPassword: async (email) => {
+        try {
+          await sendPasswordResetEmail(auth, email.trim());
         } catch (err) {
           throw new Error(friendlyError(err));
         }

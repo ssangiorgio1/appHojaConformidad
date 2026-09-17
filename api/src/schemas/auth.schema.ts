@@ -5,6 +5,7 @@ export const updateUsuarioSchema = z.object({
   legajo: z.string().trim().max(60).optional(),
   role: z.enum(['tecnico', 'admin', 'superadmin', 'coordinacion', 'mesa_ayuda']).optional(),
   activo: z.boolean().optional(),
+  odooUserId: z.number().int().positive().nullable().optional(),
 });
 
 export type UpdateUsuarioInput = z.infer<typeof updateUsuarioSchema>;

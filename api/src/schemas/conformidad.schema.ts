@@ -37,6 +37,8 @@ const firmaSchema = z
 const phaseInputSchema = z.object({
   checklist: checklistSchema.optional(),
   fallaDetalle: z.string().optional(),
+  item7Detalle: z.string().optional(),
+  item8Detalle: z.string().optional(),
   observaciones: z.string().optional(),
   fotos: z.array(fotoSchema).optional(),
   firma: firmaSchema.optional(),
@@ -48,6 +50,26 @@ const ticketOdooSchema = z
     odooId: z.number().int().positive().optional(),
     clienteOdoo: z.string().optional(),
     verified: z.boolean().optional(),
+  })
+  .nullable();
+
+// Solo se manda una vez, al crear el registro desde la pantalla de Agenda de
+// la PWA (tocando "Llegué — Comenzar trabajo" en una tarea) — no hay un caso
+// de uso para cambiarla después, a diferencia de ticketOdoo que sí se puede
+// re-vincular.
+const tareaOdooSchema = z
+  .object({
+    id: z.number().int().positive(),
+    nombre: z.string().optional(),
+  })
+  .nullable();
+
+// Igual que tareaOdoo, pero para la subtarea/unidad puntual dentro de un lote
+// (ver ALCANCE_BACKOFFICE.md §14) — también se manda una sola vez, al crear.
+const subtareaOdooSchema = z
+  .object({
+    id: z.number().int().positive(),
+    nombre: z.string().optional(),
   })
   .nullable();
 
@@ -95,6 +117,8 @@ export const createConformidadSchema = topLevelSchema
     clientId: z.string().min(1),
     pre: phaseInputSchema,
     ticketOdoo: ticketOdooSchema.optional(),
+    tareaOdoo: tareaOdooSchema.optional(),
+    subtareaOdoo: subtareaOdooSchema.optional(),
     tipoServicio: tipoServicioSchema.optional(),
   });
 

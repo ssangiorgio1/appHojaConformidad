@@ -10,6 +10,7 @@
     "lint": "eslint src",
     "test": "vitest run",
     "seed:superadmin": "tsx scripts/seedSuperAdmin.ts",
+    "discover:odoo-task-schema": "tsx scripts/discoverOdooTaskSchema.ts",
     "postinstall": "puppeteer browsers install chrome"
   },
   "dependencies": {

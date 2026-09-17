@@ -5,11 +5,33 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/auth/AuthContext';
-import { IconChevronLeft, IconDocument, IconGrid, IconLogout, IconUsers } from '@/components/ui/Icons';
+import {
+  IconAlertTriangle,
+  IconCalendar,
+  IconChevronLeft,
+  IconClock,
+  IconDocument,
+  IconGrid,
+  IconLogout,
+  IconUsers,
+} from '@/components/ui/Icons';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: IconGrid },
   { href: '/conformidades', label: 'Conformidades', icon: IconDocument },
+  { href: '/calendario', label: 'Calendario', icon: IconCalendar },
+  {
+    href: '/incidencias',
+    label: 'Unidades no encontradas',
+    icon: IconAlertTriangle,
+    roles: ['coordinacion', 'mesa_ayuda', 'admin', 'superadmin'] as const,
+  },
+  {
+    href: '/reportes/tecnicos',
+    label: 'Reportes',
+    icon: IconClock,
+    roles: ['coordinacion', 'admin', 'superadmin'] as const,
+  },
   { href: '/usuarios', label: 'Usuarios', icon: IconUsers, roles: ['admin', 'superadmin'] as const },
 ];
 

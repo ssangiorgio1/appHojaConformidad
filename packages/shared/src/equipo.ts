@@ -24,12 +24,16 @@ export const EQUIP_GROUPS = [
     title: 'Sensores',
     fields: [
       { key: 'sensorTemperatura', label: 'Temperatura', checkbox: true },
+      { key: 'sensorTemperaturaCantidad', label: 'Cantidad', dependsOn: 'sensorTemperatura', cantidad: true },
       { key: 'sensorAperturaPuertas', label: 'Apertura de puertas', checkbox: true },
+      { key: 'sensorAperturaPuertasCantidad', label: 'Cantidad', dependsOn: 'sensorAperturaPuertas', cantidad: true },
       { key: 'sensorAperturaPSemi', label: 'Apertura p/semi', checkbox: true },
+      { key: 'sensorAperturaPSemiCantidad', label: 'Cantidad', dependsOn: 'sensorAperturaPSemi', cantidad: true },
       { key: 'sensorGiro', label: 'Sensor de giro', checkbox: true },
       { key: 'canbus', label: 'CANBUS', checkbox: true },
       { key: 'trabaRobusta', label: 'Traba robusta', checkbox: true },
-      { key: 'medComb', label: 'Medidor de combustible', checkbox: true },
+      { key: 'medComb', label: 'Varilla de combustible', checkbox: true },
+      { key: 'medCombCantidad', label: 'Cantidad', dependsOn: 'medComb', cantidad: true },
       { key: 'desAcopSemi', label: 'Desacople / semi', checkbox: true },
     ],
   },
@@ -44,17 +48,13 @@ export const EQUIP_GROUPS = [
       { key: 'modRFID', label: 'RFID', checkbox: true },
       { key: 'modDALLAS', label: 'DALLAS', checkbox: true },
       { key: 'modPantallaSerie', label: 'Pantalla N° serie', checkbox: true },
+      // Only asked (and shown) when modPantallaSerie is checked.
+      { key: 'modPantallaSerieDetalle', label: 'N° de serie (Pantalla)', dependsOn: 'modPantallaSerie' },
     ],
   },
   {
     title: 'Entradas / Salidas',
     fields: [
-      { key: 'in1', label: 'Input 1', checkbox: true },
-      { key: 'in2', label: 'Input 2', checkbox: true },
-      { key: 'in3', label: 'Input 3', checkbox: true },
-      { key: 'out1', label: 'Output 1', checkbox: true },
-      { key: 'out2', label: 'Output 2', checkbox: true },
-      { key: 'out3', label: 'Output 3', checkbox: true },
       { key: 'io1', label: 'Entrada digital 1 (IO1)', checkbox: true },
       // Solo se pide (y se muestra) cuando io1 está tildado — ver dependsOn.
       { key: 'io1Detalle', label: 'Detalle entrada digital 1 (IO1)', dependsOn: 'io1' },
@@ -69,10 +69,13 @@ export const EQUIP_GROUPS = [
   {
     title: 'Elementos adicionales instalados',
     fields: [
-      { key: 'varillaCombustible', label: 'Varilla de combustible', checkbox: true },
       { key: 'camarasAdas', label: 'Cámaras ADAS', checkbox: true },
+      // Only asked (and shown) when camarasAdas is checked — same idea as
+      // io1Detalle/etc.
+      { key: 'camarasAdasSerie', label: 'N° de serie (Cámaras ADAS)', dependsOn: 'camarasAdas' },
       { key: 'moduloWifi', label: 'Módulo wifi', checkbox: true },
       { key: 'antenaStarlink', label: 'Antena Starlink', checkbox: true },
+      { key: 'antenaStarlinkSerie', label: 'N° de serie (Antena Starlink)', dependsOn: 'antenaStarlink' },
     ],
   },
   {
@@ -117,7 +120,11 @@ export function missingRequiredEquipoLabels(equipo: Equipo): string[] {
   const missing: string[] = [];
   for (const group of EQUIP_GROUPS) {
     for (const f of group.fields) {
-      if ('required' in f && f.required && !equipo[f.key]?.trim()) {
+      // A field with `dependsOn` becomes required as soon as the field it
+      // depends on is checked — no point letting the técnico move on with
+      // the checkbox ticked but no detail describing what it is.
+      const isRequired = ('required' in f && f.required) || ('dependsOn' in f && f.dependsOn && isEquipoFieldVisible(f, equipo));
+      if (isRequired && !equipo[f.key]?.trim()) {
         missing.push(f.label);
       }
     }

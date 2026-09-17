@@ -30,3 +30,12 @@ export function formatIsoDateTime(iso?: string): string {
   const parts = Object.fromEntries(fmt.formatToParts(d).map((p) => [p.type, p.value]));
   return formatFechaHora(`${parts.year}-${parts.month}-${parts.day}`, `${parts.hour}:${parts.minute}`);
 }
+
+// Duración de traslado/trabajo del reporte de técnicos — null significa que
+// todavía no se cruzó la transición siguiente (ej. sigue en camino), no un dato faltante.
+export function formatMinutos(min?: number | null): string {
+  if (min === null || min === undefined) return '—';
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h === 0 ? `${m} min` : `${h} h ${m} min`;
+}

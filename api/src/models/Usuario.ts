@@ -12,6 +12,12 @@ const usuarioSchema = new Schema(
     },
     legajo: { type: String, default: '' },
     activo: { type: Boolean, default: true },
+    // Id de res.users en Odoo que representa a este técnico en Field
+    // Service (calendarTask.service.ts). Es administrativo — lo setea
+    // admin/superadmin desde /usuarios — distinto del `odoo` de abajo, que
+    // es el login/password personal que el propio técnico vincula para
+    // postear conformidades como sí mismo.
+    odooUserId: { type: Number, default: null },
     // Técnico's personal Odoo account, linked from the profile screen so the
     // hoja de conformidad PDF can be posted to a ticket as them instead of
     // the shared service account. passwordEnc is AES-256-GCM (see

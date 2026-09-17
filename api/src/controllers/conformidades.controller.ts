@@ -6,6 +6,8 @@ import { HttpError } from '../middleware/error.middleware.js';
 import { deriveCodigoActa } from '../services/codigoActa.service.js';
 import { escapeRegExp } from '../utils/regex.js';
 import { pushConformidadToTicket, verifyTicketExists, OdooError } from '../services/odoo.service.js';
+import { notificarEstadoVisita } from '../services/telegram.service.js';
+import { cerrarVisitaLoteSiTodoResuelto } from '../services/loteVisita.service.js';
 import { buildConformidadPdfBuffer as renderConformidadPdf } from '../services/pdf.service.js';
 import { decryptSecret } from '../utils/secretBox.js';
 import type {
@@ -47,6 +49,8 @@ export const createConformidad = asyncHandler(async (req: Request, res: Response
     tecnicoId: req.user!.usuarioId,
     pre: body.pre,
     ticketOdoo: body.ticketOdoo,
+    tareaOdoo: body.tareaOdoo,
+    subtareaOdoo: body.subtareaOdoo,
   });
 
   res.status(201).json(record);
@@ -59,6 +63,11 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
   if (!record) throw new HttpError(404, 'Conformidad not found');
 
   assertOwnedByRequester(req, record.tecnicoId);
+
+  // Capturado antes de tocar el record — así el aviso de "trabajo finalizado"
+  // solo sale la primera vez que se cruza a 'completo', no en cada PATCH
+  // posterior (ej. el técnico reintenta subir una foto después de firmado).
+  const wasCompleto = record.status === 'completo';
 
   if (body.post && record.status === 'borrador_pre') {
     throw new HttpError(400, 'PRE must be finished before submitting POST data');
@@ -96,6 +105,28 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
   if (body.equipo) Object.assign(record.equipo, body.equipo);
 
   await record.save();
+
+  // Decoupled del guardado a propósito, mismo criterio que syncConformidadToOdoo
+  // más abajo: si Telegram está caído o el cliente nunca hizo opt-in, eso
+  // nunca debe impedir que el PATCH del técnico se guarde — notificarEstadoVisita
+  // ya loguea y no tira.
+  //
+  // subtareaOdoo separa dos casos: sin lote, terminar ESTA hoja es terminar
+  // la visita, directo. Con lote (subtareaOdoo seteado), esta unidad puede no
+  // ser la última — cerrarVisitaLoteSiTodoResuelto revisa contra Odoo si ya
+  // no le queda ninguna unidad PROPIA del técnico sin resolver (completa o
+  // "no encontrada") y recién ahí cierra. Antes esto no se chequeaba nunca acá
+  // y dependía 100% de que el técnico volviera a tocar "Finalizar visita" a
+  // mano — si la tarea se reasignaba en el medio, esa ficha podía volverse
+  // inalcanzable y el banner quedaba pegado para siempre.
+  if (!wasCompleto && record.status === 'completo' && record.tareaOdoo?.id) {
+    if (!record.subtareaOdoo) {
+      await notificarEstadoVisita(record.tareaOdoo.id, 'completo', record.tecnicoId);
+    } else {
+      await cerrarVisitaLoteSiTodoResuelto(record.tareaOdoo.id, record.tecnicoId);
+    }
+  }
+
   res.json(record);
 });
 
@@ -270,12 +301,20 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
   const motivo = record.post.firma?.motivo;
   const preFalla = record.pre?.fallaDetalle ? `<p><b>Falla notificada (PRE):</b> ${esc(record.pre.fallaDetalle)}</p>` : '';
   const postFalla = record.post?.fallaDetalle ? `<p><b>Falla notificada (POST):</b> ${esc(record.post.fallaDetalle)}</p>` : '';
+  const preItem7 = record.pre?.item7Detalle ? `<p><b>Tornillos de panel/tablero (PRE):</b> ${esc(record.pre.item7Detalle)}</p>` : '';
+  const postItem7 = record.post?.item7Detalle ? `<p><b>Tornillos de panel/tablero (POST):</b> ${esc(record.post.item7Detalle)}</p>` : '';
+  const preItem8 = record.pre?.item8Detalle ? `<p><b>Tapizados (PRE):</b> ${esc(record.pre.item8Detalle)}</p>` : '';
+  const postItem8 = record.post?.item8Detalle ? `<p><b>Tapizados (POST):</b> ${esc(record.post.item8Detalle)}</p>` : '';
   const resumenHtml = `<p><b>Hoja de conformidad completada</b> — ${esc(record.cliente)} (${esc(record.matricula)})</p>
     <p>Fecha: ${esc(record.fecha)} ${esc(record.hora)}<br>Instalador: ${esc(record.instalador)}</p>
     ${satisfaccion ? `<p>Estado de firma: ${esc(SATISFACCION_LABELS[satisfaccion] ?? satisfaccion)}</p>` : ''}
     ${motivo ? `<p>Motivo: ${esc(motivo)}</p>` : ''}
     ${preFalla}
-    ${postFalla}`;
+    ${postFalla}
+    ${preItem7}
+    ${postItem7}
+    ${preItem8}
+    ${postItem8}`;
 
   try {
     // Generar el PDF en memoria para adjuntarlo a Odoo — no se guarda en R2.

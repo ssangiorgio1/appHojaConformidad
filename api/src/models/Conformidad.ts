@@ -34,6 +34,8 @@ const PhaseSchema = new Schema(
   {
     checklist: { type: ChecklistSchema, default: () => ({}) },
     fallaDetalle: { type: String, default: '' },
+    item7Detalle: { type: String, default: '' },
+    item8Detalle: { type: String, default: '' },
     observaciones: { type: String, default: '' },
     fotos: { type: [FotoSchema], default: [] },
     firma: { type: FirmaSchema, default: null },
@@ -70,6 +72,32 @@ const TicketOdooSchema = new Schema(
     odooId: { type: Number, default: null },
     clienteOdoo: { type: String, default: '' },
     verified: { type: Boolean, default: false },
+  },
+  { _id: false },
+);
+
+// La tarea de FSM (project.task) de la que nace esta visita cuando se creó
+// desde /agenda — distinta de TicketOdooSchema (helpdesk.ticket, usado para
+// postear el PDF): no todas las tareas tienen un ticket vinculado, así que
+// no se puede reusar un solo campo para las dos cosas. Es el id que dispara
+// el aviso de "trabajo finalizado" por Telegram — ver notificarEstadoVisita.
+const TareaOdooSchema = new Schema(
+  {
+    id: { type: Number, required: true },
+    nombre: { type: String, default: '' },
+  },
+  { _id: false },
+);
+
+// La subtarea (unidad puntual, ej. una patente dentro de un lote de "instalar
+// N unidades") de la que nace esta hoja — ver ALCANCE_BACKOFFICE.md §14.
+// Deliberadamente separada de TareaOdooSchema, que sigue apuntando siempre a
+// la tarea padre: VisitaNotificacion/Telegram (notificarEstadoVisita) siguen
+// atados al lote completo, no a la unidad individual — no tocar tareaOdoo acá.
+const SubtareaOdooSchema = new Schema(
+  {
+    id: { type: Number, required: true },
+    nombre: { type: String, default: '' },
   },
   { _id: false },
 );
@@ -131,6 +159,8 @@ const ConformidadSchema = new Schema(
     altaEquipo: { type: AltaEquipoSchema, default: () => ({}) },
 
     ticketOdoo: { type: TicketOdooSchema, default: null },
+    tareaOdoo: { type: TareaOdooSchema, default: null },
+    subtareaOdoo: { type: SubtareaOdooSchema, default: null },
     odooSync: { type: OdooSyncSchema, default: () => ({}) },
     pdfReporte: { type: PdfReporteSchema, default: null },
 

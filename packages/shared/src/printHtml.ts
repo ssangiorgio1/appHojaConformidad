@@ -1,6 +1,6 @@
-import { CHECKLIST_ITEMS, type ChecklistValue } from './checklist.js';
+import { CHECKLIST_ITEMS, DETAIL_FIELD_BY_KEY, type ChecklistValue } from './checklist.js';
 import { EQUIP_GROUPS, EQUIP_CHECK_FIELDS, isEquipoFieldVisible } from './equipo.js';
-import { PRE_PHOTO_SLOTS, POST_PHOTO_SLOTS, type PhotoSlotDef } from './photoSlots.js';
+import { PRE_PHOTO_SLOTS, POST_PHOTO_SLOTS, SENSORES_ACCESORIOS_GROUP_KEY, type PhotoSlotDef } from './photoSlots.js';
 import { SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
 
 // The fields buildPrintHtml actually reads — deliberately narrower than the
@@ -56,13 +56,17 @@ function checklistTable(record: PrintableConformidad): string {
     const indented = item.key.startsWith('item6_');
     const pre = record.pre.checklist[item.key] ?? null;
     const post = record.post.checklist[item.key] ?? null;
-    const isFalla = item.key === 'item6_falla';
+    // Any item with requiresDetailWhen (item6_falla, item7, item8 today) may
+    // carry a detail — not just the falla, unlike before.
+    const detailField = DETAIL_FIELD_BY_KEY[item.key];
+    const preDetalle = detailField ? record.pre[detailField] : undefined;
+    const postDetalle = detailField ? record.post[detailField] : undefined;
     rows += `<tr>
       <td class="item-label${indented ? ' indent' : ''}">
         ${esc(item.label)}
         ${item.note ? `<div class="note">${esc(item.note)}</div>` : ''}
-        ${isFalla && record.pre.fallaDetalle ? `<div class="note"><strong>Falla PRE:</strong> ${esc(record.pre.fallaDetalle)}</div>` : ''}
-        ${isFalla && record.post.fallaDetalle ? `<div class="note"><strong>Falla POST:</strong> ${esc(record.post.fallaDetalle)}</div>` : ''}
+        ${preDetalle ? `<div class="note"><strong>Detalle PRE:</strong> ${esc(preDetalle)}</div>` : ''}
+        ${postDetalle ? `<div class="note"><strong>Detalle POST:</strong> ${esc(postDetalle)}</div>` : ''}
       </td>
       <td class="opt-cell">${siNoBadge(pre)}</td>
       <td class="opt-cell">${siNoBadge(post)}</td>
@@ -154,6 +158,10 @@ export type PhotoSrcResolver = (foto: Foto) => Promise<string | undefined> | str
 
 const defaultResolvePhotoSrc: PhotoSrcResolver = (foto) => foto.dataUrl ?? foto.url;
 
+const GALLERY_LABELS: Record<string, string> = {
+  [SENSORES_ACCESORIOS_GROUP_KEY]: 'Sensores / Accesorios',
+};
+
 async function photosBlock(slots: PhotoSlotDef[], fotos: Foto[], titulo: string, resolvePhotoSrc: PhotoSrcResolver): Promise<string> {
   if (!fotos.length) return '';
 
@@ -165,10 +173,15 @@ async function photosBlock(slots: PhotoSlotDef[], fotos: Foto[], titulo: string,
   // Fotos sin slotKey reconocido (registros sincronizados antes de que el
   // servidor empezara a persistirlo, o cualquier otro desfasaje) igual se
   // imprimen en vez de desaparecer sin aviso del PDF — con una leyenda
-  // genérica en lugar de la del slot.
+  // genérica en lugar de la del slot. La galería de sensores/accesorios (N
+  // fotos con el mismo slotKey, ver GalleryPhotoCapture) cae acá también —
+  // no está en `slots` porque no es 1 foto = 1 slot — pero se le da su
+  // propia leyenda en vez de la genérica.
   const matchedIds = new Set(matched.map((m) => m.foto.id));
   for (const foto of fotos) {
-    if (!matchedIds.has(foto.id)) matched.push({ foto, label: 'Foto adicional' });
+    if (!matchedIds.has(foto.id)) {
+      matched.push({ foto, label: GALLERY_LABELS[foto.slotKey ?? ''] ?? 'Foto adicional' });
+    }
   }
 
   const cells = await Promise.all(
@@ -322,6 +335,9 @@ export async function buildPrintHtml(
   <div class="keep-together">
     <div class="obs-label">Observaciones PRE instalación</div>
     <div class="obs-box">${esc(record.pre.observaciones) || 'Sin observaciones.'}</div>
+  </div>
+  ${prePhotos}
+  <div class="keep-together">
     <div class="sig-row">
       <div class="sig-block">
         ${sigSrc(record.pre.firma) ? `<img class="sig" src="${esc(sigSrc(record.pre.firma))}">` : '<div class="sig-line"></div>'}
@@ -329,11 +345,13 @@ export async function buildPrintHtml(
       </div>
     </div>
   </div>
-  ${prePhotos}
 
   <div class="keep-together">
     <div class="obs-label">Observaciones POST instalación</div>
     <div class="obs-box">${esc(record.post.observaciones) || 'Sin observaciones.'}</div>
+  </div>
+  ${postPhotos}
+  <div class="keep-together">
     <div class="sig-row">
       <div class="sig-block">
         ${
@@ -354,6 +372,5 @@ export async function buildPrintHtml(
       </div>
     </div>
   </div>
-  ${postPhotos}
 </body></html>`;
 }

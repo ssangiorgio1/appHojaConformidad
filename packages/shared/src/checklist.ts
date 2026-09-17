@@ -24,6 +24,11 @@ export interface ChecklistItemDef {
   label: string;
   note?: string;
   group?: string;
+  // If set, answering this value (SI or NO) requires a separate detail
+  // textfield (fallaDetalle/item7Detalle/item8Detalle on Phase, see
+  // types.ts). item6_falla triggers on 'SI', item7/item8 on 'NO' — the value
+  // differs per item on purpose, hence a config field instead of a boolean.
+  requiresDetailWhen?: 'SI' | 'NO';
 }
 
 export const CHECKLIST_ITEMS: ChecklistItemDef[] = [
@@ -41,9 +46,9 @@ export const CHECKLIST_ITEMS: ChecklistItemDef[] = [
   { key: 'item6_alternador', label: 'c) Luz de alternador.' },
   { key: 'item6_presion', label: 'd) Luz de presión de aceite.' },
   { key: 'item6_temp', label: 'e) Luz de temperatura.' },
-  { key: 'item6_falla', label: 'f) Notificar sobre alguna luz de falla.' },
-  { key: 'item7', label: '7. Tornillos de panel y tablero completo.' },
-  { key: 'item8', label: '8. Tapizado de asientos delanteros.' },
+  { key: 'item6_falla', label: 'f) Notificar sobre alguna luz de falla.', requiresDetailWhen: 'SI' },
+  { key: 'item7', label: '7. Tornillos de panel y tablero completo.', requiresDetailWhen: 'NO' },
+  { key: 'item8', label: '8. Tapizados asientos en general.', requiresDetailWhen: 'NO' },
 ];
 
 export const CHECKLIST_LABELS: Record<ChecklistKey, string> = Object.fromEntries(
@@ -59,6 +64,29 @@ export function emptyChecklist(): Checklist {
 
 export function missingChecklistItems(checklist: Checklist): ChecklistItemDef[] {
   return CHECKLIST_ITEMS.filter((item) => !checklist[item.key]);
+}
+
+// Field name on Phase (types.ts) holding the detail for each item that needs
+// one — same mapping for PRE and POST.
+export const DETAIL_FIELD_BY_KEY: Partial<Record<ChecklistKey, 'fallaDetalle' | 'item7Detalle' | 'item8Detalle'>> = {
+  item6_falla: 'fallaDetalle',
+  item7: 'item7Detalle',
+  item8: 'item8Detalle',
+};
+
+// Which value (SI/NO) triggers the detail textfield for this item, if any.
+export function checklistDetailTrigger(key: ChecklistKey): ChecklistValue {
+  return CHECKLIST_ITEMS.find((i) => i.key === key)?.requiresDetailWhen ?? null;
+}
+
+// Which items with requiresDetailWhen are still missing their detail, given
+// the current checklist and the detail values already typed.
+export function missingChecklistDetail(checklist: Checklist, detalles: Partial<Record<ChecklistKey, string | undefined>>): ChecklistItemDef[] {
+  return CHECKLIST_ITEMS.filter((item) => {
+    if (!item.requiresDetailWhen) return false;
+    if (checklist[item.key] !== item.requiresDetailWhen) return false;
+    return !detalles[item.key]?.trim();
+  });
 }
 
 export interface ChecklistDiffEntry {

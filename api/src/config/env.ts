@@ -32,6 +32,13 @@ const envSchema = z.object({
   ODOO_LINK_SECRET: z.string().min(16, 'ODOO_LINK_SECRET is required (min 16 chars)'),
 
   CORS_ORIGINS: z.string().default(''),
+
+  // Alertas al cliente por Telegram (seguimiento de visita) — opcionales:
+  // sin configurar, notificarEstadoVisita loguea y sigue sin mandar nada, no
+  // tira el resto de la API abajo. Se completan cuando el bot esté creado.
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_BOT_USERNAME: z.string().optional(),
+  TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

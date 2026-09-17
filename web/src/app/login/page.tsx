@@ -8,12 +8,16 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { IconLock } from '@/components/ui/Icons';
 
+type Mode = 'signin' | 'reset';
+
 export default function LoginPage() {
-  const { signIn, usuario, authError } = useAuth();
+  const { signIn, resetPassword, usuario, authError } = useAuth();
   const router = useRouter();
+  const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // Only navigate once the API has actually accepted the account (`usuario`
@@ -27,14 +31,27 @@ export default function LoginPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setInfo(null);
     setSubmitting(true);
     try {
-      await signIn(email, password);
+      if (mode === 'signin') {
+        await signIn(email, password);
+      } else {
+        await resetPassword(email);
+        setInfo('Te mandamos un email para restablecer tu contraseña.');
+        setMode('signin');
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function toggleMode() {
+    setMode((m) => (m === 'signin' ? 'reset' : 'signin'));
+    setError(null);
+    setInfo(null);
   }
 
   const message = error || authError;
@@ -59,19 +76,37 @@ export default function LoginPage() {
               autoComplete="email"
               required
             />
-            <Input
-              type="password"
-              placeholder="Contraseña"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
+            {mode === 'signin' && (
+              <Input
+                type="password"
+                placeholder="Contraseña"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            )}
             {message && <div className="text-xs font-semibold text-bad">{message}</div>}
+            {info && <div className="text-xs font-semibold text-ok">{info}</div>}
             <Button type="submit" disabled={submitting} className="w-full justify-center">
-              {submitting ? 'Ingresando...' : 'Ingresar'}
+              {submitting
+                ? mode === 'signin'
+                  ? 'Ingresando...'
+                  : 'Enviando...'
+                : mode === 'signin'
+                  ? 'Ingresar'
+                  : 'Enviar email'}
             </Button>
           </form>
+
+          <button
+            type="button"
+            onClick={toggleMode}
+            disabled={submitting}
+            className="text-xs font-bold text-primary disabled:opacity-40"
+          >
+            {mode === 'signin' ? '¿Olvidaste tu contraseña?' : 'Volver a iniciar sesión'}
+          </button>
 
           <div className="flex items-center gap-2 rounded-full bg-bg px-4 py-2 text-xs font-semibold text-muted">
             <IconLock size={13} />

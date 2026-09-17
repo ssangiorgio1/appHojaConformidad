@@ -7,6 +7,11 @@ import { authRouter } from './routes/auth.routes.js';
 import { uploadsRouter } from './routes/uploads.routes.js';
 import { conformidadesRouter } from './routes/conformidades.routes.js';
 import { odooRouter } from './routes/odoo.routes.js';
+import { calendarTaskRouter } from './routes/calendarTask.routes.js';
+import { visitasRouter } from './routes/visitas.routes.js';
+import { telegramRouter } from './routes/telegram.routes.js';
+import { reportesRouter } from './routes/reportes.routes.js';
+import { subtareaIncidenciaRouter } from './routes/subtareaIncidencia.routes.js';
 import { errorMiddleware } from './middleware/error.middleware.js';
 import { apiLimiter } from './middleware/rateLimit.middleware.js';
 
@@ -33,5 +38,10 @@ app.use('/api/auth', authRouter);
 app.use('/api/uploads', uploadsRouter);
 app.use('/api/conformidades', conformidadesRouter);
 app.use('/api/odoo', odooRouter);
+app.use('/api/calendar', calendarTaskRouter);
+app.use('/api/visitas', visitasRouter);
+app.use('/api/telegram', telegramRouter);
+app.use('/api/reportes', reportesRouter);
+app.use('/api/subtareas/incidencias', subtareaIncidenciaRouter);
 
 app.use(errorMiddleware);

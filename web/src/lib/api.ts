@@ -1,9 +1,17 @@
 import type {
+  CalendarTask,
   ConformidadDoc,
   CreateUsuarioInput,
   CreateUsuarioResponse,
+  EstadoSubtareaIncidencia,
+  ListCalendarTasksQuery,
   ListConformidadesQuery,
+  OdooTechnician,
   Paginated,
+  ReporteTecnico,
+  ReporteVisita,
+  ReporteVisitasQuery,
+  SubtareaIncidencia,
   Usuario,
   UsuarioRole,
 } from './types';
@@ -64,6 +72,7 @@ export interface UpdateUsuarioBody {
   legajo?: string;
   role?: UsuarioRole;
   activo?: boolean;
+  odooUserId?: number | null;
 }
 
 export function updateUsuario(idToken: string, id: string, patch: UpdateUsuarioBody) {
@@ -97,4 +106,55 @@ export function generateConformidadPdf(idToken: string, id: string) {
 
 export function setAltaConformidad(idToken: string, id: string, area: 'mesaAyuda' | 'coordinacion', checked: boolean) {
   return apiFetch<ConformidadDoc>(`/api/conformidades/${id}/alta`, idToken, { method: 'POST', body: { area, checked } });
+}
+
+function calendarQueryString(query: ListCalendarTasksQuery): string {
+  const params = new URLSearchParams({ from: query.from, to: query.to });
+  if (query.technicianIds?.length) params.set('technicianIds', query.technicianIds.join(','));
+  return `?${params.toString()}`;
+}
+
+export function listCalendarTasks(idToken: string, query: ListCalendarTasksQuery) {
+  return apiFetch<{ data: CalendarTask[] }>(`/api/calendar/tasks${calendarQueryString(query)}`, idToken).then((r) => r.data);
+}
+
+export function listTechnicians(idToken: string) {
+  return apiFetch<{ data: OdooTechnician[] }>('/api/calendar/technicians', idToken).then((r) => r.data);
+}
+
+export function moveCalendarTask(idToken: string, taskId: number, body: { start: string; end: string }) {
+  return apiFetch<void>(`/api/calendar/tasks/${taskId}/move`, idToken, { method: 'PATCH', body });
+}
+
+function reporteVisitasQueryString(query: ReporteVisitasQuery): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== '') params.set(key, String(value));
+  }
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+export function getReporteVisitas(idToken: string, query: ReporteVisitasQuery = {}) {
+  return apiFetch<{ data: ReporteVisita[] }>(`/api/reportes/visitas${reporteVisitasQueryString(query)}`, idToken).then(
+    (r) => r.data,
+  );
+}
+
+export function getReporteTecnicos(idToken: string, query: ReporteVisitasQuery = {}) {
+  return apiFetch<{ data: ReporteTecnico[] }>(`/api/reportes/tecnicos${reporteVisitasQueryString(query)}`, idToken).then(
+    (r) => r.data,
+  );
+}
+
+export function listSubtareaIncidencias(idToken: string, estado?: EstadoSubtareaIncidencia) {
+  const qs = estado ? `?estado=${estado}` : '';
+  return apiFetch<{ data: SubtareaIncidencia[] }>(`/api/subtareas/incidencias${qs}`, idToken).then((r) => r.data);
+}
+
+export function resolveSubtareaIncidencia(idToken: string, id: string) {
+  return apiFetch<SubtareaIncidencia>(`/api/subtareas/incidencias/${id}`, idToken, {
+    method: 'PATCH',
+    body: { estado: 'reprogramada' },
+  });
 }

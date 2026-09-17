@@ -1,4 +1,4 @@
-import { emptyChecklist, type Checklist } from './checklist.js';
+import { emptyChecklist, type Checklist, type ChecklistKey } from './checklist.js';
 import { emptyEquipo, type Equipo } from './equipo.js';
 
 export type EstadoServicio = 'borrador_pre' | 'pendiente_post' | 'completo';
@@ -52,13 +52,32 @@ export interface Firma {
 export interface Phase {
   checklist: Checklist;
   fallaDetalle?: string;
+  // Same idea as fallaDetalle (item6_falla): required detail when the
+  // matching item answers whatever requiresDetailWhen says (see
+  // checklist.ts) — item7/item8 trigger it on 'NO'.
+  item7Detalle?: string;
+  item8Detalle?: string;
   observaciones: string;
   fotos: Foto[];
   firma: Firma | null;
 }
 
 export function emptyPhase(): Phase {
-  return { checklist: emptyChecklist(), fallaDetalle: '', observaciones: '', fotos: [], firma: null };
+  return {
+    checklist: emptyChecklist(),
+    fallaDetalle: '',
+    item7Detalle: '',
+    item8Detalle: '',
+    observaciones: '',
+    fotos: [],
+    firma: null,
+  };
+}
+
+// The 3 detail fields of a Phase, keyed by ChecklistKey — same shape
+// ChecklistEditor/missingChecklistDetail (checklist.ts) expect.
+export function phaseDetalles(phase: Phase): Partial<Record<ChecklistKey, string | undefined>> {
+  return { item6_falla: phase.fallaDetalle, item7: phase.item7Detalle, item8: phase.item8Detalle };
 }
 
 // What the técnico typed/picked to identify the Odoo helpdesk ticket for

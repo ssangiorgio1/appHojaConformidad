@@ -174,3 +174,12 @@ export function IconLogout({ className, size = 16 }: IconProps) {
     </svg>
   );
 }
+
+export function IconClock({ className, size = 20 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" stroke="currentColor" className={className} {...base}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5.5l4 2.5" />
+    </svg>
+  );
+}
