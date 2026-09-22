@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { Pagination } from '@/components/ui/Pagination';
 import { IconAlertTriangle } from '@/components/ui/Icons';
 import { listSubtareaIncidencias, resolveSubtareaIncidencia } from '@/lib/api';
 import { useApiData } from '@/lib/useApiData';
@@ -15,11 +16,22 @@ const TABS: { value: EstadoSubtareaIncidencia; label: string }[] = [
   { value: 'reprogramada', label: 'Reprogramadas' },
 ];
 
+const PAGE_SIZE = 20;
+
 export default function IncidenciasPage() {
   const { getIdToken } = useAuth();
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoSubtareaIncidencia>('pendiente_reprogramar');
-  const { data, loading, error, refetch } = useApiData((token) => listSubtareaIncidencias(token, estadoFiltro), [estadoFiltro]);
+  const [page, setPage] = useState(1);
+  const { data, loading, error, refetch } = useApiData(
+    (token) => listSubtareaIncidencias(token, { estado: estadoFiltro, page, pageSize: PAGE_SIZE }),
+    [estadoFiltro, page],
+  );
   const [pendingId, setPendingId] = useState<string | null>(null);
+
+  function cambiarTab(estado: EstadoSubtareaIncidencia) {
+    setPage(1);
+    setEstadoFiltro(estado);
+  }
 
   async function marcarReprogramada(id: string) {
     setPendingId(id);
@@ -47,7 +59,7 @@ export default function IncidenciasPage() {
           <button
             key={tab.value}
             type="button"
-            onClick={() => setEstadoFiltro(tab.value)}
+            onClick={() => cambiarTab(tab.value)}
             className={`rounded-md px-3.5 py-2 text-xs font-bold transition ${
               estadoFiltro === tab.value ? 'bg-primary-600 text-white' : 'text-muted hover:text-text'
             }`}
@@ -72,7 +84,7 @@ export default function IncidenciasPage() {
 
             {loading && !data && <div className="px-3 py-6 text-sm font-semibold text-muted">Cargando...</div>}
 
-            {data && !data.length && (
+            {data && !data.data.length && (
               <div className="px-3 py-6 text-sm font-semibold text-muted">
                 {estadoFiltro === 'pendiente_reprogramar'
                   ? 'No hay unidades pendientes de reprogramar.'
@@ -81,11 +93,23 @@ export default function IncidenciasPage() {
             )}
 
             <div className={`transition-opacity ${loading && data ? 'opacity-60' : ''}`}>
-              {(data ?? []).map((inc) => (
+              {(data?.data ?? []).map((inc) => (
                 <div key={inc._id} className="grid grid-cols-[1.2fr_1.4fr_1fr_1.8fr_150px] items-center border-t border-line">
                   <div className="flex items-center gap-2 p-3.5">
                     <IconAlertTriangle className="flex-none text-warning-600" />
-                    <span className="text-[13px] font-bold">{inc.subtareaNombre || `Tarea #${inc.tareaOdooId}`}</span>
+                    <div className="flex flex-col">
+                      <a
+                        href={inc.subtareaOdooUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[13px] font-bold text-primary hover:underline"
+                      >
+                        {inc.subtareaNombre || `Subtarea #${inc.subtareaOdooId}`}
+                      </a>
+                      <a href={inc.tareaOdooUrl} target="_blank" rel="noreferrer" className="text-[11px] font-semibold text-muted hover:underline">
+                        Tarea #{inc.tareaOdooId} en Odoo
+                      </a>
+                    </div>
                   </div>
                   <div className="p-3.5 text-[13px] font-semibold">{inc.tecnicoId?.nombre || inc.tecnicoId?.email || '—'}</div>
                   <div className="p-3.5 text-[13px] font-semibold text-muted">{formatFechaHora(inc.fecha)}</div>
@@ -111,6 +135,8 @@ export default function IncidenciasPage() {
             </div>
           </div>
         </div>
+
+        {data && <Pagination page={page} totalPages={data.totalPages} onPageChange={setPage} />}
       </Card>
     </div>
   );

@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { Pagination } from '@/components/ui/Pagination';
 import { IconX } from '@/components/ui/Icons';
 import { getReporteTecnicos, getReporteVisitas, listUsuarios } from '@/lib/api';
 import { useApiData } from '@/lib/useApiData';
@@ -31,10 +32,13 @@ const ESTADO_TONE: Record<NonNullable<ReporteVisita['estado']>, BadgeTone> = {
 // (en_camino → en_sitio) y cuánto tardó el trabajo en sitio (en_sitio →
 // completo). Solo coordinacion/admin/superadmin llegan acá (ver Sidebar.tsx
 // y reportes.routes.ts) — no es algo que un técnico deba ver de otros.
+const PAGE_SIZE = 20;
+
 export default function ReportesTecnicosPage() {
   const [tecnicoId, setTecnicoId] = useState('');
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
+  const [page, setPage] = useState(1);
 
   const { data: usuariosData } = useApiData((idToken) => listUsuarios(idToken), []);
   const tecnicos = useMemo(() => (usuariosData ?? []).filter((u) => u.role === 'tecnico'), [usuariosData]);
@@ -50,8 +54,10 @@ export default function ReportesTecnicosPage() {
         tecnicoId: tecnicoId || undefined,
         fechaDesde: fechaDesde || undefined,
         fechaHasta: fechaHasta || undefined,
+        page,
+        pageSize: PAGE_SIZE,
       }),
-    [tecnicoId, fechaDesde, fechaHasta],
+    [tecnicoId, fechaDesde, fechaHasta, page],
   );
 
   const {
@@ -75,6 +81,7 @@ export default function ReportesTecnicosPage() {
   ].filter((f): f is { key: string; label: string; onRemove: () => void } => Boolean(f));
 
   function clearAllFilters() {
+    setPage(1);
     setTecnicoId('');
     setFechaDesde('');
     setFechaHasta('');
@@ -85,7 +92,7 @@ export default function ReportesTecnicosPage() {
       <div>
         <div className="text-2xl font-extrabold">Reportes de técnicos</div>
         <div className="mt-0.5 text-sm font-semibold text-muted">
-          {visitas ? `${visitas.length} visitas` : 'Cargando...'} · tiempo de traslado y tiempo en sitio por visita
+          {visitas ? `${visitas.total} visitas` : 'Cargando...'} · tiempo de traslado y tiempo en sitio por visita
         </div>
       </div>
 
@@ -110,7 +117,13 @@ export default function ReportesTecnicosPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
             <div className="mb-1 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Técnico</div>
-            <Select value={tecnicoId} onChange={(e) => setTecnicoId(e.target.value)}>
+            <Select
+              value={tecnicoId}
+              onChange={(e) => {
+                setPage(1);
+                setTecnicoId(e.target.value);
+              }}
+            >
               <option value="">Todos</option>
               {tecnicos.map((t) => (
                 <option key={t._id} value={t._id}>
@@ -121,11 +134,25 @@ export default function ReportesTecnicosPage() {
           </div>
           <div>
             <div className="mb-1 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Desde</div>
-            <Input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} />
+            <Input
+              type="date"
+              value={fechaDesde}
+              onChange={(e) => {
+                setPage(1);
+                setFechaDesde(e.target.value);
+              }}
+            />
           </div>
           <div>
             <div className="mb-1 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Hasta</div>
-            <Input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} />
+            <Input
+              type="date"
+              value={fechaHasta}
+              onChange={(e) => {
+                setPage(1);
+                setFechaHasta(e.target.value);
+              }}
+            />
           </div>
         </div>
 
@@ -169,9 +196,9 @@ export default function ReportesTecnicosPage() {
 
       <Card className="p-2.5 pb-4">
         <div className="overflow-x-auto">
-          <div className="min-w-[1150px]">
-            <div className="grid grid-cols-[1.1fr_1.3fr_1.3fr_0.9fr_0.9fr_1fr_1fr_1fr_1fr_1fr] pb-2.5 pt-4">
-              {['Técnico', 'Cliente', 'Tarea', 'Fecha', 'Estado', 'Salió', 'Llegó', 'Terminó', 'Traslado', 'En sitio'].map(
+          <div className="min-w-[1260px]">
+            <div className="grid grid-cols-[1.1fr_1.3fr_1.3fr_0.9fr_0.9fr_1fr_1fr_1fr_1fr_1fr_1fr] pb-2.5 pt-4">
+              {['Técnico', 'Cliente', 'Tarea', 'Fecha', 'Estado', 'Salió', 'Llegó', 'Terminó', 'Traslado', 'En el lugar', 'Instalando'].map(
                 (h, i) => (
                   <div key={i} className="px-3.5 text-[11px] font-extrabold uppercase tracking-wide text-muted">
                     {h}
@@ -181,15 +208,15 @@ export default function ReportesTecnicosPage() {
             </div>
 
             {loading && !visitas && <div className="px-3 py-6 text-sm font-semibold text-muted">Cargando...</div>}
-            {!loading && visitas?.length === 0 && (
+            {!loading && visitas?.data.length === 0 && (
               <div className="px-3 py-6 text-sm font-semibold text-muted">No hay visitas para estos filtros.</div>
             )}
 
             <div className={`transition-opacity ${loading && visitas ? 'opacity-60' : ''}`}>
-              {visitas?.map((v) => (
+              {visitas?.data.map((v) => (
                 <div
                   key={v.visitaId}
-                  className="grid grid-cols-[1.1fr_1.3fr_1.3fr_0.9fr_0.9fr_1fr_1fr_1fr_1fr_1fr] items-center border-t border-line"
+                  className="grid grid-cols-[1.1fr_1.3fr_1.3fr_0.9fr_0.9fr_1fr_1fr_1fr_1fr_1fr_1fr] items-center border-t border-line"
                 >
                   <div className="p-3.5 text-[13px] font-semibold">{v.tecnico ?? '—'}</div>
                   <div className="p-3.5 text-[13px] font-semibold">{v.cliente || '—'}</div>
@@ -207,11 +234,26 @@ export default function ReportesTecnicosPage() {
                   <div className="p-3.5 text-[13px] font-semibold text-muted">{formatIsoDateTime(v.completoAt ?? undefined)}</div>
                   <div className="p-3.5 text-[13px] font-bold">{formatMinutos(v.minutosTraslado)}</div>
                   <div className="p-3.5 text-[13px] font-bold">{formatMinutos(v.minutosEnSitio)}</div>
+                  <div
+                    className="p-3.5 text-[13px] font-bold"
+                    title={
+                      v.unidades.length > 1
+                        ? v.unidades
+                            .map((u) => `${u.subtareaNombre || `#${u.subtareaOdooId}`}: ${formatMinutos(u.minutosInstalando)}`)
+                            .join('\n')
+                        : undefined
+                    }
+                  >
+                    {formatMinutos(v.minutosInstalandoTotal)}
+                    {v.unidades.length > 1 && <span className="ml-1 text-[10.5px] font-semibold text-muted">({v.unidades.length}u)</span>}
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         </div>
+
+        {visitas && <Pagination page={page} totalPages={visitas.totalPages} onPageChange={setPage} />}
       </Card>
     </div>
   );
@@ -246,14 +288,18 @@ function ReporteTecnicoCard({ data }: { data: ReporteTecnico }) {
           <Badge tone="primary">{data.visitas} visitas</Badge>
         </div>
 
-      <div className="grid grid-cols-2 gap-3 border-t border-line pt-3">
+      <div className="grid grid-cols-3 gap-3 border-t border-line pt-3">
         <div>
           <div className="text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Traslado prom.</div>
           <div className="text-[15px] font-bold">{formatMinutos(data.minutosTrasladoProm)}</div>
         </div>
         <div>
-          <div className="text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Instalación prom.</div>
+          <div className="text-[10.5px] font-extrabold uppercase tracking-wide text-muted">En el lugar prom.</div>
           <div className="text-[15px] font-bold">{formatMinutos(data.minutosEnSitioProm)}</div>
+        </div>
+        <div>
+          <div className="text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Instalación prom.</div>
+          <div className="text-[15px] font-bold">{formatMinutos(data.minutosInstalandoProm)}</div>
         </div>
       </div>
 

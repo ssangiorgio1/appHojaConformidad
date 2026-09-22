@@ -26,6 +26,7 @@ const FirmaSchema = new Schema(
     satisfaccion: { type: String, enum: ['satisfecho', 'insatisfecho', 'no_firma_insatisfecho'], default: null },
     motivo: { type: String },
     nombreFirmante: { type: String },
+    clienteAusente: { type: Boolean, default: false },
   },
   { _id: false },
 );
@@ -123,6 +124,22 @@ const PdfReporteSchema = new Schema(
   { _id: false },
 );
 
+// Solo se completa cuando tipoServicio === 'cambio_equipo' Y la hoja usa el
+// esquema nuevo de 2 hojas vinculadas (retiro + instalación, cada una con su
+// propio checklist/fotos/firma) — las hojas cambio_equipo históricas (1 sola
+// hoja con equipo.modeloInstalado/imeiInstalado) no tienen esto seteado y
+// siguen funcionando como antes, ver conformidades.controller.ts. `parejaId`
+// se escribe cruzado en ambos documentos al vincularlos (linkCambioEquipoPareja)
+// — no hay backref automático de Mongoose, es responsabilidad del controller
+// mantener los dos lados en sync.
+const CambioEquipoSchema = new Schema(
+  {
+    rol: { type: String, enum: ['retiro', 'instalacion'], default: null },
+    parejaId: { type: Schema.Types.ObjectId, ref: 'Conformidad', default: null },
+  },
+  { _id: false },
+);
+
 const ConformidadSchema = new Schema(
   {
     clientId: { type: String, required: true, unique: true },
@@ -163,6 +180,7 @@ const ConformidadSchema = new Schema(
     subtareaOdoo: { type: SubtareaOdooSchema, default: null },
     odooSync: { type: OdooSyncSchema, default: () => ({}) },
     pdfReporte: { type: PdfReporteSchema, default: null },
+    cambioEquipo: { type: CambioEquipoSchema, default: () => ({}) },
 
     deletedAt: { type: Date, default: null },
   },
@@ -171,6 +189,10 @@ const ConformidadSchema = new Schema(
 
 ConformidadSchema.index({ status: 1, fechaHora: -1 });
 ConformidadSchema.index({ 'equipo.imei': 1 }, { sparse: true });
+// Búsqueda de hojas de cambio_equipo pendientes de emparejar por patente (ver
+// GET /conformidades/cambio-equipo/retiros-pendientes) — sirve para buscar
+// tanto retiros como instalaciones pendientes (rol es parte del filtro real).
+ConformidadSchema.index({ matricula: 1, 'cambioEquipo.rol': 1, 'cambioEquipo.parejaId': 1 });
 
 ConformidadSchema.pre('save', function () {
   if (this.fecha) {

@@ -9,6 +9,40 @@ function minutosEntre(a: Date | null | undefined, b: Date | null | undefined): n
   return Math.max(0, Math.round((b.getTime() - a.getTime()) / 60000));
 }
 
+// "En sitio" (enSitioAt → completoAt) es el tiempo TOTAL del viaje una vez
+// llegado — incluye instalar cada unidad, pero también caminar entre
+// unidades, esperas, trámites con el cliente, etc. Coordinación pidió poder
+// distinguir eso de cuánto tiempo se fue específicamente en instalar cada
+// unidad del lote. No hay un botón de "empecé esta unidad" en la PWA, así que
+// se estima con lo que ya existe: cada unidad tiene su propia Conformidad, y
+// createdAt (cuándo arrancó esa hoja) → post.firma.firmedAt (cuándo se firmó
+// el POST, o pre.firma.firmedAt si el POST todavía no se firmó/no aplica) es
+// la mejor aproximación disponible sin agregar instrumentación nueva. Es una
+// estimación, no un cronómetro exacto: si el técnico hace todos los PRE del
+// lote primero y todos los POST después, los rangos se pisan entre unidades.
+function minutosInstalandoUnidad(c: { createdAt: Date; pre?: { firma?: { firmedAt?: Date | null } | null } | null; post?: { firma?: { firmedAt?: Date | null } | null } | null }): number | null {
+  const fin = c.post?.firma?.firmedAt ?? c.pre?.firma?.firmedAt ?? null;
+  return minutosEntre(c.createdAt, fin);
+}
+
+// Unidades (Conformidades) que corresponden a ESTE viaje puntual de una
+// tarea — no todas las de la tarea, porque una misma tarea puede tener varios
+// viajes (ej. se reprogramó una unidad y el técnico volvió otro día). Se
+// scopea por ventana de tiempo del viaje (llegada → cierre, o "hasta ahora"
+// si sigue abierto) igual que el resto de este archivo estima límites sin
+// tener un id de viaje guardado en Conformidad.
+function unidadesDeVisita<T extends { tareaOdoo?: { id: number } | null; createdAt: Date }>(
+  v: { tareaOdooId: number; enCaminoAt?: Date | null; completoAt?: Date | null },
+  porTarea: Map<number, T[]>,
+): T[] {
+  const candidatas = porTarea.get(v.tareaOdooId) ?? [];
+  return candidatas.filter((c) => {
+    if (!v.enCaminoAt || c.createdAt < v.enCaminoAt) return false;
+    if (v.completoAt && c.createdAt > v.completoAt) return false;
+    return true;
+  });
+}
+
 function fechaRangeFilter(query: ReporteVisitasQuery): Record<string, Date> | null {
   if (!query.fechaDesde && !query.fechaHasta) return null;
   const range: Record<string, Date> = {};
@@ -39,15 +73,20 @@ export async function getReporteVisitas(query: ReporteVisitasQuery) {
   const rango = fechaRangeFilter(query);
   if (rango) filter.enCaminoAt = { $ne: null, ...rango };
 
-  const visitas = await VisitaNotificacionModel.find(filter)
-    .sort({ enCaminoAt: -1 })
-    .limit(500)
-    .populate<{ tecnicoId: { _id: unknown; nombre: string } | null }>('tecnicoId', 'nombre')
-    .lean();
+  const skip = (query.page - 1) * query.pageSize;
+  const [visitas, total] = await Promise.all([
+    VisitaNotificacionModel.find(filter)
+      .sort({ enCaminoAt: -1 })
+      .skip(skip)
+      .limit(query.pageSize)
+      .populate<{ tecnicoId: { _id: unknown; nombre: string } | null }>('tecnicoId', 'nombre')
+      .lean(),
+    VisitaNotificacionModel.countDocuments(filter),
+  ]);
 
   const tareaIds = [...new Set(visitas.map((v) => v.tareaOdooId))];
   const conformidades = await ConformidadModel.find({ 'tareaOdoo.id': { $in: tareaIds }, deletedAt: null })
-    .select('tareaOdoo cliente fecha hora createdAt')
+    .select('tareaOdoo subtareaOdoo cliente fecha hora createdAt pre.firma.firmedAt post.firma.firmedAt')
     .sort({ createdAt: 1 })
     .lean();
 
@@ -58,12 +97,22 @@ export async function getReporteVisitas(query: ReporteVisitasQuery) {
     conformidadesPorTarea.set(c.tareaOdoo!.id, arr);
   }
 
-  return visitas.map((v) => {
+  const data = visitas.map((v) => {
     const candidatas = conformidadesPorTarea.get(v.tareaOdooId) ?? [];
     // Si la misma tarea tuvo más de un viaje, preferimos la Conformidad
     // creada durante ESTE viaje (en o después de que arrancó) para no
     // mostrar el cliente/nombre de un viaje anterior a la misma tarea.
     const match = candidatas.find((c) => !v.enCaminoAt || c.createdAt >= v.enCaminoAt) ?? candidatas[0] ?? null;
+
+    // Desglose por unidad dentro de ESTE viaje — ver minutosInstalandoUnidad.
+    // Un lote de 1 sola unidad da un desglose de 1 elemento, nada especial.
+    const unidades = unidadesDeVisita(v, conformidadesPorTarea).map((c) => ({
+      subtareaOdooId: c.subtareaOdoo?.id ?? null,
+      subtareaNombre: c.subtareaOdoo?.nombre || null,
+      minutosInstalando: minutosInstalandoUnidad(c),
+    }));
+    const conMinutos = unidades.filter((u) => u.minutosInstalando !== null);
+    const minutosInstalandoTotal = conMinutos.length ? conMinutos.reduce((sum, u) => sum + u.minutosInstalando!, 0) : null;
 
     return {
       visitaId: String(v._id),
@@ -79,9 +128,24 @@ export async function getReporteVisitas(query: ReporteVisitasQuery) {
       enSitioAt: v.enSitioAt,
       completoAt: v.completoAt,
       minutosTraslado: minutosEntre(v.enCaminoAt, v.enSitioAt),
+      // Tiempo total en el lugar (llegada → cierre) — incluye instalar TODAS
+      // las unidades del lote más cualquier otro tiempo en el lugar que no es
+      // instalación pura (ver minutosInstalandoTotal para esa parte sola).
       minutosEnSitio: minutosEntre(v.enSitioAt, v.completoAt),
+      // Suma de minutosInstalandoUnidad de cada unidad del lote — estimado,
+      // ver la nota en esa función.
+      minutosInstalandoTotal,
+      unidades,
     };
   });
+
+  return {
+    data,
+    page: query.page,
+    pageSize: query.pageSize,
+    total,
+    totalPages: Math.ceil(total / query.pageSize),
+  };
 }
 
 export interface ReporteTecnico {
@@ -91,6 +155,7 @@ export interface ReporteTecnico {
   visitas: number;
   minutosTrasladoProm: number | null;
   minutosEnSitioProm: number | null;
+  minutosInstalandoProm: number | null;
   tareasTotal: number;
   tareasCompletadas: number;
   tareasPendientes: number;
@@ -138,18 +203,48 @@ export async function getReporteTecnicos(query: ReporteVisitasQuery): Promise<Re
   const rango = fechaRangeFilter(query);
   if (rango) visitFilter.enCaminoAt = { $ne: null, ...rango };
 
-  const visitas = await VisitaNotificacionModel.find(visitFilter).select('tecnicoId enCaminoAt enSitioAt completoAt').lean();
+  const visitas = await VisitaNotificacionModel.find(visitFilter)
+    .select('tecnicoId tareaOdooId enCaminoAt enSitioAt completoAt')
+    .lean();
+
+  // Mismo cruce con Conformidad que getReporteVisitas, para poder promediar
+  // minutosInstalandoTotal por técnico (ver unidadesDeVisita/minutosInstalandoUnidad).
+  const tareaIds = [...new Set(visitas.map((v) => v.tareaOdooId))];
+  const conformidades = tareaIds.length
+    ? await ConformidadModel.find({ 'tareaOdoo.id': { $in: tareaIds }, deletedAt: null })
+        .select('tareaOdoo createdAt pre.firma.firmedAt post.firma.firmedAt')
+        .lean()
+    : [];
+  const conformidadesPorTarea = new Map<number, typeof conformidades>();
+  for (const c of conformidades) {
+    const arr = conformidadesPorTarea.get(c.tareaOdoo!.id) ?? [];
+    arr.push(c);
+    conformidadesPorTarea.set(c.tareaOdoo!.id, arr);
+  }
 
   const visitStatsByTech = new Map<
     string,
-    { count: number; trasladoSum: number; trasladoCount: number; sitioSum: number; sitioCount: number }
+    { count: number; trasladoSum: number; trasladoCount: number; sitioSum: number; sitioCount: number; instalandoSum: number; instalandoCount: number }
   >();
   for (const v of visitas) {
     if (!v.tecnicoId) continue;
     const key = String(v.tecnicoId);
     const traslado = minutosEntre(v.enCaminoAt, v.enSitioAt);
     const sitio = minutosEntre(v.enSitioAt, v.completoAt);
-    const stats = visitStatsByTech.get(key) ?? { count: 0, trasladoSum: 0, trasladoCount: 0, sitioSum: 0, sitioCount: 0 };
+    const unidadesConMinutos = unidadesDeVisita(v, conformidadesPorTarea)
+      .map((c) => minutosInstalandoUnidad(c))
+      .filter((m): m is number => m !== null);
+    const instalando = unidadesConMinutos.length ? unidadesConMinutos.reduce((sum, m) => sum + m, 0) : null;
+
+    const stats = visitStatsByTech.get(key) ?? {
+      count: 0,
+      trasladoSum: 0,
+      trasladoCount: 0,
+      sitioSum: 0,
+      sitioCount: 0,
+      instalandoSum: 0,
+      instalandoCount: 0,
+    };
     stats.count += 1;
     if (traslado !== null) {
       stats.trasladoSum += traslado;
@@ -158,6 +253,10 @@ export async function getReporteTecnicos(query: ReporteVisitasQuery): Promise<Re
     if (sitio !== null) {
       stats.sitioSum += sitio;
       stats.sitioCount += 1;
+    }
+    if (instalando !== null) {
+      stats.instalandoSum += instalando;
+      stats.instalandoCount += 1;
     }
     visitStatsByTech.set(key, stats);
   }
@@ -178,6 +277,7 @@ export async function getReporteTecnicos(query: ReporteVisitasQuery): Promise<Re
       visitas: visitStat?.count ?? 0,
       minutosTrasladoProm: visitStat?.trasladoCount ? Math.round(visitStat.trasladoSum / visitStat.trasladoCount) : null,
       minutosEnSitioProm: visitStat?.sitioCount ? Math.round(visitStat.sitioSum / visitStat.sitioCount) : null,
+      minutosInstalandoProm: visitStat?.instalandoCount ? Math.round(visitStat.instalandoSum / visitStat.instalandoCount) : null,
       tareasTotal: taskStat?.tasksTotal ?? 0,
       tareasCompletadas: taskStat?.tasksCompleted ?? 0,
       tareasPendientes: taskStat?.tasksPending ?? 0,

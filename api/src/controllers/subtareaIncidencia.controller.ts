@@ -6,6 +6,7 @@ import { UsuarioModel } from '../models/Usuario.js';
 import { decryptSecret } from '../utils/secretBox.js';
 import { postSubtareaNoEncontrada } from '../services/odoo.service.js';
 import { cerrarVisitaLoteSiTodoResuelto } from '../services/loteVisita.service.js';
+import { odooTaskUrl } from '../services/calendarTask.service.js';
 import type {
   CreateSubtareaIncidenciaInput,
   ListSubtareaIncidenciasQuery,
@@ -72,11 +73,31 @@ export const listSubtareaIncidencias = asyncHandler(async (req: Request, res: Re
   // Populado con nombre/email del técnico — el panel web necesita mostrar
   // quién reportó cada incidencia sin pedirle al front que cruce contra
   // /api/auth/usuarios (que mesa_ayuda ni siquiera puede ver).
-  const data = await SubtareaIncidenciaModel.find(filter)
-    .sort({ createdAt: -1 })
-    .limit(200)
-    .populate('tecnicoId', 'nombre email');
-  res.json({ data });
+  const skip = (query.page - 1) * query.pageSize;
+  const [rows, total] = await Promise.all([
+    SubtareaIncidenciaModel.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(query.pageSize)
+      .populate('tecnicoId', 'nombre email'),
+    SubtareaIncidenciaModel.countDocuments(filter),
+  ]);
+
+  // El panel necesita poder ir directo a la subtarea (la unidad puntual a
+  // reprogramar) en Odoo, no solo a la tarea/lote padre — mismo link
+  // "universal" que ya arma el calendario (ver calendarTask.service.ts).
+  const data = rows.map((r) => ({
+    ...r.toObject(),
+    subtareaOdooUrl: odooTaskUrl(r.subtareaOdooId),
+    tareaOdooUrl: odooTaskUrl(r.tareaOdooId),
+  }));
+  res.json({
+    data,
+    page: query.page,
+    pageSize: query.pageSize,
+    total,
+    totalPages: Math.ceil(total / query.pageSize),
+  });
 });
 
 export const resolveSubtareaIncidencia = asyncHandler(async (req: Request, res: Response) => {

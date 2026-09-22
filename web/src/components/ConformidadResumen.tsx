@@ -2,15 +2,18 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { EQUIP_CHECK_FIELDS, EQUIP_GROUPS, isEquipoFieldVisible } from '@wara/shared/src/equipo';
-import { PRE_PHOTO_SLOTS, POST_PHOTO_SLOTS } from '@wara/shared/src/photoSlots';
+import { prePhotoSlotsFor, postPhotoSlotsFor } from '@wara/shared/src/photoSlots';
+import type { ServiceMode } from '@wara/shared/src/serviceMode';
 import { TIPO_SERVICIO_LABELS } from '@wara/shared';
 import { Badge } from '@/components/ui/Badge';
 import { IconCamera, IconChevronDown, IconX } from '@/components/ui/Icons';
 import type { ConformidadDoc } from '@/lib/types';
 
+// Combina los slots de los 3 modos — ver misma nota en conformidades/[id]/page.tsx.
+const ALL_MODES: ServiceMode[] = ['instalacion', 'retiro', 'reparacion'];
 const PHOTO_SLOT_LABELS: Record<'pre' | 'post', Record<string, string>> = {
-  pre: Object.fromEntries(PRE_PHOTO_SLOTS.map((s) => [s.key, s.label])),
-  post: Object.fromEntries(POST_PHOTO_SLOTS.map((s) => [s.key, s.label])),
+  pre: Object.fromEntries(ALL_MODES.flatMap((m) => prePhotoSlotsFor(m)).map((s) => [s.key, s.label])),
+  post: Object.fromEntries(ALL_MODES.flatMap((m) => postPhotoSlotsFor(m)).map((s) => [s.key, s.label])),
 };
 
 // Fotos sincronizadas antes de que el servidor empezara a persistir slotKey
@@ -81,6 +84,7 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
   // una desinstalación o un cambio de equipo (ver equipo.ts en @wara/shared).
   const equipoLabelSuffix =
     c.tipoServicio === 'desinstalacion' ? ' (desinstalado)' : c.tipoServicio === 'cambio_equipo' ? ' (retirado)' : '';
+  const tipoServicioLabel = TIPO_SERVICIO_LABELS[c.tipoServicio ?? 'instalacion'];
 
   const instaladosResumen = useMemo(() => {
     const equipo = c.equipo as Record<string, string | null | undefined>;
@@ -119,6 +123,7 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
     <>
       <div className="flex min-h-0 flex-col gap-4">
         <div className="flex flex-wrap gap-x-8 gap-y-3">
+          <InfoField label="Tipo de servicio">{tipoServicioLabel}</InfoField>
           <InfoField label={`Modelo${equipoLabelSuffix}`}>{c.equipo.modelo || '—'}</InfoField>
           <InfoField label={`IMEI${equipoLabelSuffix}`}>{c.equipo.imei || '—'}</InfoField>
           {c.tipoServicio === 'cambio_equipo' && (

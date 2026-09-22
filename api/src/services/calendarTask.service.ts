@@ -105,8 +105,11 @@ function computeTaskEnd(startStr: string, deadlineStr: string | false, allocated
 
 // Link universal de Odoo para abrir un registro por modelo+id — funciona
 // tanto en instancias viejas como nuevas (a diferencia de las URLs "bonitas"
-// de una app específica, que varían según versión/menú instalado).
-function odooTaskUrl(id: number): string {
+// de una app específica, que varían según versión/menú instalado). Exportada
+// porque otros lugares del panel (ej. incidencias de subtareas no
+// encontradas) también necesitan armar el mismo link a partir de un id de
+// project.task sin duplicar la lógica.
+export function odooTaskUrl(id: number): string {
   return `${env.ODOO_URL}/web#model=project.task&id=${id}&view_type=form`;
 }
 
@@ -317,6 +320,33 @@ export async function getOwnSubtaskIds(parentTaskId: number, technicianOdooId: n
   )) as Array<{ id: number; user_ids?: number[] }>;
 
   return childRows.filter((c) => (c.user_ids ?? []).includes(technicianOdooId)).map((c) => c.id);
+}
+
+// Para el chequeo de pertenencia de visitas.controller.ts: ¿esta tarea (o
+// alguna de sus subtareas) está asignada a este técnico? Mismo criterio que
+// el domain de listCalendarTasks (user_ids de la tarea O de cualquier
+// child_ids), pero resuelto puntual para un solo id en vez de un rango de
+// fechas — no cacheado a propósito, es un chequeo de autorización.
+export async function isTaskAssignedToTechnician(taskId: number, technicianOdooId: number): Promise<boolean> {
+  try {
+    const rows = (await withTimeout(
+      executeKw('project.task', 'read', [[taskId]], { fields: ['user_ids', 'child_ids'] }),
+      'isTaskAssignedToTechnician:task',
+    )) as Array<{ user_ids: number[]; child_ids: number[] }>;
+
+    const task = rows[0];
+    if (!task) return false;
+    if (task.user_ids.includes(technicianOdooId)) return true;
+    if (!task.child_ids.length) return false;
+
+    const children = (await withTimeout(
+      executeKw('project.task', 'read', [task.child_ids], { fields: ['user_ids'] }),
+      'isTaskAssignedToTechnician:children',
+    )) as Array<{ user_ids: number[] }>;
+    return children.some((c) => c.user_ids.includes(technicianOdooId));
+  } catch (err) {
+    throw classify(err);
+  }
 }
 
 export interface TechnicianTaskStats {

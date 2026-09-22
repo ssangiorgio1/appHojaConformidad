@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { Types } from 'mongoose';
 import { ConformidadModel } from '../models/Conformidad.js';
 import { UsuarioModel } from '../models/Usuario.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -15,12 +16,46 @@ import type {
   PatchConformidadInput,
   ListConformidadesQuery,
   AltaConformidadInput,
+  CambioEquipoParejaInput,
+  RetirosPendientesQuery,
+  EquipoActualQuery,
 } from '../schemas/conformidad.schema.js';
 
 export function assertOwnedByRequester(req: Request, tecnicoId: unknown) {
   if (req.user!.role === 'tecnico' && String(tecnicoId) !== String(req.user!.usuarioId)) {
     throw new HttpError(403, 'You can only access your own records');
   }
+}
+
+// Vincula las 2 hojas de un cambio_equipo (retiro + instalación) escribiendo
+// cambioEquipo.parejaId cruzado en ambos documentos — no hay backref
+// automático de Mongoose para esto, así que hay que mantener los 2 lados a
+// mano. Reusado por createConformidad (emparejado en el momento, si el
+// técnico de instalación encontró el retiro) y por el endpoint de
+// vinculación manual (cuando no se pudo emparejar en el momento y alguien lo
+// hace después desde el panel web).
+async function linkCambioEquipoPareja(id: string, parejaId: string) {
+  if (id === parejaId) throw new HttpError(400, 'Una hoja no puede vincularse consigo misma.');
+
+  const [a, b] = await Promise.all([
+    ConformidadModel.findOne({ _id: id, deletedAt: null }),
+    ConformidadModel.findOne({ _id: parejaId, deletedAt: null }),
+  ]);
+  if (!a || !b) throw new HttpError(404, 'Alguna de las 2 hojas no existe.');
+  if (a.tipoServicio !== 'cambio_equipo' || b.tipoServicio !== 'cambio_equipo') {
+    throw new HttpError(400, 'Las 2 hojas tienen que ser de tipo cambio_equipo.');
+  }
+  if (!a.cambioEquipo?.rol || !b.cambioEquipo?.rol || a.cambioEquipo.rol === b.cambioEquipo.rol) {
+    throw new HttpError(400, 'Las 2 hojas tienen que tener roles opuestos (retiro + instalación).');
+  }
+  if (a.cambioEquipo.parejaId || b.cambioEquipo.parejaId) {
+    throw new HttpError(409, 'Alguna de las 2 hojas ya está vinculada a otra.');
+  }
+
+  await Promise.all([
+    ConformidadModel.updateOne({ _id: a._id }, { $set: { 'cambioEquipo.parejaId': b._id } }),
+    ConformidadModel.updateOne({ _id: b._id }, { $set: { 'cambioEquipo.parejaId': a._id } }),
+  ]);
 }
 
 export const createConformidad = asyncHandler(async (req: Request, res: Response) => {
@@ -51,9 +86,80 @@ export const createConformidad = asyncHandler(async (req: Request, res: Response
     ticketOdoo: body.ticketOdoo,
     tareaOdoo: body.tareaOdoo,
     subtareaOdoo: body.subtareaOdoo,
+    cambioEquipo: body.cambioEquipo ? { rol: body.cambioEquipo.rol } : undefined,
   });
 
+  // El emparejamiento en el momento de creación es "best effort": si la
+  // pareja ya no está disponible (alguien más la vinculó, o el id vino mal),
+  // la hoja igual se crea — el técnico puede seguir y vincularla después
+  // desde el panel web, no tiene sentido perder el trabajo de campo por esto.
+  if (body.cambioEquipo?.parejaId) {
+    try {
+      await linkCambioEquipoPareja(String(record._id), body.cambioEquipo.parejaId);
+      record.cambioEquipo!.parejaId = new Types.ObjectId(body.cambioEquipo.parejaId);
+    } catch (err) {
+      console.error('CAMBIO_EQUIPO_LINK_AT_CREATE_FAILED', record._id, body.cambioEquipo.parejaId, err);
+    }
+  }
+
   res.status(201).json(record);
+});
+
+// Vinculación manual (o de respaldo, si no se pudo en el momento de crear la
+// hoja) entre las 2 hojas de un cambio_equipo — ver linkCambioEquipoPareja.
+export const linkCambioEquipoParejaHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { parejaId } = req.body as CambioEquipoParejaInput;
+  await linkCambioEquipoPareja(String(req.params.id), parejaId);
+  const record = await ConformidadModel.findById(req.params.id);
+  res.json(record);
+});
+
+// Endpoint acotado y deliberadamente sin el filtro por tecnicoId que aplica
+// listConformidades para el rol 'tecnico' (conformidades.controller.ts más
+// abajo) — el punto de esta feature es justo que un técnico DISTINTO al que
+// hizo el retiro pueda encontrar esa hoja para vincularla (ver plan: "otro
+// técnico, otro día"). Solo expone lo mínimo necesario para elegir la hoja
+// correcta, no el registro completo.
+export const getRetirosPendientes = asyncHandler(async (req: Request, res: Response) => {
+  const { matricula, rol } = req.query as unknown as RetirosPendientesQuery;
+
+  const data = await ConformidadModel.find(
+    {
+      deletedAt: null,
+      tipoServicio: 'cambio_equipo',
+      'cambioEquipo.rol': rol,
+      'cambioEquipo.parejaId': null,
+      matricula: new RegExp(escapeRegExp(matricula), 'i'),
+    },
+    { numero: 1, codigoActa: 1, cliente: 1, matricula: 1, fecha: 1 },
+  )
+    .sort({ fechaHora: -1 })
+    .limit(20);
+
+  res.json({ data });
+});
+
+// Prellenado de equipo para reparación — busca de forma automática, no por
+// búsqueda manual como retiros-pendientes: matrícula EXACTA (no regex
+// parcial) y un solo resultado, la última hoja 'completo' de esa unidad, que
+// es la que describe qué equipo hay instalado hoy. excludeId cubre el caso
+// (no debería darse en el flujo normal) de que la propia hoja en edición ya
+// esté en 'completo' al momento de buscar.
+export const getEquipoActual = asyncHandler(async (req: Request, res: Response) => {
+  const { matricula, excludeId } = req.query as unknown as EquipoActualQuery;
+
+  const filter: Record<string, unknown> = {
+    deletedAt: null,
+    status: 'completo',
+    matricula: new RegExp(`^${escapeRegExp(matricula)}$`, 'i'),
+  };
+  if (excludeId) filter._id = { $ne: excludeId };
+
+  const record = await ConformidadModel.findOne(filter, { numero: 1, codigoActa: 1, cliente: 1, fecha: 1, equipo: 1 }).sort({
+    fechaHora: -1,
+  });
+
+  res.json({ data: record });
 });
 
 export const patchConformidad = asyncHandler(async (req: Request, res: Response) => {
@@ -97,7 +203,7 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
     // finished — without the satisfaccion check, that case would leave the
     // record stuck at 'pendiente_post' forever server-side (even though the
     // técnico's own device already moved on).
-    if (record.post.firma?.url || record.post.firma?.satisfaccion) {
+    if (record.post.firma?.url || record.post.firma?.satisfaccion || record.post.firma?.clienteAusente) {
       record.status = 'completo';
     }
   }
@@ -165,6 +271,12 @@ export const listConformidades = asyncHandler(async (req: Request, res: Response
   }
 
   if (query.status) filter.status = query.status;
+  if (query.tipoServicio) filter.tipoServicio = query.tipoServicio;
+  if (query.cambioEquipoPendiente) {
+    filter.tipoServicio = 'cambio_equipo';
+    filter['cambioEquipo.rol'] = { $ne: null };
+    filter['cambioEquipo.parejaId'] = null;
+  }
   if (query.altaMesaAyuda) filter['altaEquipo.mesaAyuda.checked'] = query.altaMesaAyuda === 'hecho';
   if (query.altaCoordinacion) filter['altaEquipo.coordinacion.checked'] = query.altaCoordinacion === 'hecho';
   if (query.matricula) filter.matricula = new RegExp(escapeRegExp(query.matricula), 'i');
@@ -309,6 +421,7 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
     <p>Fecha: ${esc(record.fecha)} ${esc(record.hora)}<br>Instalador: ${esc(record.instalador)}</p>
     ${satisfaccion ? `<p>Estado de firma: ${esc(SATISFACCION_LABELS[satisfaccion] ?? satisfaccion)}</p>` : ''}
     ${motivo ? `<p>Motivo: ${esc(motivo)}</p>` : ''}
+    ${record.post.firma?.clienteAusente ? '<p>Cliente ausente</p>' : ''}
     ${preFalla}
     ${postFalla}
     ${preItem7}

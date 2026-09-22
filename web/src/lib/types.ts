@@ -42,6 +42,7 @@ export interface Firma {
   firmedAt?: string;
   satisfaccion?: SatisfaccionFirma | null;
   motivo?: string;
+  clienteAusente?: boolean;
 }
 
 export interface AltaCheck {
@@ -60,6 +61,25 @@ export interface TicketOdoo {
   odooId: number | null;
   clienteOdoo: string;
   verified: boolean;
+}
+
+// Solo se completa cuando tipoServicio es 'cambio_equipo' Y la hoja usa el
+// esquema nuevo de 2 hojas vinculadas (retiro + instalación) — las hojas
+// cambio_equipo históricas (1 sola hoja) no tienen esto seteado.
+export interface CambioEquipo {
+  rol: 'retiro' | 'instalacion';
+  parejaId: string | null;
+}
+
+// Resultado acotado de GET /conformidades/cambio-equipo/retiros-pendientes —
+// ver api/src/controllers/conformidades.controller.ts's getRetirosPendientes.
+export interface RetiroPendiente {
+  _id: string;
+  numero: string;
+  codigoActa: string;
+  cliente: string;
+  matricula: string;
+  fecha: string;
 }
 
 export interface Phase {
@@ -90,6 +110,7 @@ export interface ConformidadDoc {
   equipo: Equipo;
   altaEquipo: AltaEquipo;
   ticketOdoo: TicketOdoo | null;
+  cambioEquipo: CambioEquipo | null;
   // Set once the app has generated and uploaded the PDF report (see
   // mobile/src/sync/sync.ts) — null until then, e.g. for borrador_pre records.
   pdfReporte: { url: string; key: string } | null;
@@ -142,6 +163,9 @@ export interface CalendarTask {
   odooUrl: string;
   subtaskCount: number;
   subtasks: CalendarSubtask[];
+  // El helpdesk.ticket del que nace esta tarea de FSM, cuando existe (ver
+  // calendarTask.service.ts) — no todas las tareas vienen de un ticket.
+  ticketOdoo: { id: number; label: string } | null;
 }
 
 export interface OdooTechnician {
@@ -169,6 +193,7 @@ export interface ListConformidadesQuery {
   search?: string;
   altaMesaAyuda?: 'pendiente' | 'hecho';
   altaCoordinacion?: 'pendiente' | 'hecho';
+  cambioEquipoPendiente?: boolean;
 }
 
 // Mirrors api/src/schemas/reporte.schema.ts
@@ -176,6 +201,10 @@ export interface ReporteVisitasQuery {
   tecnicoId?: string;
   fechaDesde?: string;
   fechaHasta?: string;
+  // Solo lo usa /reportes/visitas — /reportes/tecnicos los ignora (ver
+  // api/src/schemas/reporte.schema.ts).
+  page?: number;
+  pageSize?: number;
 }
 
 // Mirrors api/src/services/reportes.service.ts — un renglón por VIAJE
@@ -201,7 +230,20 @@ export interface ReporteVisita {
   enSitioAt: string | null;
   completoAt: string | null;
   minutosTraslado: number | null;
+  // Tiempo TOTAL en el lugar (llegada → cierre) — incluye instalar todas las
+  // unidades del lote más cualquier otro tiempo ahí que no es instalación
+  // pura. Ver minutosInstalandoTotal para esa parte sola.
   minutosEnSitio: number | null;
+  // Suma estimada de cuánto se tardó instalando cada unidad del lote (ver
+  // `unidades` y api/src/services/reportes.service.ts's minutosInstalandoUnidad).
+  minutosInstalandoTotal: number | null;
+  unidades: ReporteVisitaUnidad[];
+}
+
+export interface ReporteVisitaUnidad {
+  subtareaOdooId: number | null;
+  subtareaNombre: string | null;
+  minutosInstalando: number | null;
 }
 
 // Mirrors api/src/services/reportes.service.ts getReporteTecnicos — un
@@ -214,6 +256,7 @@ export interface ReporteTecnico {
   visitas: number;
   minutosTrasladoProm: number | null;
   minutosEnSitioProm: number | null;
+  minutosInstalandoProm: number | null;
   tareasTotal: number;
   tareasCompletadas: number;
   tareasPendientes: number;
@@ -227,6 +270,12 @@ export interface ReporteTecnico {
 // ALCANCE_BACKOFFICE.md §14). Coordinación la ve acá para reprogramarla en
 // Odoo y marcarla resuelta.
 export type EstadoSubtareaIncidencia = 'pendiente_reprogramar' | 'reprogramada';
+
+export interface ListSubtareaIncidenciasQuery {
+  estado?: EstadoSubtareaIncidencia;
+  page?: number;
+  pageSize?: number;
+}
 
 export interface SubtareaIncidencia {
   _id: string;
@@ -242,4 +291,8 @@ export interface SubtareaIncidencia {
   resueltaAt: string | null;
   createdAt: string;
   updatedAt: string;
+  // Armados server-side (ver getSubtareaIncidencias) — llevan directo a la
+  // subtarea (la unidad puntual a reprogramar) o a la tarea/lote padre en Odoo.
+  subtareaOdooUrl: string;
+  tareaOdooUrl: string;
 }

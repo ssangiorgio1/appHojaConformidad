@@ -14,6 +14,8 @@ export type CreateSubtareaIncidenciaInput = z.infer<typeof createSubtareaInciden
 export const listSubtareaIncidenciasQuerySchema = z.object({
   estado: z.enum(['pendiente_reprogramar', 'reprogramada']).optional(),
   fecha: fechaField.optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });
 export type ListSubtareaIncidenciasQuery = z.infer<typeof listSubtareaIncidenciasQuerySchema>;
 

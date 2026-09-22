@@ -10,7 +10,7 @@ import { IconChevronLeft } from '@/components/ui/Icons';
 import { getReporteTecnicos, listCalendarTasks, listUsuarios } from '@/lib/api';
 import { useApiData } from '@/lib/useApiData';
 import { formatMinutos } from '@/lib/format';
-import { getArWeek, formatArRange, formatArTimeRange } from '@/lib/calendarDates';
+import { getArWeek, formatArRange, formatArTimeRange, formatArWeekdayShort, parseOdooUtcString } from '@/lib/calendarDates';
 import { CalendarGrid } from '@/components/calendar/CalendarGrid';
 import { TaskDetailPanel } from '@/components/calendar/TaskDetailPanel';
 import { resolveTechnicianSwatch } from '@/lib/technicianColors';
@@ -89,14 +89,18 @@ export default function ReporteTecnicoDetallePage() {
 
         {resumen && (
           <>
-            <div className="grid grid-cols-2 gap-3 border-t border-line pt-4 sm:grid-cols-2">
+            <div className="grid grid-cols-3 gap-3 border-t border-line pt-4">
               <div>
                 <div className="text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Traslado prom.</div>
                 <div className="text-xl font-extrabold">{formatMinutos(resumen.minutosTrasladoProm)}</div>
               </div>
               <div>
-                <div className="text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Instalación prom.</div>
+                <div className="text-[10.5px] font-extrabold uppercase tracking-wide text-muted">En el lugar prom.</div>
                 <div className="text-xl font-extrabold">{formatMinutos(resumen.minutosEnSitioProm)}</div>
+              </div>
+              <div>
+                <div className="text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Instalación prom.</div>
+                <div className="text-xl font-extrabold">{formatMinutos(resumen.minutosInstalandoProm)}</div>
               </div>
             </div>
 
@@ -167,19 +171,34 @@ export default function ReporteTecnicoDetallePage() {
               const swatch = resolveTechnicianSwatch(task.technicianId, {});
               return (
                 <div key={task.id} className="flex flex-col gap-1 border-b border-line py-1.5 last:border-0">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedTask(task)}
-                    className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition hover:bg-bg"
-                  >
-                    <span className={`h-2.5 w-2.5 flex-none rounded-full ${swatch.dot}`} />
-                    <span className="w-[130px] flex-none text-[12px] font-semibold text-muted">
-                      {formatArTimeRange(task.start, task.end)}
-                    </span>
-                    <span className="flex-1 truncate text-[13px] font-bold">{task.partnerName ?? task.title}</span>
-                    {task.stage && <Badge tone="neutral">{task.stage}</Badge>}
-                    {task.subtaskCount > 0 && <Badge tone="primary">{task.subtaskCount} unidades</Badge>}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTask(task)}
+                      className="flex flex-1 items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition hover:bg-bg"
+                    >
+                      <span className={`h-2.5 w-2.5 flex-none rounded-full ${swatch.dot}`} />
+                      <span className="flex w-[160px] flex-none flex-col leading-tight">
+                        <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
+                          {formatArWeekdayShort(parseOdooUtcString(task.start))}
+                        </span>
+                        <span className="text-[12px] font-semibold text-muted">{formatArTimeRange(task.start, task.end)}</span>
+                      </span>
+                      <span className="flex-1 truncate text-[13px] font-bold">{task.partnerName ?? task.title}</span>
+                      {task.stage && <Badge tone="neutral">{task.stage}</Badge>}
+                      {task.subtaskCount > 0 && <Badge tone="primary">{task.subtaskCount} unidades</Badge>}
+                    </button>
+                    {task.ticketOdoo && (
+                      <a
+                        href={`${process.env.NEXT_PUBLIC_ODOO_BASE_URL}/odoo/all-tickets/${task.ticketOdoo.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex-none whitespace-nowrap text-[11px] font-bold text-primary hover:underline"
+                      >
+                        {task.ticketOdoo.label}
+                      </a>
+                    )}
+                  </div>
 
                   {task.subtasks.length > 0 && (
                     <ul className="ml-8 flex flex-col gap-0.5">

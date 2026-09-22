@@ -7,8 +7,8 @@ import type { ReporteVisitasQuery } from '../schemas/reporte.schema.js';
 
 export const listReporteVisitas = asyncHandler(async (req: Request, res: Response) => {
   const query = req.query as unknown as ReporteVisitasQuery;
-  const data = await getReporteVisitas(query);
-  res.json({ data });
+  const result = await getReporteVisitas(query);
+  res.json(result);
 });
 
 export const listReporteTecnicos = asyncHandler(async (req: Request, res: Response) => {

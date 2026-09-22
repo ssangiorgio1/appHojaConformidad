@@ -20,6 +20,7 @@ const nextConfig: NextConfig = {
       './checklist.js': '../packages/shared/src/checklist.ts',
       './equipo.js': '../packages/shared/src/equipo.ts',
       './photoSlots.js': '../packages/shared/src/photoSlots.ts',
+      './serviceMode.js': '../packages/shared/src/serviceMode.ts',
       './types.js': '../packages/shared/src/types.ts',
       './printHtml.js': '../packages/shared/src/printHtml.ts',
     },

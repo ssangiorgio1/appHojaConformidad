@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { Pagination } from '@/components/ui/Pagination';
 import { IconChevronDown, IconEye, IconSearch, IconX } from '@/components/ui/Icons';
 import { AltaCheckToggle, canToggleAlta } from '@/components/AltaCheckToggle';
 import { ConformidadResumenBody } from '@/components/ConformidadResumen';
@@ -37,6 +38,7 @@ export default function ConformidadesPage() {
   const [tecnicoId, setTecnicoId] = useState('');
   const [altaMesaAyuda, setAltaMesaAyuda] = useState<'pendiente' | 'hecho' | ''>('');
   const [altaCoordinacion, setAltaCoordinacion] = useState<'pendiente' | 'hecho' | ''>('');
+  const [cambioEquipoPendiente, setCambioEquipoPendiente] = useState(false);
   const [page, setPage] = useState(1);
   // Fila desplegada para ver el resumen (equipo, control de instalación,
   // fotos) sin salir del listado — el check de alta de esa fila solo se
@@ -77,8 +79,9 @@ export default function ConformidadesPage() {
         tecnicoId: tecnicoId || undefined,
         altaMesaAyuda: altaMesaAyuda || undefined,
         altaCoordinacion: altaCoordinacion || undefined,
+        cambioEquipoPendiente: cambioEquipoPendiente || undefined,
       }),
-    [page, debouncedSearch, status, tecnicoId, altaMesaAyuda, altaCoordinacion],
+    [page, debouncedSearch, status, tecnicoId, altaMesaAyuda, altaCoordinacion, cambioEquipoPendiente],
   );
 
   // Reemplaza solo la fila tocada con la respuesta del servidor — evita el
@@ -109,8 +112,13 @@ export default function ConformidadesPage() {
           label: `Alta Coord: ${altaCoordinacion === 'hecho' ? 'Hecho' : 'Pendiente'}`,
           onRemove: () => setAltaCoordinacion(''),
         },
+        cambioEquipoPendiente && {
+          key: 'cambioEquipoPendiente',
+          label: 'Cambio de equipo: pendiente de vincular',
+          onRemove: () => setCambioEquipoPendiente(false),
+        },
       ].filter((f): f is { key: string; label: string; onRemove: () => void } => Boolean(f)),
-    [search, tecnicoId, status, altaMesaAyuda, altaCoordinacion, tecnicoNombre],
+    [search, tecnicoId, status, altaMesaAyuda, altaCoordinacion, cambioEquipoPendiente, tecnicoNombre],
   );
 
   function clearAllFilters() {
@@ -120,6 +128,7 @@ export default function ConformidadesPage() {
     setStatus('');
     setAltaMesaAyuda('');
     setAltaCoordinacion('');
+    setCambioEquipoPendiente(false);
   }
 
   return (
@@ -224,6 +233,20 @@ export default function ConformidadesPage() {
               <option value="">Todos</option>
               <option value="pendiente">Pendiente</option>
               <option value="hecho">Hecho</option>
+            </Select>
+          </div>
+
+          <div>
+            <div className="mb-1 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Cambio de equipo</div>
+            <Select
+              value={cambioEquipoPendiente ? 'pendiente' : ''}
+              onChange={(e) => {
+                setPage(1);
+                setCambioEquipoPendiente(e.target.value === 'pendiente');
+              }}
+            >
+              <option value="">Todos</option>
+              <option value="pendiente">Pendiente de vincular</option>
             </Select>
           </div>
         </div>
@@ -345,29 +368,7 @@ export default function ConformidadesPage() {
           </div>
         </div>
 
-        {data && data.totalPages > 1 && (
-          <div className="flex items-center justify-between px-2.5 pt-4">
-            <div className="text-[12.5px] font-semibold text-muted">
-              Página {data.page} de {data.totalPages}
-            </div>
-            <div className="flex gap-2">
-              <button
-                disabled={page <= 1}
-                onClick={() => setPage((p) => p - 1)}
-                className="rounded-md px-3 py-1.5 text-xs font-bold text-muted shadow-inset disabled:opacity-40"
-              >
-                Anterior
-              </button>
-              <button
-                disabled={page >= data.totalPages}
-                onClick={() => setPage((p) => p + 1)}
-                className="rounded-md px-3 py-1.5 text-xs font-bold text-muted shadow-inset disabled:opacity-40"
-              >
-                Siguiente
-              </button>
-            </div>
-          </div>
-        )}
+        {data && <Pagination page={page} totalPages={data.totalPages} onPageChange={setPage} />}
       </Card>
     </div>
   );

@@ -47,6 +47,9 @@ export interface Firma {
   motivo?: string;
   // Name of the person signing — required in PRE and POST unless the client refuses to sign.
   nombreFirmante?: string;
+  // The client wasn't available to sign — advanced under the technician's
+  // responsibility, without a signature or nombreFirmante.
+  clienteAusente?: boolean;
 }
 
 export interface Phase {
@@ -83,6 +86,13 @@ export function phaseDetalles(phase: Phase): Partial<Record<ChecklistKey, string
 // What the técnico typed/picked to identify the Odoo helpdesk ticket for
 // this client. `numero` is always present (even offline, unverified) so
 // linking a ticket never depends on having signal at that moment.
+// Which leg of a cambio_equipo this hoja is — the two legs are linked by
+// parejaId (Mongo _id of the other one), set once both exist.
+export interface CambioEquipoRef {
+  rol: 'retiro' | 'instalacion';
+  parejaId?: string | null;
+}
+
 export interface TicketOdooRef {
   numero: string;
   odooId?: number;
@@ -142,6 +152,7 @@ export interface ConformidadRecord {
   pre: Phase;
   post: Phase;
   equipo: Equipo;
+  cambioEquipo?: CambioEquipoRef | null;
 
   ticketOdoo: TicketOdooRef | null;
   odooSync: OdooSync;

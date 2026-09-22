@@ -31,6 +31,7 @@ const firmaSchema = z
     satisfaccion: z.enum(['satisfecho', 'insatisfecho', 'no_firma_insatisfecho']).nullable().optional(),
     motivo: z.string().optional(),
     nombreFirmante: z.string().optional(),
+    clienteAusente: z.boolean().optional(),
   })
   .nullable();
 
@@ -94,6 +95,22 @@ const fechaField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'fecha must be YYYY-M
 
 const tipoServicioSchema = z.enum(['instalacion', 'desinstalacion', 'reparacion', 'cambio_equipo']).nullable();
 
+// Ver nota en models/Conformidad.ts — solo aplica al esquema nuevo de 2 hojas
+// vinculadas para cambio_equipo. `parejaId` es opcional: si el técnico de
+// instalación no pudo emparejar en el momento (sin señal, no la encontró),
+// queda null y se resuelve después desde el panel web.
+const cambioEquipoSchema = z
+  .object({
+    rol: z.enum(['retiro', 'instalacion']),
+    // El modelo (ver CambioEquipoSchema en models/Conformidad.ts) guarda
+    // `null` explícito como "todavía sin emparejar" — un técnico de
+    // instalación que no pudo vincular en el momento manda cambioEquipo con
+    // parejaId: null, no lo omite. Sin `.nullable()` acá, ese caso (legítimo
+    // y esperado) tiraba 400 "expected string, received null".
+    parejaId: z.string().min(1).nullable().optional(),
+  })
+  .nullable();
+
 const topLevelSchema = z.object({
   numero: z.string(),
   cliente: z.string(),
@@ -120,6 +137,7 @@ export const createConformidadSchema = topLevelSchema
     tareaOdoo: tareaOdooSchema.optional(),
     subtareaOdoo: subtareaOdooSchema.optional(),
     tipoServicio: tipoServicioSchema.optional(),
+    cambioEquipo: cambioEquipoSchema.optional(),
   });
 
 export const patchConformidadSchema = topLevelSchema.partial().extend({
@@ -133,10 +151,20 @@ export const patchConformidadSchema = topLevelSchema.partial().extend({
   pdfReporte: pdfReporteSchema.optional(),
 });
 
+// Body del endpoint dedicado de vinculación manual (ver
+// linkCambioEquipoPareja en el controller) — deliberadamente separado de
+// patchConformidadSchema: vincular es una operación que toca 2 documentos a
+// la vez con sus propias reglas de validación (roles opuestos, ninguno ya
+// vinculado), no un campo más que se pueda pisar con un PATCH común.
+export const cambioEquipoParejaSchema = z.object({
+  parejaId: z.string().min(1),
+});
+
 export const listConformidadesQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
   status: z.enum(['borrador_pre', 'pendiente_post', 'completo']).optional(),
+  tipoServicio: z.enum(['instalacion', 'desinstalacion', 'reparacion', 'cambio_equipo']).optional(),
   tecnicoId: z.string().optional(),
   matricula: z.string().max(100).optional(),
   imei: z.string().max(100).optional(),
@@ -146,6 +174,31 @@ export const listConformidadesQuerySchema = z.object({
   search: z.string().max(100).optional(),
   altaMesaAyuda: z.enum(['pendiente', 'hecho']).optional(),
   altaCoordinacion: z.enum(['pendiente', 'hecho']).optional(),
+  // Hojas cambio_equipo del esquema nuevo (con cambioEquipo.rol seteado) que
+  // todavía no tienen su pareja vinculada — para que coordinación las pueda
+  // encontrar todas juntas en vez de tener que abrir cada hoja para verlo.
+  cambioEquipoPendiente: z.coerce.boolean().optional(),
+});
+
+// Query del endpoint acotado de búsqueda de pendientes de emparejar — ver
+// GET /conformidades/cambio-equipo/retiros-pendientes en el controller.
+// `rol` es el rol que se está BUSCANDO (el opuesto al de la hoja que se
+// quiere vincular): la PWA siempre busca 'retiro' (el técnico de instalación
+// busca el retiro que hizo otro compañero), pero el panel web necesita poder
+// buscar en los dos sentidos para la vinculación manual de respaldo.
+export const retirosPendientesQuerySchema = z.object({
+  matricula: z.string().min(1).max(100),
+  rol: z.enum(['retiro', 'instalacion']).default('retiro'),
+});
+
+// Query del endpoint de prellenado de equipo para reparación — ver
+// GET /conformidades/equipo-actual en el controller. A diferencia de
+// retiros-pendientes (búsqueda parcial, varios resultados a elegir), acá se
+// busca por matrícula EXACTA y se devuelve un solo resultado: la última hoja
+// 'completo' de esa unidad, que es la que describe el equipo instalado hoy.
+export const equipoActualQuerySchema = z.object({
+  matricula: z.string().min(1).max(100),
+  excludeId: z.string().optional(),
 });
 
 export const altaConformidadSchema = z.object({
@@ -157,3 +210,6 @@ export type CreateConformidadInput = z.infer<typeof createConformidadSchema>;
 export type PatchConformidadInput = z.infer<typeof patchConformidadSchema>;
 export type ListConformidadesQuery = z.infer<typeof listConformidadesQuerySchema>;
 export type AltaConformidadInput = z.infer<typeof altaConformidadSchema>;
+export type CambioEquipoParejaInput = z.infer<typeof cambioEquipoParejaSchema>;
+export type RetirosPendientesQuery = z.infer<typeof retirosPendientesQuerySchema>;
+export type EquipoActualQuery = z.infer<typeof equipoActualQuerySchema>;

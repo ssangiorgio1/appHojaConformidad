@@ -1,7 +1,13 @@
+import { readFileSync } from 'node:fs';
 import puppeteer, { type Browser } from 'puppeteer';
 import sharp from 'sharp';
 import { buildPrintHtml, type PrintableConformidad } from '@wara/shared';
 import { buildObjectKey, uploadBuffer } from './r2.service.js';
+
+// Se embebe como data URI (no una URL de R2/Odoo) para que el PDF no dependa
+// de que Chromium resuelva una request de red aparte al renderizar — el
+// mismo motivo por el que las fotos ya vienen resueltas antes de setContent.
+const LOGO_DATA_URI = `data:image/png;base64,${readFileSync(new URL('../assets/logo-wara.png', import.meta.url)).toString('base64')}`;
 
 // Las fotos ya vienen resizeadas a ~1100px/JPEG 72% del lado del técnico
 // (para poder hacer zoom en el panel web) — pero en el PDF se imprimen en
@@ -63,6 +69,7 @@ async function getBrowser(): Promise<Browser> {
 
 async function renderPdfBuffer(record: PrintableConformidad): Promise<Buffer> {
   const html = await buildPrintHtml(record, {
+    logoDataUri: LOGO_DATA_URI,
     resolvePhotoSrc: async (foto) => {
       if (!foto.url) return foto.dataUrl;
       return (await resizePhotoForPdf(foto.url)) ?? foto.url;

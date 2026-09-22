@@ -1,6 +1,7 @@
 import { CHECKLIST_ITEMS, DETAIL_FIELD_BY_KEY, type ChecklistValue } from './checklist.js';
 import { EQUIP_GROUPS, EQUIP_CHECK_FIELDS, isEquipoFieldVisible } from './equipo.js';
-import { PRE_PHOTO_SLOTS, POST_PHOTO_SLOTS, SENSORES_ACCESORIOS_GROUP_KEY, type PhotoSlotDef } from './photoSlots.js';
+import { prePhotoSlotsFor, postPhotoSlotsFor, SENSORES_ACCESORIOS_GROUP_KEY, type PhotoSlotDef } from './photoSlots.js';
+import { getServiceMode } from './serviceMode.js';
 import { SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
 
 // The fields buildPrintHtml actually reads — deliberately narrower than the
@@ -21,6 +22,7 @@ export type PrintableConformidad = Pick<
   | 'post'
   | 'equipo'
   | 'tipoServicio'
+  | 'cambioEquipo'
   | 'ticketOdoo'
 >;
 
@@ -205,10 +207,11 @@ export async function buildPrintHtml(
   const statusLabel =
     record.status === 'completo' ? 'Completo' : record.status === 'pendiente_post' ? 'Pendiente POST' : 'PRE en progreso';
   const tipoServicioLabel = record.tipoServicio ? TIPO_SERVICIO_LABELS[record.tipoServicio] : null;
+  const mode = getServiceMode(record);
 
   const [prePhotos, postPhotos] = await Promise.all([
-    photosBlock(PRE_PHOTO_SLOTS, record.pre.fotos, 'Fotos PRE', resolvePhotoSrc),
-    photosBlock(POST_PHOTO_SLOTS, record.post.fotos, 'Fotos POST', resolvePhotoSrc),
+    photosBlock(prePhotoSlotsFor(mode), record.pre.fotos, 'Fotos PRE', resolvePhotoSrc),
+    photosBlock(postPhotoSlotsFor(mode), record.post.fotos, 'Fotos POST', resolvePhotoSrc),
   ]);
 
   return `<!DOCTYPE html>

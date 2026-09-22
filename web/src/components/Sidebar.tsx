@@ -13,6 +13,7 @@ import {
   IconDocument,
   IconGrid,
   IconLogout,
+  IconSparkle,
   IconUsers,
 } from '@/components/ui/Icons';
 
@@ -20,6 +21,7 @@ const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: IconGrid },
   { href: '/conformidades', label: 'Conformidades', icon: IconDocument },
   { href: '/calendario', label: 'Calendario', icon: IconCalendar },
+  { href: '/atilio', label: 'Atilio', icon: IconSparkle },
   {
     href: '/incidencias',
     label: 'Unidades no encontradas',

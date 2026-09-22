@@ -3,14 +3,15 @@ import type {
   ConformidadDoc,
   CreateUsuarioInput,
   CreateUsuarioResponse,
-  EstadoSubtareaIncidencia,
   ListCalendarTasksQuery,
   ListConformidadesQuery,
+  ListSubtareaIncidenciasQuery,
   OdooTechnician,
   Paginated,
   ReporteTecnico,
   ReporteVisita,
   ReporteVisitasQuery,
+  RetiroPendiente,
   SubtareaIncidencia,
   Usuario,
   UsuarioRole,
@@ -100,12 +101,45 @@ export function getConformidad(idToken: string, id: string) {
   return apiFetch<ConformidadDoc>(`/api/conformidades/${id}`, idToken);
 }
 
-export function generateConformidadPdf(idToken: string, id: string) {
-  return apiFetch<{ pdfReporte: { url: string; key: string } }>(`/api/conformidades/${id}/pdf`, idToken, { method: 'POST' });
+// El backend genera el PDF con Puppeteer bajo demanda y lo devuelve como
+// binario (application/pdf) — ya no se guarda en R2, así que no hay más
+// `pdfReporte.url` que leer de una respuesta JSON (ver
+// api/src/controllers/conformidades.controller.ts). No pasa por apiFetch
+// porque esa función asume JSON.
+export async function generateConformidadPdf(idToken: string, id: string): Promise<Blob> {
+  const res = await fetch(`${API_URL}/api/conformidades/${id}/pdf`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new ApiError(res.status, body.error ?? res.statusText);
+  }
+  return res.blob();
 }
 
 export function setAltaConformidad(idToken: string, id: string, area: 'mesaAyuda' | 'coordinacion', checked: boolean) {
   return apiFetch<ConformidadDoc>(`/api/conformidades/${id}/alta`, idToken, { method: 'POST', body: { area, checked } });
+}
+
+// Endpoint acotado para el emparejamiento de cambio de equipo — a propósito
+// no pasa por listConformidades (ver api/src/controllers/conformidades.controller.ts's
+// getRetirosPendientes): busca por matrícula sin importar qué técnico hizo
+// la otra hoja, para poder vincularlas manualmente desde acá cuando no se
+// pudo hacer en el momento en la PWA. `rol` es el rol que se busca — el
+// opuesto al de la hoja que se está vinculando.
+export function searchCambioEquipoPendientes(idToken: string, matricula: string, rol: 'retiro' | 'instalacion') {
+  return apiFetch<{ data: RetiroPendiente[] }>(
+    `/api/conformidades/cambio-equipo/retiros-pendientes?matricula=${encodeURIComponent(matricula)}&rol=${rol}`,
+    idToken,
+  );
+}
+
+export function linkCambioEquipoPareja(idToken: string, id: string, parejaId: string) {
+  return apiFetch<ConformidadDoc>(`/api/conformidades/${id}/cambio-equipo-pareja`, idToken, {
+    method: 'PATCH',
+    body: { parejaId },
+  });
 }
 
 function calendarQueryString(query: ListCalendarTasksQuery): string {
@@ -136,9 +170,7 @@ function reporteVisitasQueryString(query: ReporteVisitasQuery): string {
 }
 
 export function getReporteVisitas(idToken: string, query: ReporteVisitasQuery = {}) {
-  return apiFetch<{ data: ReporteVisita[] }>(`/api/reportes/visitas${reporteVisitasQueryString(query)}`, idToken).then(
-    (r) => r.data,
-  );
+  return apiFetch<Paginated<ReporteVisita>>(`/api/reportes/visitas${reporteVisitasQueryString(query)}`, idToken);
 }
 
 export function getReporteTecnicos(idToken: string, query: ReporteVisitasQuery = {}) {
@@ -147,9 +179,13 @@ export function getReporteTecnicos(idToken: string, query: ReporteVisitasQuery =
   );
 }
 
-export function listSubtareaIncidencias(idToken: string, estado?: EstadoSubtareaIncidencia) {
-  const qs = estado ? `?estado=${estado}` : '';
-  return apiFetch<{ data: SubtareaIncidencia[] }>(`/api/subtareas/incidencias${qs}`, idToken).then((r) => r.data);
+export function listSubtareaIncidencias(idToken: string, query: ListSubtareaIncidenciasQuery = {}) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined && value !== '') params.set(key, String(value));
+  }
+  const qs = params.toString();
+  return apiFetch<Paginated<SubtareaIncidencia>>(`/api/subtareas/incidencias${qs ? `?${qs}` : ''}`, idToken);
 }
 
 export function resolveSubtareaIncidencia(idToken: string, id: string) {

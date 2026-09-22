@@ -5,18 +5,26 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { CHECKLIST_ITEMS } from '@wara/shared/src/checklist';
 import { EQUIP_CHECK_FIELDS, EQUIP_GROUPS } from '@wara/shared/src/equipo';
-import { PRE_PHOTO_SLOTS, POST_PHOTO_SLOTS } from '@wara/shared/src/photoSlots';
+import { prePhotoSlotsFor, postPhotoSlotsFor } from '@wara/shared/src/photoSlots';
+import type { ServiceMode } from '@wara/shared/src/serviceMode';
 import { SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, type ChecklistValue, type SatisfaccionFirma } from '@wara/shared';
 import { Card } from '@/components/ui/Card';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { IconCamera, IconChevronLeft, IconLock, IconDocument, IconX } from '@/components/ui/Icons';
 import { AltaCheckToggle, canToggleAlta } from '@/components/AltaCheckToggle';
 import { ConformidadResumen, InfoField, isEquipoFieldVisible } from '@/components/ConformidadResumen';
-import { getConformidad, generateConformidadPdf, listUsuarios, setAltaConformidad } from '@/lib/api';
+import {
+  getConformidad,
+  generateConformidadPdf,
+  linkCambioEquipoPareja,
+  listUsuarios,
+  searchCambioEquipoPendientes,
+  setAltaConformidad,
+} from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
 import { useApiData } from '@/lib/useApiData';
 import { formatFechaHora, formatIsoDateTime } from '@/lib/format';
-import type { EstadoConformidad, Phase } from '@/lib/types';
+import type { ConformidadDoc, EstadoConformidad, Phase, RetiroPendiente } from '@/lib/types';
 
 const ESTADO_LABEL: Record<EstadoConformidad, string> = {
   borrador_pre: 'Borrador PRE',
@@ -42,9 +50,14 @@ function checklistTone(value: ChecklistValue): BadgeTone {
   return 'neutral';
 }
 
+// Combina los slots de los 3 modos — para mostrar el label de una foto ya
+// subida no hace falta saber el modo del registro puntual, alcanza con que
+// la clave exista en algún modo (distintos modos reusan algunas claves, ej.
+// "torpedo"/"odometro", por eso el orden no importa).
+const ALL_MODES: ServiceMode[] = ['instalacion', 'retiro', 'reparacion'];
 const PHOTO_SLOT_LABELS: Record<'pre' | 'post', Record<string, string>> = {
-  pre: Object.fromEntries(PRE_PHOTO_SLOTS.map((s) => [s.key, s.label])),
-  post: Object.fromEntries(POST_PHOTO_SLOTS.map((s) => [s.key, s.label])),
+  pre: Object.fromEntries(ALL_MODES.flatMap((m) => prePhotoSlotsFor(m)).map((s) => [s.key, s.label])),
+  post: Object.fromEntries(ALL_MODES.flatMap((m) => postPhotoSlotsFor(m)).map((s) => [s.key, s.label])),
 };
 
 // Fotos sincronizadas antes de que el servidor empezara a persistir slotKey
@@ -58,7 +71,7 @@ export default function ConformidadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { getIdToken, usuario } = useAuth();
   const [fase, setFase] = useState<'pre' | 'post'>('pre');
-  const { data: c, loading, error, refetch, setData } = useApiData((idToken) => getConformidad(idToken, id), [id]);
+  const { data: c, loading, error, setData } = useApiData((idToken) => getConformidad(idToken, id), [id]);
   const { data: usuariosData } = useApiData((idToken) => listUsuarios(idToken), []);
   const usuarioNombre = useMemo(() => {
     const map = new Map((usuariosData ?? []).map((u) => [u._id, u.nombre || u.email]));
@@ -94,13 +107,19 @@ export default function ConformidadDetailPage() {
   const phase: Phase | undefined = c?.[fase];
   const tipoServicioLabel = c?.tipoServicio ? TIPO_SERVICIO_LABELS[c.tipoServicio] : null;
 
+  // El PDF se genera bajo demanda en el servidor y nunca se persiste (ver
+  // api/src/controllers/conformidades.controller.ts) — no hay URL que
+  // guardar, así que acá solo lo abrimos en una pestaña nueva, igual que en
+  // la PWA (src/app/(app)/ver/[id]/page.tsx).
   async function handleGeneratePdf() {
     setGeneratingPdf(true);
     setPdfError(null);
     try {
       const idToken = await getIdToken();
-      await generateConformidadPdf(idToken, id);
-      await refetch();
+      const blob = await generateConformidadPdf(idToken, id);
+      const blobUrl = URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
     } catch (err) {
       setPdfError((err as Error).message || 'No se pudo generar el PDF.');
     } finally {
@@ -142,26 +161,14 @@ export default function ConformidadDetailPage() {
           <div className="text-lg font-extrabold">{c.cliente || 'Sin nombre de cliente'}</div>
           <div className="flex items-center gap-2.5">
             <Badge tone={ESTADO_TONE[c.status]}>{ESTADO_LABEL[c.status]}</Badge>
-            {c.pdfReporte?.url ? (
-              <a
-                href={c.pdfReporte.url}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1.5 rounded-md bg-surface px-3 py-2 text-[12.5px] font-bold shadow-soft-sm"
-              >
-                <IconDocument />
-                Ver PDF
-              </a>
-            ) : (
-              <button
-                onClick={handleGeneratePdf}
-                disabled={generatingPdf}
-                className="flex items-center gap-1.5 rounded-md bg-surface px-3 py-2 text-[12.5px] font-bold shadow-soft-sm disabled:opacity-60"
-              >
-                <IconDocument />
-                {generatingPdf ? 'Generando...' : 'Generar PDF'}
-              </button>
-            )}
+            <button
+              onClick={handleGeneratePdf}
+              disabled={generatingPdf}
+              className="flex items-center gap-1.5 rounded-md bg-surface px-3 py-2 text-[12.5px] font-bold shadow-soft-sm disabled:opacity-60"
+            >
+              <IconDocument />
+              {generatingPdf ? 'Generando...' : 'Ver PDF'}
+            </button>
           </div>
         </div>
 
@@ -211,6 +218,8 @@ export default function ConformidadDetailPage() {
           ))}
         </div>
       </Card>
+
+      {c.cambioEquipo?.rol && <CambioEquipoCard c={c} onLinked={setData} />}
 
       <Card className="p-6">
         <ConformidadResumen c={c} open={resumenOpen} onToggle={() => setResumenOpen((v) => !v)} />
@@ -310,7 +319,12 @@ export default function ConformidadDetailPage() {
               <img src={phase.firma.url} alt="Firma" className="h-[100px] w-full rounded-sm object-contain shadow-inset" />
             ) : (
               <div className="flex h-[100px] items-center justify-center rounded-sm text-xs font-semibold text-muted shadow-inset">
-                Sin firmar todavía
+                {phase?.firma?.clienteAusente ? 'Cliente ausente' : 'Sin firmar todavía'}
+              </div>
+            )}
+            {phase?.firma?.clienteAusente && (
+              <div className="mt-3 flex justify-end">
+                <Badge tone="bad">Cliente ausente</Badge>
               </div>
             )}
             {phase?.firma?.satisfaccion && (
@@ -405,5 +419,167 @@ export default function ConformidadDetailPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// Ventana de 48hs desde que se firmó el POST del retiro — no se guarda un
+// deadline en la base (se calcula acá para no desincronizarse si la hoja se
+// reabre/edita, ver plan de cambio de equipo). Solo informativo por ahora.
+function fmtDeadline48h(firmedAt: string): string {
+  const deadline = new Date(new Date(firmedAt).getTime() + 48 * 60 * 60 * 1000);
+  return deadline.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+// Card de vinculación de cambio de equipo — cubre 2 casos: la pareja ya está
+// vinculada (se pide y muestra con un link a su detalle) o no (se ofrece
+// buscarla y vincularla a mano, para el caso en que no se pudo hacer desde
+// la PWA en el momento — ver plan de cambio de equipo).
+function CambioEquipoCard({ c, onLinked }: { c: ConformidadDoc; onLinked: (updated: ConformidadDoc) => void }) {
+  const { getIdToken } = useAuth();
+  const rol = c.cambioEquipo!.rol;
+  const parejaId = c.cambioEquipo!.parejaId;
+  const parejaRol = rol === 'retiro' ? 'instalacion' : 'retiro';
+
+  const [pareja, setPareja] = useState<ConformidadDoc | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [query, setQuery] = useState(c.matricula);
+  const [results, setResults] = useState<RetiroPendiente[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!parejaId) return;
+    let cancelled = false;
+    getIdToken()
+      .then((idToken) => getConformidad(idToken, parejaId))
+      .then((doc) => {
+        if (!cancelled) setPareja(doc);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parejaId]);
+
+  async function runSearch() {
+    if (!query.trim() || searching) return;
+    setSearching(true);
+    setError(null);
+    try {
+      const idToken = await getIdToken();
+      const { data } = await searchCambioEquipoPendientes(idToken, query.trim(), parejaRol);
+      setResults(data);
+      if (!data.length) setError('Sin resultados para esa patente.');
+    } catch {
+      setError('No se pudo buscar.');
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function pick(candidato: RetiroPendiente) {
+    setLinking(true);
+    setError(null);
+    try {
+      const idToken = await getIdToken();
+      const updated = await linkCambioEquipoPareja(idToken, c._id, candidato._id);
+      onLinked(updated);
+      setModalOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo vincular.');
+    } finally {
+      setLinking(false);
+    }
+  }
+
+  return (
+    <Card className="flex flex-col gap-3 p-6">
+      <div className="text-[15px] font-extrabold">
+        Cambio de equipo — {rol === 'retiro' ? 'Retiro del equipo viejo' : 'Instalación del equipo nuevo'}
+      </div>
+
+      {rol === 'retiro' && c.status === 'completo' && c.post.firma?.firmedAt && (
+        <div className="text-[12.5px] font-semibold text-muted">
+          Plazo para instalar el equipo nuevo: {fmtDeadline48h(c.post.firma.firmedAt)}
+        </div>
+      )}
+
+      {parejaId ? (
+        <div className="text-[13px]">
+          Vinculada a{' '}
+          <Link href={`/conformidades/${parejaId}`} className="font-bold text-primary hover:underline">
+            hoja #{pareja ? pareja.numero || pareja.codigoActa : parejaId}
+          </Link>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-[13px] text-muted">
+            Pendiente de vincular con la {parejaRol === 'retiro' ? 'hoja de retiro' : 'hoja de instalación'}.
+          </div>
+          <button
+            onClick={() => {
+              setQuery(c.matricula);
+              setResults([]);
+              setError(null);
+              setModalOpen(true);
+            }}
+            className="shrink-0 rounded-md bg-surface px-3 py-2 text-[12.5px] font-bold shadow-soft-sm"
+          >
+            Vincular manualmente
+          </button>
+        </div>
+      )}
+
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-6" onClick={() => setModalOpen(false)}>
+          <div className="w-full max-w-[440px]" onClick={(e) => e.stopPropagation()}>
+            <Card className="max-h-[80vh] overflow-y-auto p-5">
+              <div className="mb-2.5 text-base font-bold">
+                Buscar {parejaRol === 'retiro' ? 'hoja de retiro' : 'hoja de instalación'}
+              </div>
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+                placeholder="Patente del vehículo"
+                className="w-full rounded-md bg-bg px-3 py-3 text-sm outline-none"
+              />
+              <div className="mt-2 flex gap-2">
+                <button
+                  onClick={runSearch}
+                  disabled={searching}
+                  className="rounded-md bg-primary px-3.5 py-2 text-[12.5px] font-bold text-white disabled:opacity-60"
+                >
+                  {searching ? 'Buscando…' : 'Buscar'}
+                </button>
+                <button onClick={() => setModalOpen(false)} className="rounded-md bg-surface px-3.5 py-2 text-[12.5px] font-bold">
+                  Cerrar
+                </button>
+              </div>
+              {error && <div className="mt-2 text-xs font-semibold text-bad">{error}</div>}
+              <div className="mt-2.5 max-h-[280px] overflow-y-auto">
+                {results.map((r) => (
+                  <button
+                    key={r._id}
+                    type="button"
+                    disabled={linking}
+                    onClick={() => pick(r)}
+                    className="block w-full border-b border-line py-2.5 text-left disabled:opacity-60"
+                  >
+                    <div className="text-sm font-bold">#{r.numero || r.codigoActa}</div>
+                    <div className="mt-0.5 text-xs text-muted">
+                      {r.cliente || 'Sin cliente'} · {r.matricula} · {r.fecha}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </Card>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }

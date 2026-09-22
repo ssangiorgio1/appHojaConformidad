@@ -1,13 +1,49 @@
 import type { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { HttpError } from '../middleware/error.middleware.js';
 import { VisitaNotificacionModel } from '../models/VisitaNotificacion.js';
+import { UsuarioModel } from '../models/Usuario.js';
 import { notificarEstadoVisita, buildOptInLink } from '../services/telegram.service.js';
+import { isTaskAssignedToTechnician } from '../services/calendarTask.service.js';
 import type { TareaIdParam, EstadoVisitaInput } from '../schemas/visita.schema.js';
+
+// Cierra el hueco de autorización de setEstadoVisita/finalizarVisitaLote: sin
+// esto, cualquier rol 'tecnico' autenticado podía pasar un tareaOdooId ajeno
+// (adivinable, son ids secuenciales de Odoo) y mutar el estado de la visita
+// de otro técnico, disparando un Telegram real al cliente equivocado.
+//
+// Si el viaje abierto ya tiene tecnicoId (alguien ya hizo el primer
+// en_camino), el chequeo es barato: comparar contra Mongo. Si todavía no lo
+// tiene, la única fuente de verdad de a quién pertenece la tarea es Odoo, así
+// que se paga ese round-trip una única vez por viaje — las transiciones
+// siguientes de la misma visita ya caen en la rama barata de arriba, mismo
+// criterio de "no repetir el round-trip" que ya usa finalizarVisitaLote.
+async function assertTecnicoOwnership(tareaOdooId: number, req: Request): Promise<void> {
+  if (req.user!.role !== 'tecnico') return;
+
+  const visita = await VisitaNotificacionModel.findOne({ tareaOdooId, abierta: true });
+  if (visita?.tecnicoId) {
+    if (String(visita.tecnicoId) !== String(req.user!.usuarioId)) {
+      throw new HttpError(403, 'Esta visita pertenece a otro técnico.');
+    }
+    return;
+  }
+
+  const usuario = await UsuarioModel.findById(req.user!.usuarioId);
+  if (!usuario?.odooUserId) {
+    throw new HttpError(400, 'Tu cuenta no está vinculada a Field Service en Odoo. Pedile a un admin que la vincule.');
+  }
+  const assigned = await isTaskAssignedToTechnician(tareaOdooId, usuario.odooUserId);
+  if (!assigned) {
+    throw new HttpError(403, 'Esta tarea no está asignada a tu cuenta.');
+  }
+}
 
 export const setEstadoVisita = asyncHandler(async (req: Request, res: Response) => {
   const { tareaOdooId } = req.params as unknown as TareaIdParam;
   const { estado } = req.body as EstadoVisitaInput;
 
+  await assertTecnicoOwnership(tareaOdooId, req);
   const visita = await notificarEstadoVisita(tareaOdooId, estado, req.user!.usuarioId);
   res.json(visita);
 });
@@ -81,6 +117,7 @@ export const getVisitaActiva = asyncHandler(async (req: Request, res: Response) 
 // iniciada a mano por el propio técnico.
 export const finalizarVisitaLote = asyncHandler(async (req: Request, res: Response) => {
   const { tareaOdooId } = req.params as unknown as TareaIdParam;
+  await assertTecnicoOwnership(tareaOdooId, req);
   const visita = await notificarEstadoVisita(tareaOdooId, 'completo', req.user!.usuarioId);
   res.json(visita);
 });

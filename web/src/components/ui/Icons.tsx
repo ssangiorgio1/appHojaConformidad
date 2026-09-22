@@ -175,6 +175,16 @@ export function IconLogout({ className, size = 16 }: IconProps) {
   );
 }
 
+// Sparkle — usado para la sección Atilio (asistente de IA).
+export function IconSparkle({ className, size = 20 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
+      <path d="M12 2.5c.4 3.1 1.2 5.2 2.4 6.4 1.2 1.2 3.3 2 6.4 2.4-3.1.4-5.2 1.2-6.4 2.4-1.2 1.2-2 3.3-2.4 6.4-.4-3.1-1.2-5.2-2.4-6.4-1.2-1.2-3.3-2-6.4-2.4 3.1-.4 5.2-1.2 6.4-2.4 1.2-1.2 2-3.3 2.4-6.4Z" />
+      <path d="M19 3c.2 1 .5 1.7.9 2.1.4.4 1.1.7 2.1.9-1 .2-1.7.5-2.1.9-.4.4-.7 1.1-.9 2.1-.2-1-.5-1.7-.9-2.1-.4-.4-1.1-.7-2.1-.9 1-.2 1.7-.5 2.1-.9.4-.4.7-1.1.9-2.1Z" />
+    </svg>
+  );
+}
+
 export function IconClock({ className, size = 20 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" stroke="currentColor" className={className} {...base}>
