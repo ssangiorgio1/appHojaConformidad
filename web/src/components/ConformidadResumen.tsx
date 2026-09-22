@@ -42,18 +42,10 @@ export function ConformidadResumenHeader({
   onToggle: () => void;
 }) {
   const esInstalacion = !c.tipoServicio || c.tipoServicio === 'instalacion';
-  const tipoServicioLabel = c.tipoServicio ? TIPO_SERVICIO_LABELS[c.tipoServicio] : null;
 
   return (
     <button type="button" onClick={onToggle} className="flex w-full items-start justify-between gap-3">
-      <div>
-        <div className="text-[15px] font-extrabold">{esInstalacion ? 'Resumen de instalación' : 'Resumen del servicio'}</div>
-        {!esInstalacion && tipoServicioLabel && (
-          <div className="mt-1 text-[11.5px] font-semibold text-muted">
-            Tipo de servicio: <span className="font-extrabold text-text">{tipoServicioLabel}</span>
-          </div>
-        )}
-      </div>
+      <div className="text-[15px] font-extrabold">{esInstalacion ? 'Resumen de instalación' : 'Resumen del servicio'}</div>
       <IconChevronDown className={`mt-0.5 text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
     </button>
   );
