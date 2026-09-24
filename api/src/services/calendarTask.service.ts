@@ -349,6 +349,24 @@ export async function isTaskAssignedToTechnician(taskId: number, technicianOdooI
   }
 }
 
+// Para el handoff de una hoja cambio_equipo pendiente de POST (ver
+// isAssignedToPendingSwap en conformidades.controller.ts): a diferencia de
+// isTaskAssignedToTechnician, acá interesa UNA subtarea puntual, no "cualquier
+// hijo de la tarea" — dos unidades de un mismo lote pueden estar asignadas a
+// técnicos distintos y no queremos que compartir la tarea padre alcance para
+// destrabar el acceso a la hoja de otra unidad.
+export async function isSubtaskAssignedToTechnician(subtaskId: number, technicianOdooId: number): Promise<boolean> {
+  try {
+    const rows = (await withTimeout(
+      executeKw('project.task', 'read', [[subtaskId]], { fields: ['user_ids'] }),
+      'isSubtaskAssignedToTechnician',
+    )) as Array<{ user_ids: number[] }>;
+    return (rows[0]?.user_ids ?? []).includes(technicianOdooId);
+  } catch (err) {
+    throw classify(err);
+  }
+}
+
 export interface TechnicianTaskStats {
   technicianId: number;
   tasksTotal: number;

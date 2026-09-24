@@ -35,6 +35,19 @@ export const SATISFACCION_LABELS: Record<SatisfaccionFirma, string> = {
   no_firma_insatisfecho: 'No firma por disconformidad',
 };
 
+// Default options offered when marking "Cliente ausente" (see
+// ClienteAusentePicker in the PWA) — the técnico picks one instead of always
+// having to type the reason by hand; "Otro" reveals a free-text field. These
+// are stored in the same Firma.motivo field, not a dedicated enum: the final
+// text stays free-form so "Otro" can describe any case not listed here.
+export const MOTIVO_CLIENTE_AUSENTE_OPTIONS = [
+  'No estaba en el domicilio/lugar',
+  'No atendió',
+  'Rechazó la visita',
+  'Se retiró antes de firmar',
+  'Otro',
+] as const;
+
 export interface Firma {
   dataUrl?: string;
   url?: string;
@@ -43,7 +56,9 @@ export interface Firma {
   locked?: boolean;
   satisfaccion?: SatisfaccionFirma | null;
   // Required whenever satisfaccion is 'insatisfecho' or 'no_firma_insatisfecho'
-  // — why the client wasn't satisfied / refused to sign.
+  // (why the client wasn't satisfied / refused to sign), or when
+  // clienteAusente is true (why the client couldn't be found) — same field
+  // covers both cases.
   motivo?: string;
   // Name of the person signing — required in PRE and POST unless the client refuses to sign.
   nombreFirmante?: string;

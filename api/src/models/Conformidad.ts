@@ -160,6 +160,10 @@ const ConformidadSchema = new Schema(
     matricula: { type: String, default: '', uppercase: true, trim: true, index: true },
     instalador: { type: String, default: '' },
     tecnicoId: { type: Schema.Types.ObjectId, ref: 'Usuario', index: true },
+    // Se completa solo cuando un técnico distinto a tecnicoId cierra el POST
+    // de una hoja cambio_equipo que le quedó asignada por subtarea de Odoo
+    // (ver isAssignedToPendingSwap) — no reemplaza a tecnicoId, es auditoría.
+    tecnicoIdPost: { type: Schema.Types.ObjectId, ref: 'Usuario', default: null },
     responsableEmpresa: { type: String, default: '' },
 
     status: {

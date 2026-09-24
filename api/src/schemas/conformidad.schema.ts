@@ -201,6 +201,19 @@ export const equipoActualQuerySchema = z.object({
   excludeId: z.string().optional(),
 });
 
+// Query del endpoint de handoff cross-técnico — ver GET
+// /conformidades/cambio-equipo/por-subtarea y getCambioEquipoPorSubtarea en
+// el controller. Se manda uno de los dos ids (nunca ninguno): subtareaOdooId
+// cuando la tarea es un lote, tareaOdooId cuando es una tarea suelta.
+export const cambioEquipoPorSubtareaQuerySchema = z
+  .object({
+    subtareaOdooId: z.coerce.number().int().positive().optional(),
+    tareaOdooId: z.coerce.number().int().positive().optional(),
+  })
+  .refine((q) => q.subtareaOdooId !== undefined || q.tareaOdooId !== undefined, {
+    message: 'subtareaOdooId or tareaOdooId is required',
+  });
+
 export const altaConformidadSchema = z.object({
   area: z.enum(['mesaAyuda', 'coordinacion']),
   checked: z.boolean(),
@@ -213,3 +226,4 @@ export type AltaConformidadInput = z.infer<typeof altaConformidadSchema>;
 export type CambioEquipoParejaInput = z.infer<typeof cambioEquipoParejaSchema>;
 export type RetirosPendientesQuery = z.infer<typeof retirosPendientesQuerySchema>;
 export type EquipoActualQuery = z.infer<typeof equipoActualQuerySchema>;
+export type CambioEquipoPorSubtareaQuery = z.infer<typeof cambioEquipoPorSubtareaQuerySchema>;

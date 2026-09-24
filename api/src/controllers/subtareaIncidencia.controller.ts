@@ -5,7 +5,6 @@ import { SubtareaIncidenciaModel } from '../models/SubtareaIncidencia.js';
 import { UsuarioModel } from '../models/Usuario.js';
 import { decryptSecret } from '../utils/secretBox.js';
 import { postSubtareaNoEncontrada } from '../services/odoo.service.js';
-import { cerrarVisitaLoteSiTodoResuelto } from '../services/loteVisita.service.js';
 import { odooTaskUrl } from '../services/calendarTask.service.js';
 import type {
   CreateSubtareaIncidenciaInput,
@@ -52,12 +51,14 @@ export const createSubtareaIncidencia = asyncHandler(async (req: Request, res: R
     }
   }
 
-  // Reportar "no encontrada" también resuelve la unidad a los fines de la
-  // visita del lote (ver cerrarVisitaLoteSiTodoResuelto) — sin esto, un lote
-  // donde la última unidad pendiente se reporta como no encontrada (en vez de
-  // completarse) nunca disparaba el cierre automático.
-  await cerrarVisitaLoteSiTodoResuelto(body.tareaOdooId, req.user!.usuarioId);
-
+  // A propósito NO se cierra la visita automáticamente acá aunque esta haya
+  // sido la última unidad pendiente (a diferencia de patchConformidad, que sí
+  // cierra sola al completar la última hoja por POST) — reportar "no está" es
+  // una acción del técnico mientras sigue ahí mismo en la ficha, así que la
+  // PWA le pide confirmación explícita y recién ahí llama a
+  // /visitas/:id/finalizar (ver enviarNoEncontrada en AgendaTaskSheet.tsx).
+  // Antes esto cerraba en silencio (cerrarVisitaLoteSiTodoResuelto), lo que
+  // terminaba la visita sin que el técnico llegara a confirmarlo.
   res.status(201).json(incidencia);
 });
 

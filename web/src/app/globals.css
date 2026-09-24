@@ -77,9 +77,9 @@
   --color-accent: var(--color-accent-500);
 
   --color-ok: var(--color-success-700);
-  --color-ok-bg: var(--color-success-50);
+  --color-ok-bg: var(--color-success-100);
   --color-bad: var(--color-danger-700);
-  --color-bad-bg: var(--color-danger-50);
+  --color-bad-bg: var(--color-danger-100);
   --color-warn: var(--color-warning-700);
   --color-warn-bg: var(--color-warning-50);
 
@@ -122,7 +122,7 @@
      anteriores. */
   --shadow-soft: 0 2px 6px rgba(33, 33, 33, 0.08);
   --shadow-soft-sm: 0 2px 6px rgba(33, 33, 33, 0.08);
-  --shadow-inset: inset 0 0 0 1px var(--color-neutral-100);
+  --shadow-inset: inset 0 0 0 1px var(--color-neutral-300);
   --shadow-lg: 0 20px 40px rgba(33, 33, 33, 0.18);
 }
 

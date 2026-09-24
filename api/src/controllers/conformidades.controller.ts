@@ -11,6 +11,7 @@ import { notificarEstadoVisita } from '../services/telegram.service.js';
 import { cerrarVisitaLoteSiTodoResuelto } from '../services/loteVisita.service.js';
 import { buildConformidadPdfBuffer as renderConformidadPdf } from '../services/pdf.service.js';
 import { decryptSecret } from '../utils/secretBox.js';
+import { isSubtaskAssignedToTechnician, isTaskAssignedToTechnician } from '../services/calendarTask.service.js';
 import type {
   CreateConformidadInput,
   PatchConformidadInput,
@@ -19,12 +20,41 @@ import type {
   CambioEquipoParejaInput,
   RetirosPendientesQuery,
   EquipoActualQuery,
+  CambioEquipoPorSubtareaQuery,
 } from '../schemas/conformidad.schema.js';
 
-export function assertOwnedByRequester(req: Request, tecnicoId: unknown) {
-  if (req.user!.role === 'tecnico' && String(tecnicoId) !== String(req.user!.usuarioId)) {
-    throw new HttpError(403, 'You can only access your own records');
-  }
+interface OwnableRecord {
+  tecnicoId?: unknown;
+  tipoServicio?: string | null;
+  status?: string;
+  tareaOdoo?: { id: number } | null;
+  subtareaOdoo?: { id: number } | null;
+}
+
+// Handoff de una hoja cambio_equipo pendiente de POST: el técnico que hizo el
+// PRE puede dejarla en pendiente_post y que la termine otro técnico distinto,
+// si Odoo le asignó la subtarea (o la tarea, si no hay lote) a él — ver plan
+// "Flujo cambio de equipo". Deliberadamente acotado a cambio_equipo +
+// pendiente_post: no es un cambio general al modelo de ownership del resto de
+// los tipos de servicio. Se prioriza subtareaOdoo sobre tareaOdoo porque dos
+// unidades de un mismo lote pueden estar asignadas a técnicos distintos —
+// compartir la tarea padre no alcanza para destrabar el acceso.
+async function isAssignedToPendingSwap(req: Request, record: OwnableRecord): Promise<boolean> {
+  if (record.tipoServicio !== 'cambio_equipo' || record.status !== 'pendiente_post') return false;
+
+  const usuario = await UsuarioModel.findById(req.user!.usuarioId).select('odooUserId');
+  if (!usuario?.odooUserId) return false;
+
+  if (record.subtareaOdoo?.id) return isSubtaskAssignedToTechnician(record.subtareaOdoo.id, usuario.odooUserId);
+  if (record.tareaOdoo?.id) return isTaskAssignedToTechnician(record.tareaOdoo.id, usuario.odooUserId);
+  return false;
+}
+
+export async function assertOwnedByRequester(req: Request, record: OwnableRecord) {
+  if (req.user!.role !== 'tecnico') return;
+  if (String(record.tecnicoId) === String(req.user!.usuarioId)) return;
+  if (await isAssignedToPendingSwap(req, record)) return;
+  throw new HttpError(403, 'You can only access your own records');
 }
 
 // Vincula las 2 hojas de un cambio_equipo (retiro + instalación) escribiendo
@@ -168,7 +198,14 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
   const record = await ConformidadModel.findOne({ _id: req.params.id, deletedAt: null });
   if (!record) throw new HttpError(404, 'Conformidad not found');
 
-  assertOwnedByRequester(req, record.tecnicoId);
+  await assertOwnedByRequester(req, record);
+
+  // Handoff cross-técnico (ver isAssignedToPendingSwap): si quien está
+  // completando el POST no es el técnico que dejó la hoja en pendiente_post,
+  // se registra en tecnicoIdPost — no pisa tecnicoId, es solo auditoría.
+  if (body.post && String(record.tecnicoId) !== String(req.user!.usuarioId)) {
+    record.tecnicoIdPost = req.user!.usuarioId as unknown as typeof record.tecnicoIdPost;
+  }
 
   // Capturado antes de tocar el record — así el aviso de "trabajo finalizado"
   // solo sale la primera vez que se cruza a 'completo', no en cada PATCH
@@ -229,7 +266,11 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
     if (!record.subtareaOdoo) {
       await notificarEstadoVisita(record.tareaOdoo.id, 'completo', record.tecnicoId);
     } else {
-      await cerrarVisitaLoteSiTodoResuelto(record.tareaOdoo.id, record.tecnicoId);
+      // req.user!.usuarioId, no record.tecnicoId: en un handoff cross-técnico
+      // (ver isAssignedToPendingSwap) quien está cerrando esta unidad ahora
+      // es quien tiene la visita abierta y las subtareas propias en curso —
+      // no el técnico original que dejó la hoja en pendiente_post.
+      await cerrarVisitaLoteSiTodoResuelto(record.tareaOdoo.id, req.user!.usuarioId);
     }
   }
 
@@ -323,8 +364,35 @@ export const listConformidades = asyncHandler(async (req: Request, res: Response
 export const getConformidadById = asyncHandler(async (req: Request, res: Response) => {
   const record = await ConformidadModel.findOne({ _id: req.params.id, deletedAt: null });
   if (!record) throw new HttpError(404, 'Conformidad not found');
-  assertOwnedByRequester(req, record.tecnicoId);
+  await assertOwnedByRequester(req, record);
   res.json(record);
+});
+
+// Handoff de cambio_equipo: el técnico al que Odoo le acaba de asignar una
+// subtarea (o tarea, si no hay lote) puede traer a su agenda la hoja que otro
+// técnico dejó en pendiente_post para esa misma unidad — reemplaza la
+// búsqueda manual por patente para este caso. Devuelve la hoja completa (a
+// diferencia de getRetirosPendientes, acá el objetivo es seguir trabajándola,
+// no solo elegirla para vincular).
+export const getCambioEquipoPorSubtarea = asyncHandler(async (req: Request, res: Response) => {
+  const { subtareaOdooId, tareaOdooId } = req.query as unknown as CambioEquipoPorSubtareaQuery;
+
+  const filter: Record<string, unknown> = {
+    deletedAt: null,
+    tipoServicio: 'cambio_equipo',
+    status: 'pendiente_post',
+  };
+  if (subtareaOdooId) filter['subtareaOdoo.id'] = subtareaOdooId;
+  else filter['tareaOdoo.id'] = tareaOdooId;
+
+  const record = await ConformidadModel.findOne(filter).sort({ fechaHora: -1 });
+  if (!record) {
+    res.json({ data: null });
+    return;
+  }
+
+  await assertOwnedByRequester(req, record);
+  res.json({ data: record });
 });
 
 // Genera el PDF de la conformidad en memoria con Puppeteer y lo devuelve como
@@ -334,7 +402,7 @@ export const getConformidadById = asyncHandler(async (req: Request, res: Respons
 export const generateConformidadPdf = asyncHandler(async (req: Request, res: Response) => {
   const record = await ConformidadModel.findOne({ _id: req.params.id, deletedAt: null });
   if (!record) throw new HttpError(404, 'Conformidad not found');
-  assertOwnedByRequester(req, record.tecnicoId);
+  await assertOwnedByRequester(req, record);
 
   const pdfBuffer = await renderConformidadPdf(record.toObject() as unknown as Parameters<typeof renderConformidadPdf>[0]);
 
@@ -361,7 +429,7 @@ const SATISFACCION_LABELS: Record<string, string> = {
 export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Response) => {
   const record = await ConformidadModel.findOne({ _id: req.params.id, deletedAt: null });
   if (!record) throw new HttpError(404, 'Conformidad not found');
-  assertOwnedByRequester(req, record.tecnicoId);
+  await assertOwnedByRequester(req, record);
 
   if (!record.ticketOdoo?.numero) throw new HttpError(400, 'This record has no ticket de Odoo linked');
 

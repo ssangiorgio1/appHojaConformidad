@@ -17,8 +17,10 @@ export const createPresignedUrl = asyncHandler(async (req: Request, res: Respons
   // creation time (see createConformidad), so at worst a race here just gets
   // clobbered by the real owner's own later upload to the same deterministic
   // key — it can never be used to plant content under someone else's acta.
-  const existing = await ConformidadModel.findOne({ clientId: body.localId, deletedAt: null }).select('tecnicoId');
-  if (existing) assertOwnedByRequester(req, existing.tecnicoId);
+  const existing = await ConformidadModel.findOne({ clientId: body.localId, deletedAt: null }).select(
+    'tecnicoId tipoServicio status tareaOdoo subtareaOdoo',
+  );
+  if (existing) await assertOwnedByRequester(req, existing);
 
   const codigoActa = deriveCodigoActa(body.localId, body.fecha);
   const key = buildObjectKey({

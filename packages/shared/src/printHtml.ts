@@ -43,6 +43,17 @@ function sigSrc(firma: Firma | null): string | undefined {
   return firma?.dataUrl ?? firma?.url;
 }
 
+// Qué mostrar en el recuadro de firma cuando no hay imagen — antes esto
+// nunca chequeaba clienteAusente (ni en PRE, donde no se chequeaba nada en
+// absoluto), así que una firma sin imagen se veía igual de vacía tanto si el
+// cliente nunca estuvo disponible como si simplemente no llegó a firmar, sin
+// ningún antecedente en el PDF.
+function sigPlaceholder(firma: Firma | null): string {
+  if (firma?.clienteAusente) return '<div class="sig-line sig-refused">Cliente ausente</div>';
+  if (firma?.satisfaccion === 'no_firma_insatisfecho') return '<div class="sig-line sig-refused">No firma — disconformidad</div>';
+  return '<div class="sig-line"></div>';
+}
+
 function siNoBadge(value: ChecklistValue): string {
   const si = value === 'SI';
   const no = value === 'NO';
@@ -343,8 +354,13 @@ export async function buildPrintHtml(
   <div class="keep-together">
     <div class="sig-row">
       <div class="sig-block">
-        ${sigSrc(record.pre.firma) ? `<img class="sig" src="${esc(sigSrc(record.pre.firma))}">` : '<div class="sig-line"></div>'}
+        ${sigSrc(record.pre.firma) ? `<img class="sig" src="${esc(sigSrc(record.pre.firma))}">` : sigPlaceholder(record.pre.firma)}
         <div class="sig-caption">Firma del cliente (PRE)${record.pre.firma?.nombreFirmante ? ` — ${esc(record.pre.firma.nombreFirmante)}` : ''}</div>
+        ${
+          record.pre.firma?.clienteAusente && record.pre.firma?.motivo
+            ? `<div class="sig-caption">Motivo: ${esc(record.pre.firma.motivo)}</div>`
+            : ''
+        }
       </div>
     </div>
   </div>
@@ -357,13 +373,7 @@ export async function buildPrintHtml(
   <div class="keep-together">
     <div class="sig-row">
       <div class="sig-block">
-        ${
-          sigSrc(record.post.firma)
-            ? `<img class="sig" src="${esc(sigSrc(record.post.firma))}">`
-            : record.post.firma?.satisfaccion === 'no_firma_insatisfecho'
-              ? '<div class="sig-line sig-refused">No firma — disconformidad</div>'
-              : '<div class="sig-line"></div>'
-        }
+        ${sigSrc(record.post.firma) ? `<img class="sig" src="${esc(sigSrc(record.post.firma))}">` : sigPlaceholder(record.post.firma)}
         <div class="sig-caption">
           Firma del cliente (POST)${record.post.firma?.nombreFirmante ? ` — ${esc(record.post.firma.nombreFirmante)}` : ''}${record.post.firma?.satisfaccion ? ` — ${esc(SATISFACCION_LABELS[record.post.firma.satisfaccion])}` : ''}
         </div>

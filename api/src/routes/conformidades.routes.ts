@@ -9,6 +9,7 @@ import {
   cambioEquipoParejaSchema,
   retirosPendientesQuerySchema,
   equipoActualQuerySchema,
+  cambioEquipoPorSubtareaQuerySchema,
 } from '../schemas/conformidad.schema.js';
 import {
   createConformidad,
@@ -22,6 +23,7 @@ import {
   linkCambioEquipoParejaHandler,
   getRetirosPendientes,
   getEquipoActual,
+  getCambioEquipoPorSubtarea,
 } from '../controllers/conformidades.controller.js';
 
 export const conformidadesRouter = Router();
@@ -39,6 +41,12 @@ conformidadesRouter.get(
 );
 // Antes de '/:id' por el mismo motivo que retiros-pendientes de arriba.
 conformidadesRouter.get('/equipo-actual', validate(equipoActualQuerySchema, 'query'), getEquipoActual);
+// Antes de '/:id' por el mismo motivo que retiros-pendientes de arriba.
+conformidadesRouter.get(
+  '/cambio-equipo/por-subtarea',
+  validate(cambioEquipoPorSubtareaQuerySchema, 'query'),
+  getCambioEquipoPorSubtarea,
+);
 conformidadesRouter.get('/:id', getConformidadById);
 // coordinacion/mesa_ayuda solo deberían poder tocar el check de /alta más
 // abajo — sin este requireRole, este PATCH genérico (checklist, firma,
