@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { HttpError } from '../middleware/error.middleware.js';
 import { VisionbloError } from '../config/visionblo.js';
-import { getGraficasEquipo } from '../services/equipoGraficas.service.js';
+import { getGraficasRango } from '../services/equipoGraficas.service.js';
 import { buscarEquipos, getEstadoEquipo, vistaTecnico } from '../services/equipoEstado.service.js';
 
 function traducirError(err: unknown): never {
@@ -32,9 +32,9 @@ export const estado = asyncHandler(async (req: Request, res: Response) => {
 
 export const graficas = asyncHandler(async (req: Request, res: Response) => {
   const { equipoId } = req.params as unknown as { equipoId: number };
-  const { fecha } = req.query as unknown as { fecha: string };
+  const { desde, hasta } = req.query as unknown as { desde: string; hasta: string };
   try {
-    res.json(await getGraficasEquipo(equipoId, fecha));
+    res.json(await getGraficasRango(equipoId, desde, hasta));
   } catch (err) {
     traducirError(err);
   }

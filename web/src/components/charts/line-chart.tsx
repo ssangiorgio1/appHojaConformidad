@@ -1,6 +1,7 @@
 "use client";
 
 import { ParentSize } from "@visx/responsive";
+import type { SyncBus } from "./sync-bus";
 import type { Transition } from "motion/react";
 import {
   Children,
@@ -57,6 +58,8 @@ export interface LineChartProps {
   xDomainSlotCount?: number;
   /** Tween y-domain when brush changes the visible x-range. Default: false */
   tweenYDomainOnXDomainChange?: boolean;
+  /** Cursor compartido con otros gráficos (ver sync-bus.ts). */
+  syncBus?: SyncBus;
   /** Inline container styles (e.g. fixed height for brush strip). */
   style?: CSSProperties;
   /** Fires when the internal chart phase changes (e.g. OG capture readiness). */
@@ -154,6 +157,7 @@ interface ChartInnerProps {
   xDomain?: [Date, Date];
   xDomainSlotCount?: number;
   tweenYDomainOnXDomainChange?: boolean;
+  syncBus?: SyncBus;
   children: ReactNode;
   containerRef: React.RefObject<HTMLDivElement | null>;
   onPhaseChange: (phase: ChartPhase) => void;
@@ -176,6 +180,7 @@ function ChartInner({
   xDomain,
   xDomainSlotCount,
   tweenYDomainOnXDomainChange,
+  syncBus,
   children,
   containerRef,
   onPhaseChange,
@@ -197,6 +202,7 @@ function ChartInner({
       margin={margin}
       onPhaseChange={onPhaseChange}
       revealSignature={revealSignature}
+      syncBus={syncBus}
       tweenYDomainOnXDomainChange={tweenYDomainOnXDomainChange}
       width={width}
       xDataKey={xDataKey}
@@ -227,6 +233,7 @@ export function LineChart({
   xDomain,
   xDomainSlotCount,
   tweenYDomainOnXDomainChange = false,
+  syncBus,
   style,
   onPhaseChange,
   children,
@@ -276,6 +283,7 @@ export function LineChart({
             margin={margin}
             onPhaseChange={handlePhaseChange}
             revealSignature={revealSignature}
+            syncBus={syncBus}
             tweenYDomainOnXDomainChange={tweenYDomainOnXDomainChange}
             width={width}
             xDataKey={xDataKey}

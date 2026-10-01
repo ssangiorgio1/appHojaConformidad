@@ -4,6 +4,7 @@ import { localPoint } from "@visx/event";
 import type { scaleLinear, scaleTime } from "@visx/scale";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LineConfig, Margin, TooltipData } from "./chart-context";
+import type { SyncBus } from "./sync-bus";
 import { useScheduledTooltip } from "./use-scheduled-tooltip";
 import { normalizeYAxisId } from "./y-axis-scales";
 
@@ -32,6 +33,7 @@ interface UseChartInteractionParams {
     lo: number
   ) => number;
   canInteract: boolean;
+  syncBus?: SyncBus;
 }
 
 interface ChartInteractionResult {
@@ -61,6 +63,7 @@ export function useChartInteraction({
   xAccessor,
   bisectDate,
   canInteract,
+  syncBus,
 }: UseChartInteractionParams): ChartInteractionResult {
   const [selection, setSelection] = useState<ChartSelection | null>(null);
   const {
@@ -187,22 +190,24 @@ export function useChartInteraction({
       }
 
       lastHoveredXRef.current = chartX;
+      syncBus?.emit(xScale.invert(chartX).getTime());
       const tooltip = resolveTooltipFromX(chartX);
       if (tooltip) {
         scheduleTooltip(tooltip);
       }
     },
-    [getChartX, resolveTooltipFromX, resolveIndexFromX, scheduleTooltip]
+    [getChartX, resolveTooltipFromX, resolveIndexFromX, scheduleTooltip, syncBus, xScale]
   );
 
   const handleMouseLeave = useCallback(() => {
     lastHoveredXRef.current = null;
+    syncBus?.emit(null);
     clearTooltip();
     if (isDraggingRef.current) {
       isDraggingRef.current = false;
     }
     setSelection(null);
-  }, [clearTooltip]);
+  }, [clearTooltip, syncBus]);
 
   const handleMouseDown = useCallback(
     (event: React.MouseEvent<SVGGElement>) => {
@@ -305,7 +310,7 @@ export function useChartInteraction({
   const handleTouchEnd = useCallback(() => {
     clearTooltip();
     setSelection(null);
-  }, [clearTooltip]);
+  }, [clearTooltip, syncBus]);
 
   const clearSelection = useCallback(() => {
     setSelection(null);
@@ -323,6 +328,34 @@ export function useChartInteraction({
     }
     clearTooltip();
   }, [canInteract, clearTooltip, resolveTooltipFromX, scheduleTooltip]);
+
+  // Cursor compartido: este gráfico sigue al instante que emite otro (si el mouse no está acá). Se
+  // suscribe una sola vez al bus y lee siempre la última escala por ref, sin re-renderizar nada más.
+  const aplicarSync = useRef<(t: number | null) => void>(() => {});
+  useEffect(() => {
+    aplicarSync.current = (t) => {
+      if (!canInteract || lastHoveredXRef.current !== null) {
+        return;
+      }
+      if (t === null) {
+        clearTooltip();
+        return;
+      }
+      const px = xScale(new Date(t));
+      const [r0, r1] = xScale.range();
+      if (px === undefined || px < r0 || px > r1) {
+        clearTooltip();
+        return;
+      }
+      const tooltip = resolveTooltipFromX(px);
+      if (tooltip) {
+        scheduleTooltip(tooltip);
+      } else {
+        clearTooltip();
+      }
+    };
+  });
+  useEffect(() => syncBus?.subscribe((t) => aplicarSync.current(t)), [syncBus]);
 
   const interactionHandlers = canInteract
     ? {

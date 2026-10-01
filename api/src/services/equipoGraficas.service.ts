@@ -61,8 +61,13 @@ async function consultar(equipoId: number, fecha: string): Promise<GraficasEquip
     ignicion: [],
     presenciaCargador: [],
   };
+  // bo3 devuelve, cuando no hay datos ese día, el último evento conocido aunque sea de años atrás:
+  // fuera de [desde, hasta] se descarta, o rompe la escala de tiempo de los gráficos.
+  const ini = new Date(r.desde).getTime();
+  const fin = new Date(r.hasta).getTime();
   for (const e of r.datos) {
     const t = new Date(e.fecha).getTime();
+    if (!(t >= ini && t <= fin)) continue;
     if (e.evento === 'estado_general') {
       series.bateriaInterna.push([t, e.voltaje_bateria ?? null]);
       series.cargador.push([t, e.voltaje_cargador ?? null]);
@@ -78,6 +83,29 @@ async function consultar(equipoId: number, fecha: string): Promise<GraficasEquip
     }
   }
   return { equipoId, fecha, desde: r.desde, hasta: r.hasta, consultadoAt: new Date().toISOString(), series };
+}
+
+function diasEntre(desde: string, hasta: string): string[] {
+  const out: string[] = [];
+  for (let t = Date.parse(desde); t <= Date.parse(hasta); t += 86_400_000) out.push(new Date(t).toISOString().slice(0, 10));
+  return out;
+}
+
+// Rango de días: una consulta (cacheada) por día, concatenadas en orden. Un día es el caso común.
+export async function getGraficasRango(equipoId: number, desde: string, hasta: string): Promise<GraficasEquipo> {
+  if (desde === hasta) return getGraficasEquipo(equipoId, desde);
+  const dias = await Promise.all(diasEntre(desde, hasta).map((d) => getGraficasEquipo(equipoId, d)));
+  const series = dias[0].series;
+  const claves = Object.keys(series) as (keyof GraficasEquipo['series'])[];
+  const unidas = Object.fromEntries(claves.map((k) => [k, dias.flatMap((d) => d.series[k])])) as GraficasEquipo['series'];
+  return {
+    equipoId,
+    fecha: desde,
+    desde: dias[0].desde,
+    hasta: dias[dias.length - 1].hasta,
+    consultadoAt: new Date().toISOString(),
+    series: unidas,
+  };
 }
 
 export async function getGraficasEquipo(equipoId: number, fecha: string): Promise<GraficasEquipo> {

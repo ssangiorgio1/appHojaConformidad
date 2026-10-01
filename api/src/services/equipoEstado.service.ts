@@ -170,6 +170,9 @@ export interface EstadoEquipo {
   senalesVistas: { pantalla: boolean; rfid: boolean; fuel: boolean; sim: boolean; corteMotor: boolean; panico: string | null };
   movil: { cliente: string; movil: string; baja: boolean; bajaCliente: boolean; corteDeServicio: boolean } | null;
   modulos: { fecha: string | null; detectados: ModuloDetectado[] };
+  // Última posición del historial (el diagnóstico solo trae lat/lng): trae la cantidad de satélites,
+  // que el técnico necesita en el control de instalación.
+  gps: { satelites: number | null; hdop: number | null; fecha: string } | null;
   eventosRecientes: EventoCrudo[];
 }
 
@@ -194,10 +197,14 @@ async function consultarEstado(equipoId: number): Promise<EstadoEquipo> {
 
   const desde = hoy.getTime() - EVENTOS_RECIENTES_HORAS * 3_600_000;
   const recientes = historial.filter((e) => e.evento !== 'posicion' && e.evento !== 'debug' && new Date(e.fecha).getTime() >= desde);
-  const ultimoEstado = [...historial].reverse().find((e) => e.evento === 'estado_general')?.datos as
-    | { voltaje_bateria?: unknown; dbm_modem?: unknown }
-    | undefined;
+  // Un estado_general suelto puede venir con campos en null (ej. dbm_modem un instante, cuando el
+  // módem no devolvió lectura) aunque los anteriores sí la traigan: se toma el último valor NO nulo de
+  // cada campo, no el del último evento.
+  const estados = [...historial].reverse().filter((e) => e.evento === 'estado_general');
+  const ultimoValor = (campo: 'voltaje_bateria' | 'dbm_modem') =>
+    estados.map((e) => numOrNull(e.datos[campo])).find((v) => v !== null) ?? null;
   const eq = dg.equipo;
+  const ultimaPosicion = [...historial].reverse().find((e) => e.evento === 'posicion');
 
   return {
     consultadoAt: hoy.toISOString(),
@@ -212,8 +219,8 @@ async function consultarEstado(equipoId: number): Promise<EstadoEquipo> {
       eq.latitud && eq.longitud ? { latitud: eq.latitud / 1e7, longitud: eq.longitud / 1e7, fecha: eq.fecha_posicion } : null,
     ignicion: eq.ignicion === null || eq.ignicion === undefined ? null : { encendida: eq.ignicion, fecha: eq.fecha_ignicion },
     voltajeCargador: numOrNull(eq.voltaje_cargador),
-    bateriaInterna: numOrNull(ultimoEstado?.voltaje_bateria),
-    senalDbm: numOrNull(ultimoEstado?.dbm_modem),
+    bateriaInterna: ultimoValor('voltaje_bateria'),
+    senalDbm: ultimoValor('dbm_modem'),
     firmware: {
       version: formatoFirmware(eq.firmware),
       fecha: eq.fecha_firmware,
@@ -232,6 +239,9 @@ async function consultarEstado(equipoId: number): Promise<EstadoEquipo> {
       ? { cliente: dg.movil.cliente, movil: dg.movil.movil, baja: dg.movil.baja, bajaCliente: dg.movil.baja_cliente, corteDeServicio: dg.movil.corte_de_servicio }
       : null,
     modulos: { fecha: modulos?.fecha ?? null, detectados: (modulos?.modulos ?? []).map(decodificarModulo) },
+    gps: ultimaPosicion
+      ? { satelites: numOrNull(ultimaPosicion.datos.satelites), hdop: numOrNull(ultimaPosicion.datos.hdop), fecha: ultimaPosicion.fecha }
+      : null,
     eventosRecientes: recientes.slice(-EVENTOS_RECIENTES_MAX).reverse(),
   };
 }

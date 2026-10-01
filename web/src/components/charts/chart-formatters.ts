@@ -1,10 +1,28 @@
-// Las gráficas del panel son de un solo día (hora local de Argentina), no de fechas.
-export const shortDateFmt = new Intl.DateTimeFormat("es-AR", {
+const horaFmt = new Intl.DateTimeFormat("es-AR", {
   hour: "2-digit",
   minute: "2-digit",
   hour12: false,
   timeZone: "America/Argentina/Buenos_Aires",
 });
+const diaHoraFmt = new Intl.DateTimeFormat("es-AR", {
+  day: "2-digit",
+  month: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+  timeZone: "America/Argentina/Buenos_Aires",
+});
+
+// Etiquetas del eje X (hora local de Argentina). Con un solo día alcanza la hora; en rangos de varios
+// días (y también al hacer zoom dentro de ellos) hay que mostrar el día, o las etiquetas se repiten.
+// El flag es global: lo fija el gráfico antes de renderizar, todos los de la página comparten rango.
+let mostrarDia = false;
+export function setEjeConDia(valor: boolean) {
+  mostrarDia = valor;
+}
+export const shortDateFmt = {
+  format: (d: Date) => (mostrarDia ? diaHoraFmt : horaFmt).format(d),
+};
 
 // Título del tooltip: día de la semana y fecha en español, hora de Argentina.
 export const weekdayDateFmt = new Intl.DateTimeFormat("es-AR", {

@@ -250,6 +250,6 @@ export function getEstadoEquipo(idToken: string, equipoId: number, forzar = fals
   return apiFetch<EstadoEquipo>(`/api/equipos/${equipoId}/estado${forzar ? '?forzar=1' : ''}`, idToken);
 }
 
-export function getGraficasEquipo(idToken: string, equipoId: number, fecha: string) {
-  return apiFetch<GraficasEquipo>(`/api/equipos/${equipoId}/graficas?fecha=${fecha}`, idToken);
+export function getGraficasEquipo(idToken: string, equipoId: number, desde: string, hasta: string = desde) {
+  return apiFetch<GraficasEquipo>(`/api/equipos/${equipoId}/graficas?desde=${desde}&hasta=${hasta}`, idToken);
 }

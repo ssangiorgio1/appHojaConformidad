@@ -4,6 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useEffect, useRef } from 'react';
 import type { FlotaUnidad } from '@/lib/types';
+import { bo3DiagnosticoUrl } from '@/lib/bo3';
 import { FLOTA_CATEGORIA_COLOR, FLOTA_CATEGORIA_LABEL } from './categorias';
 
 function esc(s: string): string {
@@ -23,6 +24,7 @@ function popupHtml(u: FlotaUnidad): string {
     '<span style="color:#6b7280;font-size:11px">Dato de la última actualización del mapa; el estado del equipo se consulta en vivo.</span>',
     `Estado: ${esc(FLOTA_CATEGORIA_LABEL[u.categoria] ?? u.categoria)}`,
     u.equipoId ? `<a href="#" data-equipo="${u.equipoId}"><strong>Ver estado del equipo →</strong></a>` : '',
+    u.equipoId ? `<a href="${bo3DiagnosticoUrl(u.equipoId)}" target="_blank" rel="noopener noreferrer">Abrir en bo3 ↗</a>` : '',
   ]
     .filter(Boolean)
     .join('<br>');
@@ -59,12 +61,17 @@ export default function FlotaMap({
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.FeatureGroup | null>(null);
   const rendererRef = useRef<L.Canvas | null>(null);
+  // Renderer SVG propio para los rectángulos de selección: si no, Leaflet (preferCanvas) crea un 2.º canvas
+  // cuyo manejador de clics dispara un "clic en el mapa" que cierra el popup recién abierto de la unidad.
+  const rectRendererRef = useRef<L.SVG | null>(null);
   const unidadPorMarcador = useRef(new Map<L.Layer, FlotaUnidad>());
   const fittedRef = useRef(false);
   const enfocadoRef = useRef(enfocarClave);
   const inspectRef = useRef(onInspectEquipo);
   const areaCbRef = useRef(onArea);
   const rectRef = useRef<L.Rectangle | null>(null);
+  // true justo después de soltar un arrastre de selección: ese "clic" no debe abrir el popup de una unidad.
+  const ignorarClicRef = useRef(false);
   useEffect(() => {
     inspectRef.current = onInspectEquipo;
     areaCbRef.current = onArea;
@@ -80,11 +87,12 @@ export default function FlotaMap({
     // Un solo renderer canvas para toda la vida del mapa y un único manejador de clic delegado
     // (en vez de un listener + un canvas nuevo por cada actualización de filtros).
     rendererRef.current = L.canvas({ padding: 0.5 });
+    rectRendererRef.current = L.svg({ padding: 0.5 });
     layerRef.current = L.featureGroup().addTo(map);
     layerRef.current.on('click', (e: L.LeafletEvent) => {
       const ev = e as L.LeafletMouseEvent & { propagatedFrom?: L.Layer };
       const u = ev.propagatedFrom ? unidadPorMarcador.current.get(ev.propagatedFrom) : undefined;
-      if (u) L.popup().setLatLng(ev.latlng).setContent(popupHtml(u)).openOn(map);
+      if (u && !ignorarClicRef.current) L.popup().setLatLng(ev.latlng).setContent(popupHtml(u)).openOn(map);
     });
     mapRef.current = map;
 
@@ -107,6 +115,7 @@ export default function FlotaMap({
       mapRef.current = null;
       layerRef.current = null;
       rendererRef.current = null;
+      rectRendererRef.current = null;
     };
   }, []);
 
@@ -124,28 +133,44 @@ export default function FlotaMap({
     cursor();
     map.dragging.disable();
     let inicio: L.LatLng | null = null;
+    let inicioPx: L.Point | null = null;
+    let arrastrando = false;
     let rect: L.Rectangle | null = null;
+    // Un clic (sobre una unidad, por ejemplo) no es un arrastre: hasta que el mouse se mueve unos
+    // píxeles no se toca el área ya marcada ni se dibuja nada, así el clic llega al marcador.
+    const UMBRAL_PX = 5;
     const onDown = (e: L.LeafletMouseEvent) => {
       if (espacio) return;
       inicio = e.latlng;
-      rect?.remove();
-      rect = null;
-      areaCbRef.current?.(null);
+      inicioPx = e.containerPoint;
+      arrastrando = false;
     };
     const onMove = (e: L.LeafletMouseEvent) => {
-      if (!inicio) return;
+      if (!inicio || !inicioPx) return;
+      if (!arrastrando) {
+        if (e.containerPoint.distanceTo(inicioPx) < UMBRAL_PX) return;
+        arrastrando = true;
+        areaCbRef.current?.(null);
+      }
       const b = L.latLngBounds(inicio, e.latlng);
       if (rect) rect.setBounds(b);
-      else rect = L.rectangle(b, RECT_ESTILO).addTo(map);
+      else rect = L.rectangle(b, { ...RECT_ESTILO, renderer: rectRendererRef.current! }).addTo(map);
     };
     const onUp = (e: L.LeafletMouseEvent) => {
       if (!inicio) return;
       const b = L.latLngBounds(inicio, e.latlng);
+      const huboArrastre = arrastrando;
+      if (huboArrastre) {
+        ignorarClicRef.current = true;
+        setTimeout(() => (ignorarClicRef.current = false), 0);
+      }
       inicio = null;
+      inicioPx = null;
+      arrastrando = false;
       rect?.remove();
       rect = null;
-      // Un clic suelto (sin arrastre) no define un área.
-      if (b.getNorth() === b.getSouth() || b.getEast() === b.getWest()) return;
+      // Un clic suelto (sin arrastre) no define un área ni borra la anterior.
+      if (!huboArrastre || b.getNorth() === b.getSouth() || b.getEast() === b.getWest()) return;
       areaCbRef.current?.({ norte: b.getNorth(), sur: b.getSouth(), este: b.getEast(), oeste: b.getWest() });
     };
     const enCampo = (t: EventTarget | null) => t instanceof HTMLElement && /INPUT|TEXTAREA|SELECT/.test(t.tagName);
@@ -197,7 +222,7 @@ export default function FlotaMap({
         [area.sur, area.oeste],
         [area.norte, area.este],
       ],
-      RECT_ESTILO,
+      { ...RECT_ESTILO, renderer: rectRendererRef.current! },
     ).addTo(map);
   }, [area]);
 

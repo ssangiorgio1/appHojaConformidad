@@ -1,6 +1,7 @@
 "use client";
 
 import { scaleLinear, scaleTime } from "@visx/scale";
+import type { SyncBus } from "./sync-bus";
 import { bisector, extent } from "d3-array";
 import type { Transition } from "motion/react";
 import {
@@ -169,6 +170,8 @@ export interface TimeSeriesChartInnerProps {
   xDomainSlotCount?: number;
   /** Tween y-domain when the visible x-range changes during the ready phase. */
   tweenYDomainOnXDomainChange?: boolean;
+  /** Cursor compartido con otros gráficos (ver sync-bus.ts). */
+  syncBus?: SyncBus;
   onPhaseChange?: (phase: ChartPhase) => void;
 }
 
@@ -209,6 +212,7 @@ const TimeSeriesChartCore = memo(function TimeSeriesChartCore({
   xDomain,
   xDomainSlotCount,
   tweenYDomainOnXDomainChange = false,
+  syncBus,
   onPhaseChange,
 }: TimeSeriesChartInnerProps) {
   // Unique per instance — shared clipPath ids crop later charts (#226).
@@ -424,6 +428,7 @@ const TimeSeriesChartCore = memo(function TimeSeriesChartCore({
     data: visiblePlotData,
     lines,
     margin,
+    syncBus,
     xAccessor,
     xScale,
     yScale,

@@ -4,6 +4,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { bo3DiagnosticoUrl } from '@/lib/bo3';
 import { formatIsoDateTime } from '@/lib/format';
 import type { EstadoEquipo, EventoEquipo } from '@/lib/types';
 
@@ -108,6 +109,15 @@ export function EstadoEquipoView({
           <div className="flex items-center gap-2">
             {estado.movil?.baja || estado.movil?.bajaCliente ? <Badge tone="neutral">De baja</Badge> : null}
             {estado.movil?.corteDeServicio ? <Badge tone="bad">Corte de servicio</Badge> : null}
+            <a
+              href={bo3DiagnosticoUrl(estado.equipoId)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Abre el diagnóstico del equipo en bo3"
+              className="inline-flex items-center rounded-md px-3 py-1.5 text-sm font-bold text-primary-600 transition hover:bg-neutral-100"
+            >
+              Abrir en bo3 ↗
+            </a>
             <Button variant="ghost" onClick={onActualizar} disabled={cargando}>
               {cargando ? 'Actualizando…' : 'Actualizar'}
             </Button>
