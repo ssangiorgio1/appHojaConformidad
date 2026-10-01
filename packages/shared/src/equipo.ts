@@ -103,7 +103,27 @@ export type EquipoCheckKey = (typeof EQUIP_CHECK_FIELDS)[number]['key'];
 export const EQUIP_TEXT_KEYS = EQUIP_GROUPS.flatMap((g) => g.fields.map((f) => f.key)) as EquipoTextKey[];
 export const EQUIP_CHECK_KEYS = EQUIP_CHECK_FIELDS.map((f) => f.key) as EquipoCheckKey[];
 
-export type Equipo = Partial<Record<EquipoTextKey, string>> & Partial<Record<EquipoCheckKey, ChecklistValue>>;
+// Label of every installable checkbox (antena/sensor/módulo/elemento
+// adicional — not "Control de instalación", which isn't checked, nor
+// "Entradas / Salidas", which are electrical connections with nothing
+// physical to photograph separately) — used to name the "what was checked"
+// photo instead of the generic category (see post/[id]/page.tsx in the PWA
+// and GALLERY_LABELS in printHtml.ts).
+export const EQUIP_ITEM_PHOTO_LABEL: Record<string, string> = Object.fromEntries(
+  EQUIP_GROUPS.filter((g) => g.title !== 'Control de instalación' && g.title !== 'Entradas / Salidas').flatMap((g) =>
+    g.fields.filter((f) => 'checkbox' in f && f.checkbox === true).map((f) => [f.key, f.label] as const),
+  ),
+);
+
+export type Equipo = Partial<Record<EquipoTextKey, string>> &
+  Partial<Record<EquipoCheckKey, ChecklistValue>> & {
+    // Solo aplica en modo 'retiro' (desinstalación): lo que se desinstala no
+    // siempre es un equipo propiamente dicho con IMEI/N° de serie (puede ser
+    // un sensor, accesorio, cableado, etc.) — ver la PWA's post/[id]/page.tsx,
+    // paso "Equipo a desinstalar". Tildado, "Modelo" pasa a usarse como
+    // descripción libre de lo desinstalado y el IMEI deja de ser obligatorio.
+    equipoRetiradoSinSerie?: string;
+  };
 
 export function emptyEquipo(): Equipo {
   return {};

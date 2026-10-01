@@ -12,10 +12,20 @@ import { visitasRouter } from './routes/visitas.routes.js';
 import { telegramRouter } from './routes/telegram.routes.js';
 import { reportesRouter } from './routes/reportes.routes.js';
 import { subtareaIncidenciaRouter } from './routes/subtareaIncidencia.routes.js';
+import { incidenciaDestinatarioRouter } from './routes/incidenciaDestinatario.routes.js';
+import { flotaRouter } from './routes/flota.routes.js';
+import { equipoRouter } from './routes/equipo.routes.js';
+import { internalRouter } from './routes/internal.routes.js';
 import { errorMiddleware } from './middleware/error.middleware.js';
 import { apiLimiter } from './middleware/rateLimit.middleware.js';
 
 export const app = express();
+
+// Render pone un único proxy/load balancer delante — sin esto, Express toma
+// `req.ip` como la IP de ESE proxy (la misma para todo el mundo) en vez de la
+// del cliente real que viene en X-Forwarded-For, y el rate limiter de abajo
+// termina agrupando a todos los usuarios en un solo balde compartido.
+app.set('trust proxy', 1);
 
 app.use(helmet());
 app.use(
@@ -43,5 +53,9 @@ app.use('/api/visitas', visitasRouter);
 app.use('/api/telegram', telegramRouter);
 app.use('/api/reportes', reportesRouter);
 app.use('/api/subtareas/incidencias', subtareaIncidenciaRouter);
+app.use('/api/incidencia-destinatarios', incidenciaDestinatarioRouter);
+app.use('/api/flota', flotaRouter);
+app.use('/api/equipos', equipoRouter);
+app.use('/api/internal', internalRouter);
 
 app.use(errorMiddleware);

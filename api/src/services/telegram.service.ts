@@ -43,16 +43,22 @@ export async function sendTelegramMessage(chatId: string, text: string): Promise
 // decide si bloquea o no la respuesta según si es una acción explícita del
 // técnico o un efecto secundario silencioso.
 //
-// `tecnicoId` es opcional porque 'completo' se dispara server-side desde
-// patchConformidad, que sí lo tiene a mano (record.tecnicoId) — pero solo se
-// graba la primera vez (ver más abajo), así que no importa si en_camino/
-// en_sitio ya lo habían fijado antes.
+// `tecnicoId` ahora es obligatorio — el viaje es único por (tarea, técnico),
+// no por tarea a secas (ver VisitaNotificacion.ts, corregido 2026-09-25 para
+// que 2 técnicos con subtareas distintas del mismo lote no se bloqueen entre
+// sí). Los 4 callers reales (setEstadoVisita, finalizarVisitaLote,
+// patchConformidad, cerrarVisitaLoteSiTodoResuelto) siempre lo tienen a mano.
+// `fecha` ('YYYY-MM-DD') identifica A QUÉ intento/entrada de calendario
+// pertenece este viaje — sin esto, dos entradas de calendario para la misma
+// tareaOdooId en fechas distintas (ver calendarTask.service.ts) competirían
+// por el mismo documento.
 export async function notificarEstadoVisita(
   tareaOdooId: number,
   estado: 'en_camino' | 'en_sitio' | 'completo',
-  tecnicoId?: Types.ObjectId | string | null,
+  tecnicoId: Types.ObjectId | string,
+  fecha: string,
 ) {
-  const visita = await upsertViajeAbierto(tareaOdooId, estado);
+  const visita = await upsertViajeAbierto(tareaOdooId, estado, tecnicoId, fecha);
 
   // Timestamp por transición, seteado una sola vez: un reintento o un PATCH
   // duplicado del mismo estado no debe correr el reloj de traslado/trabajo.
@@ -60,7 +66,6 @@ export async function notificarEstadoVisita(
   if (estado === 'en_camino' && !visita.enCaminoAt) visita.enCaminoAt = now;
   if (estado === 'en_sitio' && !visita.enSitioAt) visita.enSitioAt = now;
   if (estado === 'completo' && !visita.completoAt) visita.completoAt = now;
-  if (tecnicoId && !visita.tecnicoId) visita.tecnicoId = new Types.ObjectId(tecnicoId);
 
   if (!visita.chatId) {
     visita.ultimoEnvio = { estado, status: 'SKIPPED_NO_CHAT', error: '', at: new Date() };
@@ -81,35 +86,38 @@ export async function notificarEstadoVisita(
   return visita;
 }
 
-// Filtra por `{tareaOdooId, abierta: true}` en vez de solo `{tareaOdooId}` —
-// así, si el viaje anterior a esta tarea ya se cerró (completo, o cancelado
-// vía cancelarVisita), el upsert abre uno NUEVO en vez de reusar/pisar el
-// viejo (ver VisitaNotificacion.ts). Llegar a 'completo' cierra el viaje en
-// la misma escritura.
+// Filtra por `{tareaOdooId, tecnicoId, abierta: true}` en vez de solo
+// `{tareaOdooId}` — así, 2 técnicos con subtareas distintas del mismo lote
+// tienen cada uno su propio viaje sin pisarse (ver VisitaNotificacion.ts), y
+// si el viaje anterior de ESTE técnico a esta tarea ya se cerró (completo, o
+// cancelado vía cancelarVisita), el upsert abre uno NUEVO en vez de
+// reusar/pisar el viejo. Llegar a 'completo' cierra el viaje en la misma
+// escritura. `tecnicoId` va en el filtro (no en un `$set` aparte) para que
+// Mongo lo complete solo en el insert — no hace falta asignarlo a mano
+// después.
 //
 // Mongo no garantiza atomicidad de un upsert contra su propio índice único
-// parcial bajo dos requests concurrentes para el mismo tareaOdooId cuando el
-// documento todavía no existe — el segundo puede pisar el insert del primero
-// y recibir E11000 (que error.middleware.ts traduce a 409) en vez de
-// simplemente encontrar el doc recién creado. Doble tap, reintento de red, o
-// dos pestañas: cualquiera de esos dispara la carrera — nunca debería
-// tumbarse en el técnico, así que el segundo intento reintenta como update
-// simple (ya sabemos que el doc existe, lo insertó el otro request).
-async function upsertViajeAbierto(tareaOdooId: number, estado: 'en_camino' | 'en_sitio' | 'completo') {
+// parcial bajo dos requests concurrentes para el mismo (tareaOdooId,
+// tecnicoId) cuando el documento todavía no existe — el segundo puede pisar
+// el insert del primero y recibir E11000 (que error.middleware.ts traduce a
+// 409) en vez de simplemente encontrar el doc recién creado. Doble tap,
+// reintento de red, o dos pestañas: cualquiera de esos dispara la carrera —
+// nunca debería tumbarse en el técnico, así que el segundo intento reintenta
+// como update simple (ya sabemos que el doc existe, lo insertó el otro
+// request).
+async function upsertViajeAbierto(
+  tareaOdooId: number,
+  estado: 'en_camino' | 'en_sitio' | 'completo',
+  tecnicoId: Types.ObjectId | string,
+  fecha: string,
+) {
   const abierta = estado !== 'completo';
+  const filter = { tareaOdooId, tecnicoId, fecha, abierta: true };
   try {
-    return await VisitaNotificacionModel.findOneAndUpdate(
-      { tareaOdooId, abierta: true },
-      { $set: { estado, abierta } },
-      { new: true, upsert: true },
-    );
+    return await VisitaNotificacionModel.findOneAndUpdate(filter, { $set: { estado, abierta } }, { new: true, upsert: true });
   } catch (err) {
     if (err && typeof err === 'object' && 'code' in err && (err as { code: number }).code === 11000) {
-      const retried = await VisitaNotificacionModel.findOneAndUpdate(
-        { tareaOdooId, abierta: true },
-        { $set: { estado, abierta } },
-        { new: true },
-      );
+      const retried = await VisitaNotificacionModel.findOneAndUpdate(filter, { $set: { estado, abierta } }, { new: true });
       if (retried) return retried;
     }
     throw err;
@@ -122,6 +130,14 @@ async function upsertViajeAbierto(tareaOdooId: number, estado: 'en_camino' | 'en
 // uno nuevo (abierta, en 'pendiente'). `sort` prioriza abierta:true antes que
 // createdAt más reciente para no pisar el chatId de un viaje viejo y ya
 // cerrado mientras hay uno en curso.
+//
+// Sin tocar a propósito (2026-09-25): sigue filtrando solo por `tareaOdooId`,
+// sin tecnicoId — con 2 técnicos en viaje simultáneo sobre el mismo lote (ver
+// VisitaNotificacion.ts), el opt-in del cliente quedaría pegado a "alguno" de
+// los dos viajes, ambiguo. La notificación al cliente por Telegram está
+// deprioritizada por ahora (funcionalidad a futuro, no crítica hoy) — cuando
+// se retome, hay que decidir ahí si el cliente necesita un solo hilo por
+// visita (aunque haya 2 técnicos) o uno por técnico.
 export async function registrarOptIn(tareaOdooId: number, chatId: string) {
   return VisitaNotificacionModel.findOneAndUpdate(
     { tareaOdooId },

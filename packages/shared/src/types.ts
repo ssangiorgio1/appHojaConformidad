@@ -23,6 +23,18 @@ export interface Foto {
   dataUrl?: string;
   url?: string;
   key?: string;
+  // "Couldn't take this photo, why" (see GalleryPhotoCapture in the PWA) —
+  // técnico forgot to bring the sensor/módulo, an extreme case that
+  // shouldn't block finishing the service. Only set when there's no
+  // dataUrl/url; counts the same as a real photo for that item's
+  // "required" check.
+  motivo?: string;
+  // Absent = 'image/jpeg' (compat with existing photos, always JPEG until
+  // now). 'video/webm' is a short clip recorded with MediaRecorder (see
+  // GalleryPhotoCapture `allowVideo`, "Pantalla N° de serie"/"Cámaras ADAS")
+  // — needs to be explicit because once a photo is synced only url/key
+  // remain, no `data:` prefix left to infer the type from.
+  mimeType?: 'image/jpeg' | 'image/png' | 'video/webm';
 }
 
 // Only meaningful on post.firma — whether the client signed satisfied,
@@ -72,7 +84,13 @@ export interface Phase {
   fallaDetalle?: string;
   // Same idea as fallaDetalle (item6_falla): required detail when the
   // matching item answers whatever requiresDetailWhen says (see
-  // checklist.ts) — item7/item8 trigger it on 'NO'.
+  // checklist.ts) — item6_airbag/guine/alternador/presion/temp/item7/item8
+  // trigger it on 'NO'.
+  item6AirbagDetalle?: string;
+  item6GuineDetalle?: string;
+  item6AlternadorDetalle?: string;
+  item6PresionDetalle?: string;
+  item6TempDetalle?: string;
   item7Detalle?: string;
   item8Detalle?: string;
   observaciones: string;
@@ -84,6 +102,11 @@ export function emptyPhase(): Phase {
   return {
     checklist: emptyChecklist(),
     fallaDetalle: '',
+    item6AirbagDetalle: '',
+    item6GuineDetalle: '',
+    item6AlternadorDetalle: '',
+    item6PresionDetalle: '',
+    item6TempDetalle: '',
     item7Detalle: '',
     item8Detalle: '',
     observaciones: '',
@@ -92,10 +115,19 @@ export function emptyPhase(): Phase {
   };
 }
 
-// The 3 detail fields of a Phase, keyed by ChecklistKey — same shape
+// The detail fields of a Phase, keyed by ChecklistKey — same shape
 // ChecklistEditor/missingChecklistDetail (checklist.ts) expect.
 export function phaseDetalles(phase: Phase): Partial<Record<ChecklistKey, string | undefined>> {
-  return { item6_falla: phase.fallaDetalle, item7: phase.item7Detalle, item8: phase.item8Detalle };
+  return {
+    item6_falla: phase.fallaDetalle,
+    item6_airbag: phase.item6AirbagDetalle,
+    item6_guine: phase.item6GuineDetalle,
+    item6_alternador: phase.item6AlternadorDetalle,
+    item6_presion: phase.item6PresionDetalle,
+    item6_temp: phase.item6TempDetalle,
+    item7: phase.item7Detalle,
+    item8: phase.item8Detalle,
+  };
 }
 
 // What the técnico typed/picked to identify the Odoo helpdesk ticket for

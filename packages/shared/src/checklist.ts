@@ -25,10 +25,17 @@ export interface ChecklistItemDef {
   note?: string;
   group?: string;
   // If set, answering this value (SI or NO) requires a separate detail
-  // textfield (fallaDetalle/item7Detalle/item8Detalle on Phase, see
-  // types.ts). item6_falla triggers on 'SI', item7/item8 on 'NO' — the value
-  // differs per item on purpose, hence a config field instead of a boolean.
+  // textfield (fallaDetalle/item7Detalle/item8Detalle/item6*Detalle on
+  // Phase, see types.ts). item6_falla triggers on 'SI', everything else
+  // (item6_airbag/guine/alternador/presion/temp, item7, item8) on 'NO' — the
+  // value differs per item on purpose, hence a config field instead of a
+  // boolean.
   requiresDetailWhen?: 'SI' | 'NO';
+  // Not printed on the PDF (neither the SI/NO nor the detail) — stays as
+  // internal data, visible only on the web admin panel. item6_falla: a
+  // reported warning light is operational info for WARA, not something that
+  // belongs on the document the client signs/receives.
+  hiddenInPdf?: boolean;
 }
 
 export const CHECKLIST_ITEMS: ChecklistItemDef[] = [
@@ -41,12 +48,17 @@ export const CHECKLIST_ITEMS: ChecklistItemDef[] = [
   { key: 'item3', label: '3. Estado general del vehículo (chapería y pintura).' },
   { key: 'item4', label: '4. Paragolpes traseros y delanteros.' },
   { key: 'item5', label: '5. Tablero y panel del vehículo (fotos del panel antes del desarme).' },
-  { key: 'item6_airbag', label: 'a) Luz de airbag.', group: '6. Revisión de luces del tablero en general' },
-  { key: 'item6_guine', label: 'b) Luces de guiñe.' },
-  { key: 'item6_alternador', label: 'c) Luz de alternador.' },
-  { key: 'item6_presion', label: 'd) Luz de presión de aceite.' },
-  { key: 'item6_temp', label: 'e) Luz de temperatura.' },
-  { key: 'item6_falla', label: 'f) Notificar sobre alguna luz de falla.', requiresDetailWhen: 'SI' },
+  {
+    key: 'item6_airbag',
+    label: 'a) Luz de airbag.',
+    group: '6. Revisión de luces del tablero en general',
+    requiresDetailWhen: 'NO',
+  },
+  { key: 'item6_guine', label: 'b) Luces de guiñe.', requiresDetailWhen: 'NO' },
+  { key: 'item6_alternador', label: 'c) Luz de alternador.', requiresDetailWhen: 'NO' },
+  { key: 'item6_presion', label: 'd) Luz de presión de aceite.', requiresDetailWhen: 'NO' },
+  { key: 'item6_temp', label: 'e) Luz de temperatura.', requiresDetailWhen: 'NO' },
+  { key: 'item6_falla', label: 'f) Notificar sobre alguna luz de falla.', requiresDetailWhen: 'SI', hiddenInPdf: true },
   { key: 'item7', label: '7. Tornillos de panel y tablero completo.', requiresDetailWhen: 'NO' },
   { key: 'item8', label: '8. Tapizados asientos en general.', requiresDetailWhen: 'NO' },
 ];
@@ -68,8 +80,25 @@ export function missingChecklistItems(checklist: Checklist): ChecklistItemDef[] 
 
 // Field name on Phase (types.ts) holding the detail for each item that needs
 // one — same mapping for PRE and POST.
-export const DETAIL_FIELD_BY_KEY: Partial<Record<ChecklistKey, 'fallaDetalle' | 'item7Detalle' | 'item8Detalle'>> = {
+export const DETAIL_FIELD_BY_KEY: Partial<
+  Record<
+    ChecklistKey,
+    | 'fallaDetalle'
+    | 'item6AirbagDetalle'
+    | 'item6GuineDetalle'
+    | 'item6AlternadorDetalle'
+    | 'item6PresionDetalle'
+    | 'item6TempDetalle'
+    | 'item7Detalle'
+    | 'item8Detalle'
+  >
+> = {
   item6_falla: 'fallaDetalle',
+  item6_airbag: 'item6AirbagDetalle',
+  item6_guine: 'item6GuineDetalle',
+  item6_alternador: 'item6AlternadorDetalle',
+  item6_presion: 'item6PresionDetalle',
+  item6_temp: 'item6TempDetalle',
   item7: 'item7Detalle',
   item8: 'item8Detalle',
 };

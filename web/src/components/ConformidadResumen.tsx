@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { EQUIP_CHECK_FIELDS, EQUIP_GROUPS, isEquipoFieldVisible } from '@wara/shared/src/equipo';
-import { prePhotoSlotsFor, postPhotoSlotsFor } from '@wara/shared/src/photoSlots';
+import { EQUIP_CHECK_FIELDS, EQUIP_GROUPS, EQUIP_ITEM_PHOTO_LABEL, isEquipoFieldVisible } from '@wara/shared/src/equipo';
+import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY } from '@wara/shared/src/photoSlots';
 import type { ServiceMode } from '@wara/shared/src/serviceMode';
 import { TIPO_SERVICIO_LABELS } from '@wara/shared';
 import { Badge } from '@/components/ui/Badge';
@@ -16,11 +16,19 @@ const PHOTO_SLOT_LABELS: Record<'pre' | 'post', Record<string, string>> = {
   post: Object.fromEntries(ALL_MODES.flatMap((m) => postPhotoSlotsFor(m)).map((s) => [s.key, s.label])),
 };
 
+// Fotos de galería libre (no 1 foto = 1 slot fijo) — ver misma nota en
+// conformidades/[id]/page.tsx.
+const GALLERY_LABELS: Record<string, string> = {
+  ...EQUIP_ITEM_PHOTO_LABEL,
+  [INTERVENCION_GROUP_KEY]: 'Intervención realizada',
+  [EXTRA_POST_PHOTOS_KEY]: 'Otras fotos',
+};
+
 // Fotos sincronizadas antes de que el servidor empezara a persistir slotKey
 // no van a tener match acá — se muestran sin descripción en vez de romper.
 function fotoLabel(fase: 'pre' | 'post', slotKey?: string): string | null {
   if (!slotKey) return null;
-  return PHOTO_SLOT_LABELS[fase][slotKey] ?? null;
+  return PHOTO_SLOT_LABELS[fase][slotKey] ?? GALLERY_LABELS[slotKey] ?? null;
 }
 
 export function InfoField({ label, children }: { label: string; children: ReactNode }) {
@@ -57,20 +65,23 @@ export function ConformidadResumenHeader({
 // conformidades (ver conformidades/page.tsx) para poder dar de alta sin
 // tener que entrar de a una.
 export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  // `isVideo` decide si el lightbox reproduce <video> (con controles) en vez
+  // de <img> — ver Foto.mimeType en lib/types.ts (video corto de
+  // verificación, Pantalla N° de serie / Cámaras ADAS).
+  const [lightbox, setLightbox] = useState<{ url: string; isVideo: boolean } | null>(null);
   const [lightboxZoomed, setLightboxZoomed] = useState(false);
 
   useEffect(() => {
-    if (!lightboxUrl) return;
+    if (!lightbox) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setLightboxUrl(null);
+        setLightbox(null);
         setLightboxZoomed(false);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [lightboxUrl]);
+  }, [lightbox]);
 
   // modelo/imei del equipo describen el que se retira cuando el servicio es
   // una desinstalación o un cambio de equipo (ver equipo.ts en @wara/shared).
@@ -168,16 +179,41 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
             <div className="grid grid-cols-4 gap-x-2.5 gap-y-3 sm:grid-cols-8">
               {todasLasFotos.map((foto) => {
                 const label = fotoLabel(foto.fase === 'PRE' ? 'pre' : 'post', foto.slotKey);
+                // Situación extrema (ver GalleryPhotoCapture en la PWA): el
+                // técnico no pudo sacar esta foto y dejó el motivo en vez de
+                // la imagen — no hay nada que abrir en el lightbox.
+                if (foto.motivo) {
+                  return (
+                    <div
+                      key={`${foto.fase}-${foto.id}`}
+                      title={label ? `${foto.fase} · ${label}` : foto.fase}
+                      className="flex flex-col gap-1 text-left"
+                    >
+                      <span className="relative flex aspect-square items-center justify-center overflow-hidden rounded-sm bg-bad-bg p-1.5 text-center shadow-inset">
+                        <span className="line-clamp-4 text-[9px] font-semibold text-bad">{foto.motivo}</span>
+                        <span className="absolute left-1 top-1 rounded-sm bg-black/60 px-1 py-0.5 text-[8.5px] font-extrabold text-white">
+                          {foto.fase}
+                        </span>
+                      </span>
+                      <span className="truncate text-[10px] font-semibold text-muted">{label ?? 'Foto'} (sin foto)</span>
+                    </div>
+                  );
+                }
+                const isVideo = foto.mimeType === 'video/webm';
                 return (
                   <button
                     key={`${foto.fase}-${foto.id}`}
-                    onClick={() => setLightboxUrl(foto.url)}
+                    onClick={() => foto.url && setLightbox({ url: foto.url, isVideo })}
                     title={label ? `${foto.fase} · ${label}` : foto.fase}
                     className="flex flex-col gap-1 text-left"
                   >
                     <span className="relative block aspect-square overflow-hidden rounded-sm shadow-inset">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={foto.url} alt="" className="h-full w-full object-cover" />
+                      {isVideo ? (
+                        <video src={foto.url} muted loop autoPlay playsInline className="h-full w-full object-cover" />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={foto.url} alt="" className="h-full w-full object-cover" />
+                      )}
                       <span className="absolute left-1 top-1 rounded-sm bg-black/60 px-1 py-0.5 text-[8.5px] font-extrabold text-white">
                         {foto.fase}
                       </span>
@@ -196,17 +232,17 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
         </div>
       </div>
 
-      {lightboxUrl && (
+      {lightbox && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-6"
           onClick={() => {
-            setLightboxUrl(null);
+            setLightbox(null);
             setLightboxZoomed(false);
           }}
         >
           <button
             onClick={() => {
-              setLightboxUrl(null);
+              setLightbox(null);
               setLightboxZoomed(false);
             }}
             className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white"
@@ -214,16 +250,29 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
             <IconX />
           </button>
           <div className={`max-h-full max-w-full ${lightboxZoomed ? 'overflow-auto' : 'overflow-hidden'}`}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={lightboxUrl}
-              alt=""
-              onClick={(e) => {
-                e.stopPropagation();
-                setLightboxZoomed((v) => !v);
-              }}
-              className={lightboxZoomed ? 'max-w-none cursor-zoom-out' : 'max-h-[85vh] max-w-[85vw] cursor-zoom-in object-contain'}
-            />
+            {lightbox.isVideo ? (
+              // El video no tiene el gesto de pinch-zoom del <img> — trae sus
+              // propios controles nativos en vez del toggle de zoom.
+              <video
+                src={lightbox.url}
+                controls
+                autoPlay
+                loop
+                onClick={(e) => e.stopPropagation()}
+                className="max-h-[85vh] max-w-[85vw]"
+              />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={lightbox.url}
+                alt=""
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLightboxZoomed((v) => !v);
+                }}
+                className={lightboxZoomed ? 'max-w-none cursor-zoom-out' : 'max-h-[85vh] max-w-[85vw] cursor-zoom-in object-contain'}
+              />
+            )}
           </div>
         </div>
       )}

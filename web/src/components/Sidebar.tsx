@@ -12,6 +12,7 @@ import {
   IconClock,
   IconDocument,
   IconGrid,
+  IconMap,
   IconLogout,
   IconSparkle,
   IconUsers,
@@ -26,6 +27,12 @@ const NAV_ITEMS = [
     href: '/incidencias',
     label: 'Unidades no encontradas',
     icon: IconAlertTriangle,
+    roles: ['coordinacion', 'mesa_ayuda', 'admin', 'superadmin'] as const,
+  },
+  {
+    href: '/flota',
+    label: 'Mapa de flota',
+    icon: IconMap,
     roles: ['coordinacion', 'mesa_ayuda', 'admin', 'superadmin'] as const,
   },
   {

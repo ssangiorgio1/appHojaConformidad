@@ -34,24 +34,37 @@ function stripHtml(html: string | false): string {
     .trim();
 }
 
-// 'mail.mt_note' es un external id estable del módulo `mail` (parte del core
-// de Odoo, no un id específico de esta base) — identifica el subtipo "Nota"
-// del chatter. Junto con message_type='comment', es como se distingue una
-// nota interna escrita a mano (mesa de ayuda/coordinación) de todo el resto
-// de mail.message: notificaciones automáticas (asignación, cambio de etapa,
-// "tarea creada") y nuestros propios posteos de "Hoja de conformidad
-// completada" (esos van con otro subtipo, 'Conversaciones'/mt_comment).
+// Identifica el subtipo "Nota" del chatter (mail.message.subtype) — junto
+// con message_type='comment', es como se distingue una nota interna escrita
+// a mano (mesa de ayuda/coordinación) de todo el resto de mail.message:
+// notificaciones automáticas (asignación, cambio de etapa, "tarea creada") y
+// nuestros propios posteos de "Hoja de conformidad completada" (esos van con
+// otro subtipo, 'Conversaciones'/mt_comment).
+//
+// Antes esto se resolvía vía el external id estable 'mail.mt_note' en
+// ir.model.data, pero la cuenta de servicio de Odoo no tiene el grupo
+// "Administración/Permisos de acceso" que ese modelo exige para lectura —
+// la llamada tiraba error SIEMPRE, getTaskNotes() nunca devolvía notas (el
+// front lo traga en un catch y no muestra nada, sin avisar del error). Se
+// busca en cambio directo en mail.message.subtype por name='Nota' +
+// res_model=false + internal=true, que es el mismo registro (id 2 en esta
+// base) y sí es legible por un usuario normal. name='Nota' es la traducción
+// es_AR (mismo lang que fuerza executeKw) — 'Actividades' (id 3) es el único
+// otro subtipo con res_model=false + internal=true, así que hace falta el
+// nombre para no ambigüar entre los dos.
 // Cacheado porque este id no cambia en la vida de la instancia.
 async function getNoteSubtypeId(): Promise<number | null> {
   return cached('notes:mt_note_subtype_id', 60 * 60 * 1000, async () => {
     const rows = (await withTimeout(
-      executeKw('ir.model.data', 'search_read', [[['module', '=', 'mail'], ['name', '=', 'mt_note']]], {
-        fields: ['res_id'],
-        limit: 1,
-      }),
+      executeKw(
+        'mail.message.subtype',
+        'search_read',
+        [[['res_model', '=', false], ['internal', '=', true], ['name', '=', 'Nota']]],
+        { fields: ['id'], limit: 1 },
+      ),
       'getNoteSubtypeId',
-    )) as Array<{ res_id: number }>;
-    return rows[0]?.res_id ?? null;
+    )) as Array<{ id: number }>;
+    return rows[0]?.id ?? null;
   });
 }
 

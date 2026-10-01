@@ -114,6 +114,53 @@ export async function postSubtareaNoEncontrada(params: {
   );
 }
 
+// Buscador genérico de res.users por nombre, para elegir a quién agregar
+// como destinatario de scheduleSubtareaReprogramarActivity de más abajo —
+// a diferencia de listTechnicians (calendarTask.service.ts, acotado a quien
+// tiene tareas de Field Service asignadas), coordinación no necesariamente
+// tiene tareas propias ahí, así que busca sobre TODO res.users interno
+// (share=false descarta portal/cliente).
+export async function searchOdooUsers(query: string): Promise<Array<{ id: number; name: string }>> {
+  const rows = (await withTimeout(
+    executeKw('res.users', 'search_read', [[['name', 'ilike', query], ['share', '=', false]]], {
+      fields: ['id', 'name'],
+      limit: 20,
+      order: 'name',
+    }),
+    'searchOdooUsers',
+  )) as Array<{ id: number; name: string }>;
+  return rows;
+}
+
+// Deja un recordatorio (mail.activity, tipo "Por hacer") en la subtarea para
+// que coordinación la reprograme — ver ALCANCE_BACKOFFICE.md §14.5. A
+// diferencia de postSubtareaNoEncontrada de arriba, corre con la cuenta de
+// servicio (executeKw), no la del técnico: tiene que llegar SIEMPRE que haya
+// destinatarios configurados (ver IncidenciaDestinatario), sin depender de si
+// el técnico vinculó su propia cuenta de Odoo. mail.activity solo admite un
+// user_id por registro, así que una llamada de activity_schedule por
+// destinatario (no una lista) — cada quien recibe su propio recordatorio.
+export async function scheduleSubtareaReprogramarActivity(params: {
+  subtareaOdooId: number;
+  summary: string;
+  note: string;
+  userIds: number[];
+}): Promise<void> {
+  await Promise.all(
+    params.userIds.map((userId) =>
+      withTimeout(
+        executeKw('project.task', 'activity_schedule', [[params.subtareaOdooId]], {
+          act_type_xmlid: 'mail.mail_activity_data_todo',
+          summary: params.summary,
+          note: params.note,
+          user_id: userId,
+        }),
+        'scheduleSubtareaReprogramarActivity',
+      ),
+    ),
+  );
+}
+
 // Posts a chatter note with the finished hoja de conformidad PDF attached to
 // the ticket. Uses message_post (core mail.thread) so nothing needs to be
 // configured on the Odoo side first — no custom fields to coordinate.

@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { CHECKLIST_ITEMS } from '@wara/shared/src/checklist';
-import { EQUIP_CHECK_FIELDS, EQUIP_GROUPS } from '@wara/shared/src/equipo';
-import { prePhotoSlotsFor, postPhotoSlotsFor } from '@wara/shared/src/photoSlots';
+import { CHECKLIST_ITEMS, DETAIL_FIELD_BY_KEY } from '@wara/shared/src/checklist';
+import { EQUIP_CHECK_FIELDS, EQUIP_GROUPS, EQUIP_ITEM_PHOTO_LABEL } from '@wara/shared/src/equipo';
+import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY } from '@wara/shared/src/photoSlots';
 import type { ServiceMode } from '@wara/shared/src/serviceMode';
 import { SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, type ChecklistValue, type SatisfaccionFirma } from '@wara/shared';
 import { Card } from '@/components/ui/Card';
@@ -60,11 +60,22 @@ const PHOTO_SLOT_LABELS: Record<'pre' | 'post', Record<string, string>> = {
   post: Object.fromEntries(ALL_MODES.flatMap((m) => postPhotoSlotsFor(m)).map((s) => [s.key, s.label])),
 };
 
+// Fotos de galería libre (no 1 foto = 1 slot fijo) — mismo criterio que
+// GALLERY_LABELS en printHtml.ts: cada ítem tildado de "Módulos y sensores"
+// tiene su propia galería usando la key del campo de Equipo como slotKey, así
+// que acá se muestra el nombre de lo que se marcó (ej. "Sensor de
+// temperatura") en vez de un genérico "Foto".
+const GALLERY_LABELS: Record<string, string> = {
+  ...EQUIP_ITEM_PHOTO_LABEL,
+  [INTERVENCION_GROUP_KEY]: 'Intervención realizada',
+  [EXTRA_POST_PHOTOS_KEY]: 'Otras fotos',
+};
+
 // Fotos sincronizadas antes de que el servidor empezara a persistir slotKey
 // no van a tener match acá — se muestran sin descripción en vez de romper.
 function fotoLabel(fase: 'pre' | 'post', slotKey?: string): string | null {
   if (!slotKey) return null;
-  return PHOTO_SLOT_LABELS[fase][slotKey] ?? null;
+  return PHOTO_SLOT_LABELS[fase][slotKey] ?? GALLERY_LABELS[slotKey] ?? null;
 }
 
 export default function ConformidadDetailPage() {
@@ -89,20 +100,23 @@ export default function ConformidadDetailPage() {
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [resumenOpen, setResumenOpen] = useState(false);
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  // `isVideo` decide si el lightbox reproduce <video> (con controles) en vez
+  // de <img> — ver Foto.mimeType en lib/types.ts (video corto de
+  // verificación, Pantalla N° de serie / Cámaras ADAS).
+  const [lightbox, setLightbox] = useState<{ url: string; isVideo: boolean } | null>(null);
   const [lightboxZoomed, setLightboxZoomed] = useState(false);
 
   useEffect(() => {
-    if (!lightboxUrl) return;
+    if (!lightbox) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setLightboxUrl(null);
+        setLightbox(null);
         setLightboxZoomed(false);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [lightboxUrl]);
+  }, [lightbox]);
 
   const phase: Phase | undefined = c?.[fase];
   const tipoServicioLabel = c?.tipoServicio ? TIPO_SERVICIO_LABELS[c.tipoServicio] : null;
@@ -130,7 +144,9 @@ export default function ConformidadDetailPage() {
   const checklistRows = useMemo(() => {
     if (!phase) return [];
     let inGroup6 = false;
-    const rows: Array<{ kind: 'header'; label: string } | { kind: 'item'; key: string; label: string; value: ChecklistValue }> = [];
+    const rows: Array<
+      { kind: 'header'; label: string } | { kind: 'item'; key: string; label: string; value: ChecklistValue; detalle?: string }
+    > = [];
     for (const item of CHECKLIST_ITEMS) {
       const isGroup6 = item.key.startsWith('item6_');
       if (isGroup6 && !inGroup6) {
@@ -139,7 +155,9 @@ export default function ConformidadDetailPage() {
       } else if (!isGroup6) {
         inGroup6 = false;
       }
-      rows.push({ kind: 'item', key: item.key, label: item.label, value: phase.checklist[item.key] });
+      const detailField = DETAIL_FIELD_BY_KEY[item.key];
+      const detalle = detailField ? phase[detailField] : undefined;
+      rows.push({ kind: 'item', key: item.key, label: item.label, value: phase.checklist[item.key], detalle });
     }
     return rows;
   }, [phase]);
@@ -253,12 +271,19 @@ export default function ConformidadDetailPage() {
               ) : (
                 <div
                   key={row.key}
-                  className={`flex items-center justify-between gap-3.5 border-b border-line py-3 last:border-none ${
+                  className={`flex flex-col gap-1.5 border-b border-line py-3 last:border-none ${
                     row.key.startsWith('item6_') ? 'pl-4' : ''
                   }`}
                 >
-                  <div className="text-[13px] font-semibold leading-relaxed">{row.label}</div>
-                  <Badge tone={checklistTone(row.value)}>{row.value ?? '—'}</Badge>
+                  <div className="flex items-center justify-between gap-3.5">
+                    <div className="text-[13px] font-semibold leading-relaxed">{row.label}</div>
+                    <Badge tone={checklistTone(row.value)}>{row.value ?? '—'}</Badge>
+                  </div>
+                  {row.detalle && (
+                    <div className="rounded-md bg-surface p-2.5 text-[12px] font-medium leading-relaxed text-muted shadow-inset">
+                      {row.detalle}
+                    </div>
+                  )}
                 </div>
               ),
             )}
@@ -280,16 +305,34 @@ export default function ConformidadDetailPage() {
               <div className="grid grid-cols-4 gap-x-2.5 gap-y-3 sm:grid-cols-6">
                 {phase.fotos.map((foto) => {
                   const label = fotoLabel(fase, foto.slotKey);
+                  // Situación extrema (ver GalleryPhotoCapture en la PWA): el
+                  // técnico no pudo sacar esta foto y dejó el motivo en vez
+                  // de la imagen — no hay nada que abrir en el lightbox.
+                  if (foto.motivo) {
+                    return (
+                      <div key={foto.id} title={label ?? undefined} className="flex flex-col gap-1 text-left">
+                        <span className="flex aspect-square items-center justify-center overflow-hidden rounded-sm bg-bad-bg p-1.5 text-center shadow-inset">
+                          <span className="line-clamp-4 text-[9px] font-semibold text-bad">{foto.motivo}</span>
+                        </span>
+                        <span className="truncate text-[10px] font-semibold text-muted">{label ?? 'Foto'} (sin foto)</span>
+                      </div>
+                    );
+                  }
+                  const isVideo = foto.mimeType === 'video/webm';
                   return (
                     <button
                       key={foto.id}
-                      onClick={() => setLightboxUrl(foto.url)}
+                      onClick={() => foto.url && setLightbox({ url: foto.url, isVideo })}
                       title={label ?? undefined}
                       className="flex flex-col gap-1 text-left"
                     >
                       <span className="block aspect-square overflow-hidden rounded-sm shadow-inset">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={foto.url} alt="" className="h-full w-full object-cover" />
+                        {isVideo ? (
+                          <video src={foto.url} muted loop autoPlay playsInline className="h-full w-full object-cover" />
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={foto.url} alt="" className="h-full w-full object-cover" />
+                        )}
                       </span>
                       <span className="truncate text-[10px] font-semibold text-muted">{label ?? 'Foto'}</span>
                     </button>
@@ -307,10 +350,19 @@ export default function ConformidadDetailPage() {
           <Card className="p-6">
             <div className="mb-3.5 flex items-center justify-between">
               <div className="text-sm font-extrabold">Firma digital ({fase.toUpperCase()})</div>
-              {phase?.firma?.firmedAt && (
+              {/* firmedAt solo no alcanza: también se setea cuando el cliente
+                  no firma por disconformidad (ver SATISFACCION_TONE abajo) o
+                  está ausente — la píldora tiene que mirar si hay firma real
+                  (url), igual que el criterio de "Sin firmar todavía" de abajo. */}
+              {phase?.firma?.url ? (
                 <Badge tone="neutral">
                   <IconLock />
                   Firmada
+                </Badge>
+              ) : (
+                <Badge tone="bad">
+                  <IconLock />
+                  No firmado
                 </Badge>
               )}
             </div>
@@ -383,17 +435,17 @@ export default function ConformidadDetailPage() {
         </div>
       </div>
 
-      {lightboxUrl && (
+      {lightbox && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-6"
           onClick={() => {
-            setLightboxUrl(null);
+            setLightbox(null);
             setLightboxZoomed(false);
           }}
         >
           <button
             onClick={() => {
-              setLightboxUrl(null);
+              setLightbox(null);
               setLightboxZoomed(false);
             }}
             className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white"
@@ -401,20 +453,31 @@ export default function ConformidadDetailPage() {
             <IconX />
           </button>
           <div className={`max-h-full max-w-full ${lightboxZoomed ? 'overflow-auto' : 'overflow-hidden'}`}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={lightboxUrl}
-              alt=""
-              onClick={(e) => {
-                e.stopPropagation();
-                setLightboxZoomed((v) => !v);
-              }}
-              className={
-                lightboxZoomed
-                  ? 'max-w-none cursor-zoom-out'
-                  : 'max-h-[85vh] max-w-[85vw] cursor-zoom-in object-contain'
-              }
-            />
+            {lightbox.isVideo ? (
+              <video
+                src={lightbox.url}
+                controls
+                autoPlay
+                loop
+                onClick={(e) => e.stopPropagation()}
+                className="max-h-[85vh] max-w-[85vw]"
+              />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={lightbox.url}
+                alt=""
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLightboxZoomed((v) => !v);
+                }}
+                className={
+                  lightboxZoomed
+                    ? 'max-w-none cursor-zoom-out'
+                    : 'max-h-[85vh] max-w-[85vw] cursor-zoom-in object-contain'
+                }
+              />
+            )}
           </div>
         </div>
       )}

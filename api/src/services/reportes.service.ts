@@ -27,15 +27,19 @@ function minutosInstalandoUnidad(c: { createdAt: Date; pre?: { firma?: { firmedA
 
 // Unidades (Conformidades) que corresponden a ESTE viaje puntual de una
 // tarea — no todas las de la tarea, porque una misma tarea puede tener varios
-// viajes (ej. se reprogramó una unidad y el técnico volvió otro día). Se
-// scopea por ventana de tiempo del viaje (llegada → cierre, o "hasta ahora"
-// si sigue abierto) igual que el resto de este archivo estima límites sin
-// tener un id de viaje guardado en Conformidad.
-function unidadesDeVisita<T extends { tareaOdoo?: { id: number } | null; createdAt: Date }>(
-  v: { tareaOdooId: number; enCaminoAt?: Date | null; completoAt?: Date | null },
-  porTarea: Map<number, T[]>,
+// viajes (ej. se reprogramó una unidad y el técnico volvió otro día, o —
+// desde 2026-09-25 — 2 técnicos distintos con subtareas propias del mismo
+// lote tienen cada uno su propio viaje en paralelo, ver
+// VisitaNotificacion.ts). Recibe `candidatas` ya filtradas por técnico (ver
+// caller) — sin eso, el viaje de un técnico mostraría también las unidades
+// que instaló el otro, con la misma tareaOdoo.id. Dentro de esas candidatas
+// propias, se scopea por ventana de tiempo del viaje (llegada → cierre, o
+// "hasta ahora" si sigue abierto) igual que el resto de este archivo estima
+// límites sin tener un id de viaje guardado en Conformidad.
+function unidadesDeVisita<T extends { createdAt: Date }>(
+  v: { enCaminoAt?: Date | null; completoAt?: Date | null },
+  candidatas: T[],
 ): T[] {
-  const candidatas = porTarea.get(v.tareaOdooId) ?? [];
   return candidatas.filter((c) => {
     if (!v.enCaminoAt || c.createdAt < v.enCaminoAt) return false;
     if (v.completoAt && c.createdAt > v.completoAt) return false;
@@ -86,7 +90,7 @@ export async function getReporteVisitas(query: ReporteVisitasQuery) {
 
   const tareaIds = [...new Set(visitas.map((v) => v.tareaOdooId))];
   const conformidades = await ConformidadModel.find({ 'tareaOdoo.id': { $in: tareaIds }, deletedAt: null })
-    .select('tareaOdoo subtareaOdoo cliente fecha hora createdAt pre.firma.firmedAt post.firma.firmedAt')
+    .select('tareaOdoo subtareaOdoo tecnicoId cliente fecha hora createdAt pre.firma.firmedAt post.firma.firmedAt')
     .sort({ createdAt: 1 })
     .lean();
 
@@ -98,15 +102,21 @@ export async function getReporteVisitas(query: ReporteVisitasQuery) {
   }
 
   const data = visitas.map((v) => {
-    const candidatas = conformidadesPorTarea.get(v.tareaOdooId) ?? [];
-    // Si la misma tarea tuvo más de un viaje, preferimos la Conformidad
-    // creada durante ESTE viaje (en o después de que arrancó) para no
-    // mostrar el cliente/nombre de un viaje anterior a la misma tarea.
-    const match = candidatas.find((c) => !v.enCaminoAt || c.createdAt >= v.enCaminoAt) ?? candidatas[0] ?? null;
+    // Filtrado por técnico primero: 2 técnicos distintos pueden tener cada
+    // uno su propio viaje sobre la misma tareaOdooId (lote con subtareas
+    // repartidas, ver VisitaNotificacion.ts) — sin este filtro, el viaje de
+    // uno mostraría también el cliente/unidades del otro.
+    const propias = (conformidadesPorTarea.get(v.tareaOdooId) ?? []).filter(
+      (c) => String(c.tecnicoId) === String(v.tecnicoId?._id ?? v.tecnicoId),
+    );
+    // Si el mismo técnico tuvo más de un viaje a esta tarea, preferimos la
+    // Conformidad creada durante ESTE viaje (en o después de que arrancó)
+    // para no mostrar el cliente/nombre de un viaje anterior.
+    const match = propias.find((c) => !v.enCaminoAt || c.createdAt >= v.enCaminoAt) ?? propias[0] ?? null;
 
     // Desglose por unidad dentro de ESTE viaje — ver minutosInstalandoUnidad.
     // Un lote de 1 sola unidad da un desglose de 1 elemento, nada especial.
-    const unidades = unidadesDeVisita(v, conformidadesPorTarea).map((c) => ({
+    const unidades = unidadesDeVisita(v, propias).map((c) => ({
       subtareaOdooId: c.subtareaOdoo?.id ?? null,
       subtareaNombre: c.subtareaOdoo?.nombre || null,
       minutosInstalando: minutosInstalandoUnidad(c),
@@ -212,7 +222,7 @@ export async function getReporteTecnicos(query: ReporteVisitasQuery): Promise<Re
   const tareaIds = [...new Set(visitas.map((v) => v.tareaOdooId))];
   const conformidades = tareaIds.length
     ? await ConformidadModel.find({ 'tareaOdoo.id': { $in: tareaIds }, deletedAt: null })
-        .select('tareaOdoo createdAt pre.firma.firmedAt post.firma.firmedAt')
+        .select('tareaOdoo tecnicoId createdAt pre.firma.firmedAt post.firma.firmedAt')
         .lean()
     : [];
   const conformidadesPorTarea = new Map<number, typeof conformidades>();
@@ -231,7 +241,11 @@ export async function getReporteTecnicos(query: ReporteVisitasQuery): Promise<Re
     const key = String(v.tecnicoId);
     const traslado = minutosEntre(v.enCaminoAt, v.enSitioAt);
     const sitio = minutosEntre(v.enSitioAt, v.completoAt);
-    const unidadesConMinutos = unidadesDeVisita(v, conformidadesPorTarea)
+    // Mismo motivo que en getReporteVisitas: filtrar por técnico antes de
+    // pasarle candidatas a unidadesDeVisita — 2 técnicos pueden compartir
+    // tareaOdooId con viajes propios.
+    const propias = (conformidadesPorTarea.get(v.tareaOdooId) ?? []).filter((c) => String(c.tecnicoId) === key);
+    const unidadesConMinutos = unidadesDeVisita(v, propias)
       .map((c) => minutosInstalandoUnidad(c))
       .filter((m): m is number => m !== null);
     const instalando = unidadesConMinutos.length ? unidadesConMinutos.reduce((sum, m) => sum + m, 0) : null;

@@ -19,15 +19,15 @@ const PRE_PHOTO_SLOTS_BASE: PhotoSlotDef[] = [
 
 const PRE_EXTRA_SLOT: PhotoSlotDef = { key: 'extra', label: 'Extra', required: false };
 
-// The equipment already physically exists at PRE time for retiro/reparación
-// (unlike instalación, where there's nothing to photograph yet) — document
-// it before touching it.
+// The equipment already physically exists at PRE time for reparación (unlike
+// instalación, where there's nothing to photograph yet) — document it before
+// touching it. 'retiro' and 'cambio_equipo' have NO slot here on purpose: at
+// PRE time the equipment being removed is still installed (sometimes hard to
+// access), so its photo is only asked for later, in POST — 'equipo_a_retirar'
+// (see POST_PHOTO_SLOTS_RETIRO / POST_PHOTO_SLOTS_CAMBIO_EQUIPO below) — once
+// it's actually been taken out and can be photographed properly.
 const PRE_MODE_SLOT: Partial<Record<ServiceMode, PhotoSlotDef>> = {
-  retiro: { key: 'equipo_a_retirar', label: 'Equipo a retirar (N° de serie)', required: true },
   reparacion: { key: 'estado_equipo_prereparacion', label: 'Estado del equipo antes de reparar', required: true },
-  // Mismo slot que retiro — el PRE de un cambio_equipo (esquema nuevo, hoja
-  // única) documenta el equipo saliente antes de tocarlo, igual que un retiro.
-  cambio_equipo: { key: 'equipo_a_retirar', label: 'Equipo a retirar (N° de serie)', required: true },
 };
 
 export function prePhotoSlotsFor(mode: ServiceMode): PhotoSlotDef[] {
@@ -59,13 +59,15 @@ const POST_PHOTO_SLOTS_INSTALACION: PhotoSlotDef[] = [
 
 // Capture guide for POST in 'retiro' mode — nothing gets installed, so
 // instead of placement photos it asks to verify the equipment actually left
-// and nothing was left loose/exposed. No photo of the removed equipment's
-// serial number: the PRE already asks for it ('equipo_a_retirar', see
-// PRE_MODE_SLOT) and it's the same info twice. "Lugar donde estaba" and
-// "cableado retirado" are optional (not every retiro leaves something worth
+// and nothing was left loose/exposed. 'equipo_a_retirar' is asked here (not
+// in PRE, see PRE_MODE_SLOT above) — only once the equipment is actually
+// removed can it be photographed properly (legible serial number), unlike at
+// PRE time when it's still installed. "Lugar donde estaba" and "cableado
+// retirado" are optional (not every retiro leaves something worth
 // photographing there) — placed last, after the required ones, same
 // criterion as the PRE's "Extra" slot.
 const POST_PHOTO_SLOTS_RETIRO: PhotoSlotDef[] = [
+  { key: 'equipo_a_retirar', label: 'Equipo/elemento retirado', required: true },
   { key: 'torpedo', label: 'Torpedo (tablero encendido, luces de check y estado general)', required: true },
   { key: 'odometro', label: 'Odómetro', required: true },
   { key: 'lugar_vacio', label: 'Lugar donde estaba el equipo', required: false },
@@ -76,11 +78,14 @@ const POST_PHOTO_SLOTS_RETIRO: PhotoSlotDef[] = [
 // que probar tanto que el equipo viejo salió como que el nuevo quedó bien
 // instalado — es la unión de los dos sets de arriba, sin repetir torpedo ni
 // odómetro (ya sirven para las dos cosas, no tiene sentido pedir la foto 2
-// veces). Tampoco repite la foto del N° de serie del equipo retirado — ya la
-// pide el PRE, ver comentario en POST_PHOTO_SLOTS_RETIRO. "Lugar donde
-// estaba" y "cableado retirado" son opcionales acá también, mismo criterio
-// que POST_PHOTO_SLOTS_RETIRO — van al final.
+// veces). A diferencia de una versión anterior de este flujo, la foto del N°
+// de serie del equipo retirado ('equipo_a_retirar') ya no se pide en el PRE
+// (ver PRE_MODE_SLOT) — se pide acá, recién cuando se desmonta y se lo puede
+// fotografiar bien, mismo criterio que POST_PHOTO_SLOTS_RETIRO. "Lugar donde
+// estaba" y "cableado retirado" son opcionales acá también, mismo criterio —
+// van al final.
 const POST_PHOTO_SLOTS_CAMBIO_EQUIPO: PhotoSlotDef[] = [
+  { key: 'equipo_a_retirar', label: 'Equipo a retirar (N° de serie)', required: true },
   { key: 'equipo_serie', label: 'Equipo a colocar (N° de serie)', required: true },
   { key: 'precintos', label: 'N° de precintos a usar', required: true },
   { key: 'ubicacion_equipo', label: 'Ubicación y colocación del equipo', required: true },
@@ -99,7 +104,20 @@ export function postPhotoSlotsFor(mode: ServiceMode): PhotoSlotDef[] {
   return POST_PHOTO_SLOTS_INSTALACION;
 }
 
-// slotKey shared by every photo in the sensores/accesorios gallery (see
-// GalleryPhotoCapture in the PWA) — not a PhotoSlotDef because it isn't 1
-// photo = 1 slot, it's N photos tagged with the same key.
-export const SENSORES_ACCESORIOS_GROUP_KEY = 'sensores_accesorios';
+// Each checkable item under "Módulos y sensores" (antena/sensor/módulo/
+// elemento adicional) has its own free gallery in "Ubicación y sujeción" (see
+// GalleryPhotoCapture in the PWA), using the Equipo field's own key as
+// slotKey directly — already unique across the whole schema, so the photo's
+// caption in the PDF is the name of what was checked (see
+// EQUIP_ITEM_PHOTO_LABEL in equipo.ts) instead of a generic category. Not a
+// PhotoSlotDef because it isn't 1 photo = 1 slot, it's N photos per key.
+
+// Free gallery for the 'reparacion' mode's "Intervención realizada" step —
+// same mechanism as above, with its own label in the PDF (see GALLERY_LABELS
+// in printHtml.ts) so these photos aren't confused with the others.
+export const INTERVENCION_GROUP_KEY = 'intervencion';
+
+// Free gallery for extra/misc photos in POST (any service mode) that don't
+// fit a fixed slot above — same mechanism as INTERVENCION_GROUP_KEY, own
+// label in the PDF ("Otras fotos", see GALLERY_LABELS in printHtml.ts).
+export const EXTRA_POST_PHOTOS_KEY = 'extra_post';

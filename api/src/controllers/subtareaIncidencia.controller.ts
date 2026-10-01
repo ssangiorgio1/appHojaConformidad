@@ -3,9 +3,20 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { HttpError } from '../middleware/error.middleware.js';
 import { SubtareaIncidenciaModel } from '../models/SubtareaIncidencia.js';
 import { UsuarioModel } from '../models/Usuario.js';
+import { IncidenciaDestinatarioModel } from '../models/IncidenciaDestinatario.js';
 import { decryptSecret } from '../utils/secretBox.js';
-import { postSubtareaNoEncontrada } from '../services/odoo.service.js';
-import { odooTaskUrl } from '../services/calendarTask.service.js';
+import { postSubtareaNoEncontrada, scheduleSubtareaReprogramarActivity } from '../services/odoo.service.js';
+import {
+  odooTaskUrl,
+  markTaskWaiting,
+  markTaskStageVisitaFallida,
+  markParentStageVisitaFallidaIfAllChildrenFailed,
+  moveCalendarTask,
+  reopenTask,
+  reopenParentIfVisitaFallida,
+  reassignTaskTechnician,
+  moveParentDateIfSafe,
+} from '../services/calendarTask.service.js';
 import type {
   CreateSubtareaIncidenciaInput,
   ListSubtareaIncidenciasQuery,
@@ -30,17 +41,19 @@ export const createSubtareaIncidencia = asyncHandler(async (req: Request, res: R
     tareaOdooId: body.tareaOdooId,
     subtareaOdooId: body.subtareaOdooId,
     subtareaNombre: body.subtareaNombre ?? '',
+    mergedTaskIds: body.mergedTaskIds,
     tecnicoId: req.user!.usuarioId,
     fecha: body.fecha,
     motivo: body.motivo,
   });
 
   const usuario = await UsuarioModel.findById(req.user!.usuarioId);
+  const bodyHtml = `<p><b>Unidad no encontrada en el lugar</b> — reportado por ${esc(usuario?.nombre || usuario?.email || 'un técnico')} el ${esc(body.fecha)}.</p>${
+    body.motivo ? `<p>Motivo: ${esc(body.motivo)}</p>` : ''
+  }`;
+
   if (usuario?.odoo) {
     try {
-      const bodyHtml = `<p><b>Unidad no encontrada en el lugar</b> — reportado por ${esc(usuario.nombre || usuario.email)} el ${esc(body.fecha)}.</p>${
-        body.motivo ? `<p>Motivo: ${esc(body.motivo)}</p>` : ''
-      }`;
       await postSubtareaNoEncontrada({
         subtareaOdooId: body.subtareaOdooId,
         bodyHtml,
@@ -50,6 +63,46 @@ export const createSubtareaIncidencia = asyncHandler(async (req: Request, res: R
       console.error('SUBTAREA_INCIDENCIA_ODOO_NOTE_FAILED', body.subtareaOdooId, err);
     }
   }
+
+  // Recordatorio para coordinación (mail.activity) — corre con la cuenta de
+  // servicio, no la del técnico (ver scheduleSubtareaReprogramarActivity en
+  // odoo.service.ts), así que llega siempre que haya destinatarios
+  // configurados, sin depender de si el técnico vinculó su propia cuenta de
+  // Odoo. Convive con el comentario de arriba a propósito, no lo reemplaza.
+  try {
+    const destinatarios = await IncidenciaDestinatarioModel.find();
+    if (destinatarios.length) {
+      await scheduleSubtareaReprogramarActivity({
+        subtareaOdooId: body.subtareaOdooId,
+        summary: 'Reprogramar visita — unidad no encontrada',
+        note: bodyHtml,
+        userIds: destinatarios.map((d) => d.odooUserId),
+      });
+    }
+  } catch (err) {
+    console.error('SUBTAREA_INCIDENCIA_ODOO_ACTIVITY_FAILED', body.subtareaOdooId, err);
+  }
+
+  // Deja la subtarea en "En espera" (state) y mueve su tarjeta a "Visita
+  // fallida" (stage_id, la columna del Kanban que coordinación efectivamente
+  // mira) — mismo criterio que patchConformidad para "Hecho": la actividad de
+  // arriba (scheduleSubtareaReprogramarActivity) ya avisa puntualmente a
+  // quien corresponda, esto además la hace visible de un vistazo en el
+  // Kanban. Best-effort, con su propio try/catch interno — nunca depende de
+  // si el técnico vinculó su cuenta de Odoo, corre con la cuenta de servicio.
+  await markTaskWaiting(body.subtareaOdooId);
+  await markTaskStageVisitaFallida(body.subtareaOdooId);
+  // Unidad colapsada de 2+ project.task reales (§15.9b) — cada una necesita
+  // su propio `state`/`stage_id`.
+  for (const mergedId of body.mergedTaskIds ?? []) {
+    await markTaskWaiting(mergedId);
+    await markTaskStageVisitaFallida(mergedId);
+  }
+  // Si esta era la última unidad del lote sin resolver y TODAS terminaron en
+  // "Visita fallida" (ninguna se completó), la tarea padre también pasa a esa
+  // etapa — ver markParentStageVisitaFallidaIfAllChildrenFailed. Un lote con
+  // un mix (alguna Hecho, alguna fallida) queda sin tocar a propósito.
+  await markParentStageVisitaFallidaIfAllChildrenFailed(body.tareaOdooId);
 
   // A propósito NO se cierra la visita automáticamente acá aunque esta haya
   // sido la última unidad pendiente (a diferencia de patchConformidad, que sí
@@ -101,15 +154,60 @@ export const listSubtareaIncidencias = asyncHandler(async (req: Request, res: Re
   });
 });
 
+// Con start/end, este PATCH además reprograma de verdad la subtarea en Odoo
+// (fecha nueva + la reabre de "Visita fallida"/"En espera" a "Nuevo"/"En
+// progreso" + técnico opcional) antes de marcar la incidencia resuelta — ver
+// plan "Reprogramar visita fallida desde el panel". Sin start/end, se
+// comporta igual que antes (coordinación que ya reprogramó a mano en Odoo y
+// solo quiere tildar el check).
+const REPROGRAMAR_ROLES = new Set(['coordinacion', 'admin', 'superadmin']);
+
 export const resolveSubtareaIncidencia = asyncHandler(async (req: Request, res: Response) => {
   const body = req.body as ResolveSubtareaIncidenciaInput;
   const incidencia = await SubtareaIncidenciaModel.findById(req.params.id);
   if (!incidencia) throw new HttpError(404, 'Incidencia not found');
+
+  // Solo tiene sentido cuando se reprograma de verdad (body.start/body.end) —
+  // undefined en la respuesta para el camino viejo ("marcar resuelta" nomás).
+  let parentDateMoved: boolean | undefined;
+
+  if (body.start && body.end) {
+    // Escritura real a Odoo (fecha + reabrir etapa/estado + reasignar
+    // técnico) — no solo un flag en Mongo, así que exige un rol con permiso
+    // de escritura (mismo criterio que /calendar/tasks/:id/move), a
+    // diferencia del simple "marcar resuelta" de abajo, disponible también
+    // para mesa_ayuda.
+    if (!REPROGRAMAR_ROLES.has(req.user!.role)) {
+      throw new HttpError(403, 'Tu rol no puede reprogramar la visita en Odoo, solo marcar la incidencia como resuelta.');
+    }
+
+    const ids = [incidencia.subtareaOdooId, ...(incidencia.mergedTaskIds ?? [])];
+    // Sin try/catch a propósito: si Odoo falla, el error se propaga como
+    // error HTTP y la incidencia NO se marca reprogramada — a diferencia del
+    // resto de este archivo (best-effort), acá marcarla resuelta sin que Odoo
+    // se haya movido de verdad dejaría la unidad perdida de la agenda del
+    // técnico sin que nadie se entere.
+    for (const id of ids) {
+      await moveCalendarTask(id, { start: body.start, end: body.end });
+      await reopenTask(id);
+      if (body.technicianId) await reassignTaskTechnician(id, body.technicianId);
+    }
+    // El técnico ya ve esta unidad en su agenda el día correcto sin esto
+    // (listCalendarTasks arma una entrada por cada fecha real distinta entre
+    // las subtareas de un lote, ver calendarTask.service.ts) — esto es solo
+    // prolijidad: cuando es seguro, fusiona la unidad reprogramada de vuelta
+    // en la misma entrada que el resto del lote en vez de dejarla aparte. Se
+    // salta a propósito si el lote tiene otra unidad todavía activa en otra
+    // fecha (ver parentDateIsSafeToMove) — esa unidad simplemente sigue
+    // viéndose en su propia entrada.
+    parentDateMoved = await moveParentDateIfSafe(incidencia.tareaOdooId, ids, { start: body.start, end: body.end });
+    await reopenParentIfVisitaFallida(incidencia.tareaOdooId);
+  }
 
   incidencia.estado = body.estado;
   incidencia.resueltaPor = req.user!.usuarioId;
   incidencia.resueltaAt = new Date();
   await incidencia.save();
 
-  res.json(incidencia);
+  res.json({ ...incidencia.toObject(), parentDateMoved });
 });

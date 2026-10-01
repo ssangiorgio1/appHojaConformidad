@@ -31,6 +31,14 @@ const envSchema = z.object({
   // Encrypts each técnico's personal Odoo password at rest (see utils/secretBox.ts).
   ODOO_LINK_SECRET: z.string().min(16, 'ODOO_LINK_SECRET is required (min 16 chars)'),
 
+  // Sólo el VALOR de la cookie BO3SESSION de ssl.visionblo.com/bo3 (F12 → Application → Cookies).
+  // Opcional: sin esto, /api/flota/refrescar responde 503 y el resto de la API sigue igual.
+  VISIONBLO_SESSION_COOKIE: z.string().optional(),
+
+  // Firma de los crons de QStash (routes/internal.routes.ts). Opcionales: sin ellas, /api/internal responde 503.
+  QSTASH_CURRENT_SIGNING_KEY: z.string().optional(),
+  QSTASH_NEXT_SIGNING_KEY: z.string().optional(),
+
   CORS_ORIGINS: z.string().default(''),
 
   // Alertas al cliente por Telegram (seguimiento de visita) — opcionales:

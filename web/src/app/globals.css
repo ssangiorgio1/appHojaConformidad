@@ -1,5 +1,7 @@
 @import 'tailwindcss';
 
+@custom-variant dark (&:is(.dark *));
+
 /* Tokens de design.md (rediseño "WARA Ops") — migrados acá para volver a
    estar en paridad con wara-conformidad-pwa (repo separado en
    c:\dev\wara-conformidad-pwa), que ya adoptó este mismo sistema. */
@@ -129,4 +131,93 @@
 body {
   background: var(--color-bg);
   color: var(--color-text);
+}
+
+/* Aparición suave de bloques que cargan de a uno (detalle de unidad en /flota). El retraso se
+   pasa por --reveal-delay. */
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.reveal {
+  animation: reveal 380ms ease-out both;
+  animation-delay: var(--reveal-delay, 0ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    animation: none;
+  }
+}
+
+:root {
+  --chart-1: oklch(0.32 0 none);
+  --chart-2: oklch(0.41 0 none);
+  --chart-3: oklch(0.54 0 none);
+  --chart-4: oklch(0.71 0 none);
+  --chart-5: oklch(0.89 0 none);
+  --chart-background: oklch(1 0 0);
+  --chart-foreground: oklch(0.145 0.004 285);
+  --chart-foreground-muted: oklch(0.55 0.014 260);
+  --chart-line-primary: var(--color-primary-600);
+  --chart-line-secondary: var(--chart-2);
+  --chart-crosshair: var(--color-neutral-600);
+  --chart-grid: oklch(0.9 0 0);
+  --chart-brush-border: var(--chart-grid);
+  --chart-tooltip-background: oklch(0.21 0.006 285 / 0.8);
+  --chart-tooltip-foreground: oklch(0.985 0 0);
+  --chart-tooltip-muted: oklch(0.65 0.01 260);
+  --chart-marker-background: oklch(0.97 0.005 260);
+  --chart-marker-border: oklch(0.85 0.01 260);
+  --chart-marker-foreground: oklch(0.3 0.01 260);
+  --chart-label: oklch(0.45 0.01 260);
+  --chart-scale-01: oklch(0.98 0.003 106);
+  --chart-scale-02: oklch(0.92 0.008 106);
+  --chart-scale-03: oklch(0.82 0.015 106);
+  --chart-scale-04: oklch(0.68 0.02 106);
+  --chart-scale-05: oklch(0.55 0.025 106);
+  --chart-scale-pattern-color: oklch(0.96 0.005 106);
+}
+
+.dark {
+  --chart-1: oklch(1 0 none);
+  --chart-2: oklch(0.73 0 none);
+  --chart-3: oklch(0.51 0 none);
+  --chart-4: oklch(0.39 0 none);
+  --chart-5: oklch(0.32 0 none);
+  --chart-background: oklch(0.145 0 0);
+  --chart-foreground: oklch(0.45 0 0);
+  --chart-foreground-muted: oklch(0.65 0.01 260);
+  --chart-crosshair: oklch(0.45 0 0);
+  --chart-grid: oklch(0.25 0 0);
+  --chart-brush-border: var(--chart-grid);
+  --chart-marker-background: oklch(0.25 0.01 260);
+  --chart-marker-border: oklch(0.4 0.01 260);
+  --chart-marker-foreground: oklch(0.9 0 0);
+  --chart-label: oklch(0.75 0.01 260);
+  --chart-scale-01: oklch(0.28 0.03 270);
+  --chart-scale-02: oklch(0.38 0.04 270);
+  --chart-scale-03: oklch(0.48 0.05 270);
+  --chart-scale-04: oklch(0.58 0.06 270);
+  --chart-scale-05: oklch(0.68 0.07 270);
+  --chart-scale-pattern-color: oklch(0.145 0 0);
+}
+
+
+/* Colores de las gráficas (components/charts) usados como clases de Tailwind. */
+@theme inline {
+  --color-chart-tooltip-background: var(--chart-tooltip-background);
+  --color-chart-tooltip-foreground: var(--chart-tooltip-foreground);
+  --color-chart-tooltip-muted: var(--chart-tooltip-muted);
+  --color-chart-label: var(--chart-label);
+}
+
+/* Los popovers de Radix (portal en <body>) deben quedar por encima de los panes de Leaflet (hasta z-index 1000). */
+[data-radix-popper-content-wrapper] {
+  z-index: 1100 !important;
 }

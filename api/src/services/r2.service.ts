@@ -38,7 +38,7 @@ export function buildObjectKey(params: {
   indice?: number;
 }): string {
   const [year, month] = params.fecha.split('-');
-  const ext = params.contentType === 'image/png' ? 'png' : 'jpg';
+  const ext = params.contentType === 'image/png' ? 'png' : params.contentType === 'video/webm' ? 'webm' : 'jpg';
   const timestamp = Date.now();
   const suffix = deriveOpaqueSuffix(params.localId);
 

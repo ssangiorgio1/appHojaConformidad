@@ -11,7 +11,13 @@ import { notificarEstadoVisita } from '../services/telegram.service.js';
 import { cerrarVisitaLoteSiTodoResuelto } from '../services/loteVisita.service.js';
 import { buildConformidadPdfBuffer as renderConformidadPdf } from '../services/pdf.service.js';
 import { decryptSecret } from '../utils/secretBox.js';
-import { isSubtaskAssignedToTechnician, isTaskAssignedToTechnician } from '../services/calendarTask.service.js';
+import {
+  isSubtaskAssignedToTechnician,
+  isTaskAssignedToTechnician,
+  markTaskStageHecho,
+  markTaskStateHecho,
+  markParentStageHechoIfAllChildrenResolved,
+} from '../services/calendarTask.service.js';
 import type {
   CreateConformidadInput,
   PatchConformidadInput,
@@ -263,14 +269,46 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
   // mano — si la tarea se reasignaba en el medio, esa ficha podía volverse
   // inalcanzable y el banner quedaba pegado para siempre.
   if (!wasCompleto && record.status === 'completo' && record.tareaOdoo?.id) {
+    // Mueve la subtarea (o la tarea, si no hay lote) a la columna "Hecho" del
+    // Kanban de Odoo Y pone su `state` (el circulito) en "Hecha" — ver
+    // markTaskStageHecho/markTaskStateHecho. A diferencia de `stage_id` del
+    // PADRE (ver markParentStageHechoIfAllChildrenResolved abajo), acá no hay
+    // paso de aprobación pendiente: coordinación revisa después y mueve la
+    // tarjeta a "Hecho con Producto" a mano, pero eso es una etapa de Kanban
+    // más allá de "Hecho", no algo que dependa de reabrir `state`. Excepción:
+    // la mitad "retiro" de un cambio_equipo partido en 2 hojas (ver
+    // CambioEquipoSchema) comparte la MISMA subtarea que su pareja
+    // "instalacion" — si se marcara acá, quedaría "Hecho"/"Hecha" con el
+    // equipo nuevo todavía sin instalar. La mitad "instalacion" (o una hoja
+    // sin cambioEquipo.rol, que es el caso normal) sí dispara el marcado.
+    if (record.cambioEquipo?.rol !== 'retiro') {
+      const taskId = record.subtareaOdoo?.id ?? record.tareaOdoo.id;
+      await markTaskStageHecho(taskId);
+      await markTaskStateHecho(taskId);
+      // Unidad colapsada de 2+ project.task reales (§15.9b) — cada una
+      // necesita su propio `stage_id`/`state`, Odoo no sabe que son "la
+      // misma unidad".
+      for (const mergedId of record.subtareaOdoo?.mergedTaskIds ?? []) {
+        await markTaskStageHecho(mergedId);
+        await markTaskStateHecho(mergedId);
+      }
+      // Si esta era la última subtarea del lote sin resolver, la tarea padre
+      // (el lote en sí) también pasa a Hecho — ver
+      // markParentStageHechoIfAllChildrenResolved. No aplica a una hoja
+      // suelta (sin subtareaOdoo): ahí taskId ya ES la tarea, no tiene hijos.
+      if (record.subtareaOdoo) {
+        await markParentStageHechoIfAllChildrenResolved(record.tareaOdoo.id);
+      }
+    }
+
     if (!record.subtareaOdoo) {
-      await notificarEstadoVisita(record.tareaOdoo.id, 'completo', record.tecnicoId);
+      if (record.tecnicoId) await notificarEstadoVisita(record.tareaOdoo.id, 'completo', record.tecnicoId, record.fecha);
     } else {
       // req.user!.usuarioId, no record.tecnicoId: en un handoff cross-técnico
       // (ver isAssignedToPendingSwap) quien está cerrando esta unidad ahora
       // es quien tiene la visita abierta y las subtareas propias en curso —
       // no el técnico original que dejó la hoja en pendiente_post.
-      await cerrarVisitaLoteSiTodoResuelto(record.tareaOdoo.id, req.user!.usuarioId);
+      await cerrarVisitaLoteSiTodoResuelto(record.tareaOdoo.id, req.user!.usuarioId, record.fecha);
     }
   }
 
@@ -417,6 +455,15 @@ function esc(s: unknown): string {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
+// record.fecha llega como 'YYYY-MM-DD' (ver src/shared/types.ts de la PWA) —
+// se parsea a mano en vez de con `new Date()` para no arrastrar corrimiento
+// de timezone, y se muestra como DD/MM/YYYY (formato ar) en vez del ISO tal
+// cual, que en el mensaje del ticket se leía al revés.
+function formatFechaArg(fecha: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fecha);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : fecha;
+}
+
 const SATISFACCION_LABELS: Record<string, string> = {
   satisfecho: 'Firma conforme',
   insatisfecho: 'Firma disconforme',
@@ -481,17 +528,37 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
   const motivo = record.post.firma?.motivo;
   const preFalla = record.pre?.fallaDetalle ? `<p><b>Falla notificada (PRE):</b> ${esc(record.pre.fallaDetalle)}</p>` : '';
   const postFalla = record.post?.fallaDetalle ? `<p><b>Falla notificada (POST):</b> ${esc(record.post.fallaDetalle)}</p>` : '';
+  const preAirbag = record.pre?.item6AirbagDetalle ? `<p><b>Luz de airbag (PRE):</b> ${esc(record.pre.item6AirbagDetalle)}</p>` : '';
+  const postAirbag = record.post?.item6AirbagDetalle ? `<p><b>Luz de airbag (POST):</b> ${esc(record.post.item6AirbagDetalle)}</p>` : '';
+  const preGuine = record.pre?.item6GuineDetalle ? `<p><b>Luces de guiñe (PRE):</b> ${esc(record.pre.item6GuineDetalle)}</p>` : '';
+  const postGuine = record.post?.item6GuineDetalle ? `<p><b>Luces de guiñe (POST):</b> ${esc(record.post.item6GuineDetalle)}</p>` : '';
+  const preAlternador = record.pre?.item6AlternadorDetalle ? `<p><b>Luz de alternador (PRE):</b> ${esc(record.pre.item6AlternadorDetalle)}</p>` : '';
+  const postAlternador = record.post?.item6AlternadorDetalle ? `<p><b>Luz de alternador (POST):</b> ${esc(record.post.item6AlternadorDetalle)}</p>` : '';
+  const prePresion = record.pre?.item6PresionDetalle ? `<p><b>Luz de presión de aceite (PRE):</b> ${esc(record.pre.item6PresionDetalle)}</p>` : '';
+  const postPresion = record.post?.item6PresionDetalle ? `<p><b>Luz de presión de aceite (POST):</b> ${esc(record.post.item6PresionDetalle)}</p>` : '';
+  const preTemp = record.pre?.item6TempDetalle ? `<p><b>Luz de temperatura (PRE):</b> ${esc(record.pre.item6TempDetalle)}</p>` : '';
+  const postTemp = record.post?.item6TempDetalle ? `<p><b>Luz de temperatura (POST):</b> ${esc(record.post.item6TempDetalle)}</p>` : '';
   const preItem7 = record.pre?.item7Detalle ? `<p><b>Tornillos de panel/tablero (PRE):</b> ${esc(record.pre.item7Detalle)}</p>` : '';
   const postItem7 = record.post?.item7Detalle ? `<p><b>Tornillos de panel/tablero (POST):</b> ${esc(record.post.item7Detalle)}</p>` : '';
   const preItem8 = record.pre?.item8Detalle ? `<p><b>Tapizados (PRE):</b> ${esc(record.pre.item8Detalle)}</p>` : '';
   const postItem8 = record.post?.item8Detalle ? `<p><b>Tapizados (POST):</b> ${esc(record.post.item8Detalle)}</p>` : '';
   const resumenHtml = `<p><b>Hoja de conformidad completada</b> — ${esc(record.cliente)} (${esc(record.matricula)})</p>
-    <p>Fecha: ${esc(record.fecha)} ${esc(record.hora)}<br>Instalador: ${esc(record.instalador)}</p>
+    <p>Fecha: ${esc(formatFechaArg(record.fecha))} ${esc(record.hora)}<br>Técnico: ${esc(record.instalador)}</p>
     ${satisfaccion ? `<p>Estado de firma: ${esc(SATISFACCION_LABELS[satisfaccion] ?? satisfaccion)}</p>` : ''}
     ${motivo ? `<p>Motivo: ${esc(motivo)}</p>` : ''}
     ${record.post.firma?.clienteAusente ? '<p>Cliente ausente</p>' : ''}
     ${preFalla}
     ${postFalla}
+    ${preAirbag}
+    ${postAirbag}
+    ${preGuine}
+    ${postGuine}
+    ${preAlternador}
+    ${postAlternador}
+    ${prePresion}
+    ${postPresion}
+    ${preTemp}
+    ${postTemp}
     ${preItem7}
     ${postItem7}
     ${preItem8}

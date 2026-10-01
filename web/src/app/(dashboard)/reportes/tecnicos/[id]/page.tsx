@@ -13,7 +13,7 @@ import { formatMinutos } from '@/lib/format';
 import { getArWeek, formatArRange, formatArTimeRange, formatArWeekdayShort, parseOdooUtcString } from '@/lib/calendarDates';
 import { CalendarGrid } from '@/components/calendar/CalendarGrid';
 import { TaskDetailPanel } from '@/components/calendar/TaskDetailPanel';
-import { resolveTechnicianSwatch } from '@/lib/technicianColors';
+import { resolveStatusSwatch } from '@/lib/taskStatusColors';
 import type { CalendarTask } from '@/lib/types';
 
 // Vista individual de un técnico: sus promedios de campo + carga de
@@ -149,14 +149,7 @@ export default function ReporteTecnicoDetallePage() {
         {tecnico?.odooUserId && (
           <Card className={`p-4 transition-opacity ${loadingAgenda && !agendaTasks ? 'opacity-60' : ''}`}>
             {agendaTasks && (
-              <CalendarGrid
-                range={week}
-                tasks={agendaTasks}
-                colorOverrides={{}}
-                canDrag={false}
-                onSelectTask={setSelectedTask}
-                onTaskMoved={() => {}}
-              />
+              <CalendarGrid range={week} tasks={agendaTasks} canDrag={false} onSelectTask={setSelectedTask} onTaskMoved={() => {}} />
             )}
             {!agendaTasks && !errorAgenda && <div className="px-3 py-6 text-sm font-semibold text-muted">Cargando...</div>}
           </Card>
@@ -168,7 +161,7 @@ export default function ReporteTecnicoDetallePage() {
           <div className="mb-2 text-[13px] font-extrabold">Tareas y subtareas de la semana</div>
           <Card className="flex flex-col gap-1 p-2.5">
             {agendaTasks.map((task) => {
-              const swatch = resolveTechnicianSwatch(task.technicianId, {});
+              const swatch = resolveStatusSwatch(task.stage);
               return (
                 <div key={task.id} className="flex flex-col gap-1 border-b border-line py-1.5 last:border-0">
                   <div className="flex items-center gap-2">
@@ -231,11 +224,7 @@ export default function ReporteTecnicoDetallePage() {
       )}
 
       {selectedTask && (
-        <TaskDetailPanel
-          task={selectedTask}
-          swatch={resolveTechnicianSwatch(selectedTask.technicianId, {})}
-          onClose={() => setSelectedTask(null)}
-        />
+        <TaskDetailPanel task={selectedTask} swatch={resolveStatusSwatch(selectedTask.stage)} onClose={() => setSelectedTask(null)} />
       )}
     </div>
   );

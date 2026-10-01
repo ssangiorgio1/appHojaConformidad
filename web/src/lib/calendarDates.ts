@@ -88,6 +88,15 @@ export function formatArTime(d: Date): string {
 
 export const DEFAULT_TASK_DURATION_HOURS = 1;
 
+// Convierte fecha/hora de pared en Argentina (ej. de un <input type="date">
+// + <input type="time"> en un formulario) al string UTC que espera Odoo —
+// usa el mismo truco de cómputo que el resto de este archivo, para que el
+// panel de reprogramar incidencias no tenga que reimplementar el offset.
+export function arWallClockDateTimeToOdooUtcString(year: number, month: number, day: number, hour: number, minute: number): string {
+  const wallClock = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+  return formatOdooUtcString(arWallClockToUtcInstant(wallClock));
+}
+
 /** "15:00 – 17:00", o "15:00 – 16:00 (aprox.)" cuando Odoo no tiene fin cargado. */
 export function formatArTimeRange(startStr: string, endStr: string | null): string {
   const start = parseOdooUtcString(startStr);

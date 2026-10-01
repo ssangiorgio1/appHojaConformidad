@@ -12,8 +12,14 @@ const FotoSchema = new Schema(
     // De qué slot de captura guiada vino (ver @wara/shared's photoSlots.ts) —
     // ausente en fotos sincronizadas antes de que este campo existiera.
     slotKey: { type: String },
-    url: { type: String, required: true },
-    key: { type: String, required: true },
+    // Ausentes cuando `motivo` está seteado (el técnico no pudo sacar esta
+    // foto — ver GalleryPhotoCapture en la PWA): no hay nada subido a R2.
+    url: { type: String },
+    key: { type: String },
+    motivo: { type: String },
+    // Ausente = 'image/jpeg' (fotos existentes). 'video/webm' es un video
+    // corto de verificación (Pantalla N° de serie / Cámaras ADAS).
+    mimeType: { type: String, enum: ['image/jpeg', 'image/png', 'video/webm'] },
   },
   { _id: false, timestamps: { createdAt: true, updatedAt: false } },
 );
@@ -35,6 +41,11 @@ const PhaseSchema = new Schema(
   {
     checklist: { type: ChecklistSchema, default: () => ({}) },
     fallaDetalle: { type: String, default: '' },
+    item6AirbagDetalle: { type: String, default: '' },
+    item6GuineDetalle: { type: String, default: '' },
+    item6AlternadorDetalle: { type: String, default: '' },
+    item6PresionDetalle: { type: String, default: '' },
+    item6TempDetalle: { type: String, default: '' },
     item7Detalle: { type: String, default: '' },
     item8Detalle: { type: String, default: '' },
     observaciones: { type: String, default: '' },
@@ -64,6 +75,9 @@ const AltaEquipoSchema = new Schema(
 const equipoFields = {
   ...Object.fromEntries(EQUIP_TEXT_KEYS.map((key) => [key, { type: String, default: '' }])),
   ...Object.fromEntries(EQUIP_CHECK_KEYS.map((key) => [key, { type: String, enum: ['SI', 'NO'], default: null }])),
+  // No es parte de EQUIP_TEXT_KEYS (no viene de EQUIP_GROUPS) — ver
+  // Equipo.equipoRetiradoSinSerie en @wara/shared/equipo.ts.
+  equipoRetiradoSinSerie: { type: String, default: '' },
 };
 const EquipoSchema = new Schema(equipoFields, { _id: false });
 
@@ -99,6 +113,9 @@ const SubtareaOdooSchema = new Schema(
   {
     id: { type: Number, required: true },
     nombre: { type: String, default: '' },
+    // Ver conformidad.schema.ts — otras project.task reales colapsadas en
+    // esta misma unidad (§15.9b), a cerrar junto con `id` en Odoo.
+    mergedTaskIds: { type: [Number], default: undefined },
   },
   { _id: false },
 );

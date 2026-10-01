@@ -32,8 +32,16 @@ export interface Foto {
   // Ausente en fotos sincronizadas antes de que el servidor empezara a
   // persistir este campo.
   slotKey?: string;
-  url: string;
-  key: string;
+  // Ausentes cuando `motivo` está seteado (el técnico no pudo sacar esta
+  // foto — ver GalleryPhotoCapture en la PWA): no hay nada subido a R2.
+  url?: string;
+  key?: string;
+  motivo?: string;
+  // Ausente = 'image/jpeg' (fotos existentes). 'video/webm' es un video
+  // corto de verificación (Pantalla N° de serie / Cámaras ADAS, ver
+  // GalleryPhotoCapture `allowVideo` en la PWA) — hay que renderizarlo como
+  // <video>, no <img>.
+  mimeType?: 'image/jpeg' | 'image/png' | 'video/webm';
 }
 
 export interface Firma {
@@ -84,6 +92,14 @@ export interface RetiroPendiente {
 
 export interface Phase {
   checklist: Checklist;
+  fallaDetalle?: string;
+  item6AirbagDetalle?: string;
+  item6GuineDetalle?: string;
+  item6AlternadorDetalle?: string;
+  item6PresionDetalle?: string;
+  item6TempDetalle?: string;
+  item7Detalle?: string;
+  item8Detalle?: string;
   observaciones: string;
   fotos: Foto[];
   firma: Firma | null;
@@ -152,6 +168,17 @@ export interface CalendarSubtask {
 
 export interface CalendarTask {
   id: number;
+  // Identifica sin ambigüedad ESTA franja puntual (`${id}:${start}:${end}`)
+  // — el mismo `id` de Odoo puede aparecer en más de una CalendarTask a la
+  // vez (una por cada fecha real distinta entre las subtareas del lote, ver
+  // calendarTask.service.ts en el API). Usarlo como key de React y como
+  // identidad de estado (drag, pendingMoves), nunca `id` solo.
+  occurrenceKey: string;
+  // true cuando esta franja no es la fecha propia de la tarea padre en Odoo
+  // — nació de que 1+ subtareas se reprogramaron a otra fecha. De solo
+  // lectura en el calendario del panel (ver CalendarGrid.tsx): para
+  // reprogramarla más se usa Incidencias → Reprogramar.
+  isSplitOccurrence: boolean;
   title: string;
   start: string;
   end: string | null;
@@ -295,4 +322,107 @@ export interface SubtareaIncidencia {
   // subtarea (la unidad puntual a reprogramar) o a la tarea/lote padre en Odoo.
   subtareaOdooUrl: string;
   tareaOdooUrl: string;
+}
+
+// Quién recibe el mail.activity de "reprogramar" en Odoo cuando se reporta
+// una SubtareaIncidencia (ver IncidenciaDestinatario.ts en el API) —
+// configurable desde el panel, independiente de tener cuenta en la app.
+export interface IncidenciaDestinatario {
+  _id: string;
+  odooUserId: number;
+  nombre: string;
+  createdAt: string;
+}
+
+// Flota de VisionBLO (movil/mapa + estado de abono del cliente) — ver flota.service.ts en el
+// API. `ultimoReporte` en segundos unix (null = nunca reportó).
+export type FlotaCategoria =
+  | 'baja_con_corte'
+  | 'baja'
+  | 'corte_reportando'
+  | 'corte_sin_reportar'
+  | 'sin_reportar_24h'
+  | 'sin_reportar_48h'
+  | 'sin_reportar_72h'
+  | 'activo_reportando';
+
+export interface FlotaUnidad {
+  movilId: number;
+  equipoId: number | null;
+  nombre: string;
+  matricula: string | null;
+  interno: string | null;
+  clienteId: number;
+  clienteNombre: string | null;
+  latitud: number;
+  longitud: number;
+  ultimoReporte: number | null;
+  categoria: FlotaCategoria;
+  tramoReporte: 'ok' | 'mas_1_dia' | 'mas_1_semana' | 'nunca';
+}
+
+export interface FlotaResponse {
+  actualizadoAt: string | null;
+  unidades: FlotaUnidad[];
+}
+
+// Estado en vivo de un equipo (bo3: diagnóstico + módulos + historial) — ver
+// equipoEstado.service.ts en el API. Para técnicos el API recorta `posicion` y `movil.cliente`.
+export interface ModuloDetectado {
+  serie: string;
+  descripcion: string;
+  advertencia: string | null;
+}
+
+export interface EventoEquipo {
+  fecha: string;
+  evento: string;
+  datos: Record<string, unknown>;
+}
+
+export interface EstadoEquipo {
+  consultadoAt: string;
+  equipoId: number;
+  serie: string | null;
+  imei: string | null;
+  iccid: string | null;
+  simTelefono: string | null;
+  simOperador: string | null;
+  ultimoReporte: string | null;
+  posicion: { latitud: number; longitud: number; fecha: string | null } | null;
+  ignicion: { encendida: boolean; fecha: string | null } | null;
+  voltajeCargador: number | null;
+  bateriaInterna: number | null;
+  senalDbm: number | null;
+  firmware: { version: string | null; fecha: string | null; actualizacionDisponible: boolean; detalleActualizacion: string | null };
+  senalesVistas: { pantalla: boolean; rfid: boolean; fuel: boolean; sim: boolean; corteMotor: boolean; panico: string | null };
+  movil: { cliente: string; movil: string; baja: boolean; bajaCliente: boolean; corteDeServicio: boolean } | null;
+  modulos: { fecha: string | null; detectados: ModuloDetectado[] };
+  eventosRecientes: EventoEquipo[];
+}
+
+export interface EquipoCoincidencia {
+  equipoId: number;
+  descripcion: string;
+}
+
+// Gráficas de estado de un equipo en un día (bo3 equipo/graficas, consulta en vivo, no se guarda).
+export type PuntoGrafica = [number, number | null];
+
+export interface GraficasEquipo {
+  equipoId: number;
+  fecha: string;
+  desde: string;
+  hasta: string;
+  consultadoAt: string;
+  series: {
+    bateriaInterna: PuntoGrafica[];
+    cargador: PuntoGrafica[];
+    senalDbm: PuntoGrafica[];
+    velocidad: PuntoGrafica[];
+    satelites: PuntoGrafica[];
+    hdop: PuntoGrafica[];
+    ignicion: PuntoGrafica[];
+    presenciaCargador: PuntoGrafica[];
+  };
 }

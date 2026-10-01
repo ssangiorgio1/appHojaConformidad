@@ -6,13 +6,13 @@ import { Button } from '@/components/ui/Button';
 import { IconEye, IconX } from '@/components/ui/Icons';
 import type { CalendarSubtask, CalendarTask } from '@/lib/types';
 import { formatArTimeRange } from '@/lib/calendarDates';
-import type { TechnicianColorSwatch } from '@/lib/technicianColors';
+import type { StatusColorSwatch } from '@/lib/taskStatusColors';
 
 // Solo lectura por ahora — crear/mover/archivar tareas queda para una etapa
 // posterior (ver plan). Esto es para poder inspeccionar una tarea (sobre
 // todo las que ocupan varias horas y no entran enteras en el bloque de la
 // grilla).
-export function TaskDetailPanel({ task, swatch, onClose }: { task: CalendarTask; swatch: TechnicianColorSwatch; onClose: () => void }) {
+export function TaskDetailPanel({ task, swatch, onClose }: { task: CalendarTask; swatch: StatusColorSwatch; onClose: () => void }) {
   const [selectedSubtask, setSelectedSubtask] = useState<CalendarSubtask | null>(null);
 
   return (
@@ -38,10 +38,7 @@ export function TaskDetailPanel({ task, swatch, onClose }: { task: CalendarTask;
 
           <div>
             <div className="mb-1 text-[11px] font-extrabold uppercase tracking-wide text-muted">Técnico</div>
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <span className={`h-2.5 w-2.5 rounded-full ${swatch.dot}`} />
-              {task.technicianName ?? 'Sin asignar'}
-            </div>
+            <div className="text-sm font-semibold">{task.technicianName ?? 'Sin asignar'}</div>
           </div>
 
           {task.partnerName && (
@@ -54,7 +51,10 @@ export function TaskDetailPanel({ task, swatch, onClose }: { task: CalendarTask;
           {task.stage && (
             <div>
               <div className="mb-1 text-[11px] font-extrabold uppercase tracking-wide text-muted">Etapa</div>
-              <div className="text-sm font-semibold">{task.stage}</div>
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <span className={`h-2.5 w-2.5 rounded-full ${swatch.dot}`} />
+                {task.stage}
+              </div>
             </div>
           )}
 

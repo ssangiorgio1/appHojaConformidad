@@ -11,6 +11,9 @@ const SubtareaIncidenciaSchema = new Schema(
   {
     tareaOdooId: { type: Number, required: true, index: true },
     subtareaOdooId: { type: Number, required: true, index: true },
+    // Ver Conformidad.subtareaOdoo.mergedTaskIds / ALCANCE_BACKOFFICE.md
+    // §15.9b — otras project.task reales colapsadas en esta misma unidad.
+    mergedTaskIds: { type: [Number], default: undefined },
     // La patente/nombre de la subtarea en Odoo, copiado acá para que el
     // panel web no tenga que volver a pedirle nada a Odoo solo para mostrar
     // la lista de incidencias.

@@ -1,10 +1,15 @@
 import type {
   CalendarTask,
   ConformidadDoc,
+  EquipoCoincidencia,
+  EstadoEquipo,
+  GraficasEquipo,
+  FlotaResponse,
   CreateUsuarioInput,
   CreateUsuarioResponse,
   ListCalendarTasksQuery,
   ListConformidadesQuery,
+  IncidenciaDestinatario,
   ListSubtareaIncidenciasQuery,
   OdooTechnician,
   Paginated,
@@ -188,9 +193,63 @@ export function listSubtareaIncidencias(idToken: string, query: ListSubtareaInci
   return apiFetch<Paginated<SubtareaIncidencia>>(`/api/subtareas/incidencias${qs ? `?${qs}` : ''}`, idToken);
 }
 
-export function resolveSubtareaIncidencia(idToken: string, id: string) {
-  return apiFetch<SubtareaIncidencia>(`/api/subtareas/incidencias/${id}`, idToken, {
+// Sin start/end: solo tilda el check en Mongo (coordinación que ya
+// reprogramó a mano en Odoo). Con start/end (+ technicianId opcional): el
+// backend además reprograma la subtarea en Odoo antes de marcarla resuelta —
+// ver ReprogramarIncidenciaPanel. `parentDateMoved` viene en `false` cuando el
+// backend a propósito NO movió la fecha de la tarea padre del lote (hay otra
+// unidad todavía activa en otra fecha) — el panel usa esto para avisarle a
+// coordinación que puede hacer falta mover la tarea completa a mano en Odoo.
+export function resolveSubtareaIncidencia(
+  idToken: string,
+  id: string,
+  body: { start?: string; end?: string; technicianId?: number } = {},
+) {
+  return apiFetch<SubtareaIncidencia & { parentDateMoved?: boolean }>(`/api/subtareas/incidencias/${id}`, idToken, {
     method: 'PATCH',
-    body: { estado: 'reprogramada' },
+    body: { estado: 'reprogramada', ...body },
   });
+}
+
+export function listIncidenciaDestinatarios(idToken: string) {
+  return apiFetch<{ data: IncidenciaDestinatario[] }>('/api/incidencia-destinatarios', idToken).then((r) => r.data);
+}
+
+export function createIncidenciaDestinatario(idToken: string, body: { odooUserId: number; nombre: string }) {
+  return apiFetch<IncidenciaDestinatario>('/api/incidencia-destinatarios', idToken, { method: 'POST', body });
+}
+
+export function deleteIncidenciaDestinatario(idToken: string, id: string) {
+  return apiFetch<void>(`/api/incidencia-destinatarios/${id}`, idToken, { method: 'DELETE' });
+}
+
+export function searchOdooUsers(idToken: string, q: string) {
+  return apiFetch<{ data: OdooTechnician[] }>(
+    `/api/incidencia-destinatarios/buscar-odoo?q=${encodeURIComponent(q)}`,
+    idToken,
+  ).then((r) => r.data);
+}
+
+export function getFlota(idToken: string) {
+  return apiFetch<FlotaResponse>('/api/flota', idToken);
+}
+
+export function refrescarFlota(idToken: string) {
+  return apiFetch<{ unidades: number; porCategoria: Record<string, number>; actualizadoAt: string }>(
+    '/api/flota/refrescar',
+    idToken,
+    { method: 'POST' },
+  );
+}
+
+export function buscarEquipos(idToken: string, q: string) {
+  return apiFetch<{ data: EquipoCoincidencia[] }>(`/api/equipos/buscar?q=${encodeURIComponent(q)}`, idToken).then((r) => r.data);
+}
+
+export function getEstadoEquipo(idToken: string, equipoId: number, forzar = false) {
+  return apiFetch<EstadoEquipo>(`/api/equipos/${equipoId}/estado${forzar ? '?forzar=1' : ''}`, idToken);
+}
+
+export function getGraficasEquipo(idToken: string, equipoId: number, fecha: string) {
+  return apiFetch<GraficasEquipo>(`/api/equipos/${equipoId}/graficas?fecha=${fecha}`, idToken);
 }

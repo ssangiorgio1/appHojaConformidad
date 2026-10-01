@@ -11,7 +11,7 @@ import {
   parseOdooUtcString,
   type CalendarRange,
 } from '@/lib/calendarDates';
-import { resolveTechnicianSwatch, type TechnicianColorMap } from '@/lib/technicianColors';
+import { resolveStatusSwatch } from '@/lib/taskStatusColors';
 
 const GRID_START_HOUR = 6;
 const GRID_END_HOUR = 22;
@@ -45,6 +45,11 @@ interface PositionedTask extends RawTask {
 
 interface DragState {
   taskId: number;
+  // Identidad de ESTA franja puntual (`${id}:${start}:${end}`), no del `id`
+  // de Odoo a secas — con el split de calendario, dos entradas distintas
+  // (una por cada fecha real de un lote reprogramado) pueden compartir el
+  // mismo `id`. Sin esto, arrastrar una movía las dos cajas juntas.
+  occurrenceKey: string;
   pointerId: number;
   startClientX: number;
   startClientY: number;
@@ -130,18 +135,16 @@ function layoutDay(dayTasks: RawTask[]): PositionedTask[] {
 export function CalendarGrid({
   range,
   tasks,
-  colorOverrides,
   canDrag,
   onSelectTask,
   onTaskMoved,
 }: {
   range: CalendarRange;
   tasks: CalendarTask[];
-  colorOverrides: TechnicianColorMap;
   /** Habilita arrastrar tareas — además del rol, requiere que el usuario haya activado el modo edición. */
   canDrag: boolean;
   onSelectTask: (task: CalendarTask) => void;
-  onTaskMoved: (taskId: number, start: string, end: string) => void;
+  onTaskMoved: (occurrenceKey: string, taskId: number, start: string, end: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -153,7 +156,7 @@ export function CalendarGrid({
   let rawTasks = toRawTasks(tasks, range);
   if (drag) {
     rawTasks = rawTasks.map((t) =>
-      t.task.id === drag.taskId
+      t.task.occurrenceKey === drag.occurrenceKey
         ? {
             ...t,
             dayIndex: Math.max(0, Math.min(drag.originDayIndex + drag.deltaDays, dayCount - 1)),
@@ -165,12 +168,18 @@ export function CalendarGrid({
   }
 
   function handlePointerDown(e: React.PointerEvent<HTMLButtonElement>, raw: RawTask) {
-    if (!canDrag) return;
+    // Una entrada sintética (unidad reprogramada a otra fecha que el resto
+    // del lote) es de solo lectura acá — no hay forma de decirle a Odoo "moví
+    // SOLO esta franja" arrastrando la caja completa, que sigue representando
+    // la misma tareaOdooId que la entrada "normal". Para reprogramarla más se
+    // usa Incidencias → Reprogramar (ya sabe qué subtarea mover).
+    if (!canDrag || raw.task.isSplitOccurrence) return;
     e.preventDefault();
     const rect = containerRef.current!.getBoundingClientRect();
     const columnWidth = (rect.width - LABEL_COLUMN_PX) / dayCount;
     setDrag({
       taskId: raw.task.id,
+      occurrenceKey: raw.task.occurrenceKey,
       pointerId: e.pointerId,
       startClientX: e.clientX,
       startClientY: e.clientY,
@@ -211,7 +220,7 @@ export function CalendarGrid({
     const newStart = new Date(dayMidnightUtc.getTime() + newStartHour * 60 * 60 * 1000);
     const newEnd = new Date(newStart.getTime() + drag.durationHours * 60 * 60 * 1000);
     setDrag(null);
-    onTaskMoved(raw.task.id, formatOdooUtcString(newStart), formatOdooUtcString(newEnd));
+    onTaskMoved(raw.task.occurrenceKey, raw.task.id, formatOdooUtcString(newStart), formatOdooUtcString(newEnd));
   }
 
   return (
@@ -244,14 +253,14 @@ export function CalendarGrid({
                 ))}
 
                 {positioned.map((p) => {
-                  const swatch = resolveTechnicianSwatch(p.task.technicianId, colorOverrides);
+                  const swatch = resolveStatusSwatch(p.task.stage);
                   const clampedStart = Math.max(GRID_START_HOUR, Math.min(p.startHour, GRID_END_HOUR));
                   const clampedEnd = Math.max(clampedStart + 0.5, Math.min(p.endHour, GRID_END_HOUR));
                   const topPx = (clampedStart - GRID_START_HOUR) * HOUR_HEIGHT_PX;
                   const heightPx = Math.max((clampedEnd - clampedStart) * HOUR_HEIGHT_PX, 22);
                   const widthPct = 100 / p.lanesInCluster;
                   const leftPct = p.lane * widthPct;
-                  const isDragging = drag?.taskId === p.task.id && drag.moved;
+                  const isDragging = drag?.occurrenceKey === p.task.occurrenceKey && drag.moved;
                   const dayMidnightUtc = range.days[p.dayIndex];
                   // p.endHour puede superar 24 (tarea que termina otro día — ver
                   // calendario_logica_horarios.md). formatArTime solo muestra HH:mm,
@@ -260,18 +269,21 @@ export function CalendarGrid({
                   const daysOver = Math.floor(p.endHour / 24);
                   const timeLabel = `${formatArTime(hourToDate(dayMidnightUtc, p.startHour))} – ${formatArTime(hourToDate(dayMidnightUtc, p.endHour))}${daysOver > 0 ? ` (+${daysOver}d)` : ''}`;
 
+                  const canDragThis = canDrag && !p.task.isSplitOccurrence;
                   return (
                     <button
-                      key={p.task.id}
+                      key={p.task.occurrenceKey}
                       type="button"
                       onPointerDown={(e) => handlePointerDown(e, p)}
                       onPointerMove={handlePointerMove}
                       onPointerUp={(e) => handlePointerUp(e, p)}
-                      onClick={() => !canDrag && onSelectTask(p.task)}
-                      title={`${p.task.title}${p.task.partnerName ? ` — ${p.task.partnerName}` : ''}`}
+                      onClick={() => !canDragThis && onSelectTask(p.task)}
+                      title={`${p.task.title}${p.task.partnerName ? ` — ${p.task.partnerName}` : ''}${p.task.isSplitOccurrence ? ' (unidad reprogramada — usar Incidencias para moverla)' : ''}`}
                       className={`absolute touch-none select-none overflow-hidden rounded-md p-1.5 text-left shadow-inset transition hover:z-10 hover:brightness-95 ${swatch.bg} ${
-                        canDrag ? 'cursor-grab active:cursor-grabbing' : ''
-                      } ${isDragging ? 'z-20 opacity-90 ring-2 ring-primary-600' : ''}`}
+                        p.task.isSplitOccurrence ? 'border border-dashed border-warning-600' : ''
+                      } ${canDragThis ? 'cursor-grab active:cursor-grabbing' : ''} ${
+                        isDragging ? 'z-20 opacity-90 ring-2 ring-primary-600' : ''
+                      }`}
                       style={{
                         top: topPx,
                         height: heightPx,

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
+import { calendarMutationLimiter } from '../middleware/rateLimit.middleware.js';
 import {
   createSubtareaIncidenciaSchema,
   listSubtareaIncidenciasQuerySchema,
@@ -31,6 +32,7 @@ subtareaIncidenciaRouter.get(
 subtareaIncidenciaRouter.patch(
   '/:id',
   requireRole([...VIEW_ROLES]),
+  calendarMutationLimiter,
   validate(resolveSubtareaIncidenciaSchema, 'body'),
   resolveSubtareaIncidencia,
 );

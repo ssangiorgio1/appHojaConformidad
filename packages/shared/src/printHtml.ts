@@ -1,6 +1,6 @@
 import { CHECKLIST_ITEMS, DETAIL_FIELD_BY_KEY, type ChecklistValue } from './checklist.js';
-import { EQUIP_GROUPS, EQUIP_CHECK_FIELDS, isEquipoFieldVisible } from './equipo.js';
-import { prePhotoSlotsFor, postPhotoSlotsFor, SENSORES_ACCESORIOS_GROUP_KEY, type PhotoSlotDef } from './photoSlots.js';
+import { EQUIP_GROUPS, EQUIP_CHECK_FIELDS, EQUIP_ITEM_PHOTO_LABEL, isEquipoFieldVisible } from './equipo.js';
+import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY, type PhotoSlotDef } from './photoSlots.js';
 import { getServiceMode } from './serviceMode.js';
 import { SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
 
@@ -66,6 +66,7 @@ function checklistTable(record: PrintableConformidad): string {
     if (item.group) {
       rows += `<tr class="subhead-row"><td colspan="3" class="subhead">${esc(item.group)}</td></tr>`;
     }
+    if (item.hiddenInPdf) continue;
     const indented = item.key.startsWith('item6_');
     const pre = record.pre.checklist[item.key] ?? null;
     const post = record.post.checklist[item.key] ?? null;
@@ -172,7 +173,11 @@ export type PhotoSrcResolver = (foto: Foto) => Promise<string | undefined> | str
 const defaultResolvePhotoSrc: PhotoSrcResolver = (foto) => foto.dataUrl ?? foto.url;
 
 const GALLERY_LABELS: Record<string, string> = {
-  [SENSORES_ACCESORIOS_GROUP_KEY]: 'Sensores / Accesorios',
+  // Fotos de "lo que se tildó" (antena/sensor/módulo/elemento adicional) —
+  // slotKey = key del campo de Equipo, ver EQUIP_ITEM_PHOTO_LABEL.
+  ...EQUIP_ITEM_PHOTO_LABEL,
+  [INTERVENCION_GROUP_KEY]: 'Intervención realizada',
+  [EXTRA_POST_PHOTOS_KEY]: 'Otras fotos',
 };
 
 async function photosBlock(slots: PhotoSlotDef[], fotos: Foto[], titulo: string, resolvePhotoSrc: PhotoSrcResolver): Promise<string> {
@@ -199,6 +204,20 @@ async function photosBlock(slots: PhotoSlotDef[], fotos: Foto[], titulo: string,
 
   const cells = await Promise.all(
     matched.map(async ({ foto, label }) => {
+      // Foto.motivo (see GalleryPhotoCapture in the PWA): técnico couldn't
+      // take this photo (e.g. forgot to bring the sensor/módulo) and left
+      // why instead of the image — print the reason, not the video placeholder.
+      if (foto.motivo) {
+        return `<div class="photo-cell"><div class="photo video-placeholder">Sin foto — motivo:<br>${esc(foto.motivo)}</div><div class="photo-caption">${esc(label)}</div></div>`;
+      }
+      // Short verification clip (GalleryPhotoCapture `allowVideo`, "Pantalla
+      // N° de serie"/"Cámaras ADAS") — an <img> pointed at a video/webm data
+      // URL or R2 URL renders nothing useful in a static PDF, so it falls
+      // straight into the same placeholder already used for non-printable
+      // attachments, before even trying resolvePhotoSrc.
+      if (foto.mimeType === 'video/webm') {
+        return `<div class="photo-cell"><div class="photo video-placeholder">Video adjunto<br>(no incluido en el PDF)</div><div class="photo-caption">${esc(label)}</div></div>`;
+      }
       const src = await resolvePhotoSrc(foto);
       if (!src) {
         return `<div class="photo-cell"><div class="photo video-placeholder">Video adjunto<br>(no incluido en el PDF)</div><div class="photo-caption">${esc(label)}</div></div>`;
@@ -346,10 +365,6 @@ export async function buildPrintHtml(
     ${equipoGrid(record)}
   </div>
 
-  <div class="keep-together">
-    <div class="obs-label">Observaciones PRE instalación</div>
-    <div class="obs-box">${esc(record.pre.observaciones) || 'Sin observaciones.'}</div>
-  </div>
   ${prePhotos}
   <div class="keep-together">
     <div class="sig-row">
@@ -365,10 +380,6 @@ export async function buildPrintHtml(
     </div>
   </div>
 
-  <div class="keep-together">
-    <div class="obs-label">Observaciones POST instalación</div>
-    <div class="obs-box">${esc(record.post.observaciones) || 'Sin observaciones.'}</div>
-  </div>
   ${postPhotos}
   <div class="keep-together">
     <div class="sig-row">

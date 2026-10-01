@@ -5,29 +5,31 @@ import { VisitaNotificacionModel } from '../models/VisitaNotificacion.js';
 import { UsuarioModel } from '../models/Usuario.js';
 import { notificarEstadoVisita, buildOptInLink } from '../services/telegram.service.js';
 import { isTaskAssignedToTechnician } from '../services/calendarTask.service.js';
-import type { TareaIdParam, EstadoVisitaInput } from '../schemas/visita.schema.js';
+import type { TareaIdParam, EstadoVisitaInput, FechaQuery, FinalizarVisitaInput } from '../schemas/visita.schema.js';
 
 // Cierra el hueco de autorización de setEstadoVisita/finalizarVisitaLote: sin
 // esto, cualquier rol 'tecnico' autenticado podía pasar un tareaOdooId ajeno
 // (adivinable, son ids secuenciales de Odoo) y mutar el estado de la visita
 // de otro técnico, disparando un Telegram real al cliente equivocado.
 //
-// Si el viaje abierto ya tiene tecnicoId (alguien ya hizo el primer
-// en_camino), el chequeo es barato: comparar contra Mongo. Si todavía no lo
-// tiene, la única fuente de verdad de a quién pertenece la tarea es Odoo, así
-// que se paga ese round-trip una única vez por viaje — las transiciones
-// siguientes de la misma visita ya caen en la rama barata de arriba, mismo
-// criterio de "no repetir el round-trip" que ya usa finalizarVisitaLote.
+// Hasta 2026-09-25 esto comparaba contra EL viaje abierto de la tarea (uno
+// solo, compartido) y bloqueaba con 403 a un segundo técnico con subtarea
+// propia en el mismo lote — "esta visita la abrió fulano". Ahora que
+// VisitaNotificacion es único por (tarea, técnico), no por tarea a secas
+// (ver VisitaNotificacion.ts), dos técnicos legítimos nunca compiten entre
+// sí: cada uno tiene su propio viaje. Lo único que sigue haciendo falta
+// confirmar es que ESTE técnico esté realmente asignado a la tarea en Odoo.
+//
+// Si este técnico ya tiene algún viaje (abierto o cerrado) para esta tarea,
+// el chequeo es barato: ya pasó por acá antes y quedó registrado. Si no,
+// Odoo es la única fuente de verdad de a quién está asignada la tarea, así
+// que se paga ese round-trip una única vez por (tarea, técnico) — mismo
+// criterio de "no repetir el round-trip" que ya usaba la versión anterior.
 async function assertTecnicoOwnership(tareaOdooId: number, req: Request): Promise<void> {
   if (req.user!.role !== 'tecnico') return;
 
-  const visita = await VisitaNotificacionModel.findOne({ tareaOdooId, abierta: true });
-  if (visita?.tecnicoId) {
-    if (String(visita.tecnicoId) !== String(req.user!.usuarioId)) {
-      throw new HttpError(403, 'Esta visita pertenece a otro técnico.');
-    }
-    return;
-  }
+  const yaTuvoViaje = await VisitaNotificacionModel.exists({ tareaOdooId, tecnicoId: req.user!.usuarioId });
+  if (yaTuvoViaje) return;
 
   const usuario = await UsuarioModel.findById(req.user!.usuarioId);
   if (!usuario?.odooUserId) {
@@ -41,22 +43,71 @@ async function assertTecnicoOwnership(tareaOdooId: number, req: Request): Promis
 
 export const setEstadoVisita = asyncHandler(async (req: Request, res: Response) => {
   const { tareaOdooId } = req.params as unknown as TareaIdParam;
-  const { estado } = req.body as EstadoVisitaInput;
+  const { estado, fecha } = req.body as EstadoVisitaInput;
 
   await assertTecnicoOwnership(tareaOdooId, req);
-  const visita = await notificarEstadoVisita(tareaOdooId, estado, req.user!.usuarioId);
+  const visita = await notificarEstadoVisita(tareaOdooId, estado, req.user!.usuarioId, fecha);
   res.json(visita);
 });
 
 export const getVisita = asyncHandler(async (req: Request, res: Response) => {
   const { tareaOdooId } = req.params as unknown as TareaIdParam;
+  const { fecha } = req.query as unknown as FechaQuery;
 
   // Una tarea puede tener más de un viaje en el tiempo (ver
-  // VisitaNotificacion.ts) — el más reciente es siempre el vigente: si hay
-  // uno abierto es ese (a lo sumo uno abierto por tarea), y si no hay
-  // ninguno abierto es el último cerrado (para que la agenda siga mostrando
-  // 'completo' de una visita ya terminada en vez de volver a 'pendiente').
-  const visita = await VisitaNotificacionModel.findOne({ tareaOdooId }).sort({ createdAt: -1 });
+  // VisitaNotificacion.ts) — el más reciente por (tarea, fecha) es siempre
+  // el vigente: si hay uno abierto es ese (a lo sumo uno abierto por (tarea,
+  // técnico, fecha)), y si no hay ninguno abierto es el último cerrado de esa
+  // fecha (para que la agenda siga mostrando 'completo' de una visita ya
+  // terminada en vez de volver a 'pendiente'). `fecha` siempre se exige, sea
+  // cual sea el rol — sin esto, la misma tareaOdooId en 2 entradas de
+  // calendario en fechas distintas (ver calendarTask.service.ts) mezclaría
+  // el viaje de una con el de la otra. Un técnico ve SU PROPIO viaje, no el
+  // de un compañero con subtarea distinta en el mismo lote (ver
+  // assertTecnicoOwnership) — sin este filtro, el viaje de otro técnico
+  // "ganaba" por ser más reciente y la ficha mostraba un estado que no
+  // correspondía al técnico logueado. Otros roles (coordinación/admin viendo
+  // el panel) no tienen "su" viaje, así que siguen viendo el más reciente de
+  // cualquiera — hoy nada del panel llama este endpoint, pero no hay motivo
+  // para restringirlo de más.
+  const filter: Record<string, unknown> = { tareaOdooId, fecha };
+  if (req.user!.role === 'tecnico') filter.tecnicoId = req.user!.usuarioId;
+  const visita = await VisitaNotificacionModel.findOne(filter).sort({ createdAt: -1 });
+
+  // "Titular" = el técnico que primero marcó salida hacia destino para este
+  // (tarea, fecha), sin importar de quién es `visita` de arriba (que sigue
+  // scopeada a mí solo). Con un lote de 2+ técnicos con subtareas distintas,
+  // cada uno sigue con su propio documento — esto es puramente informativo,
+  // para que el que no es titular (a) vea que su compañero ya salió/llegó, y
+  // (b) confirme antes de "Finalizar visita" (ver AgendaTaskSheet), porque el
+  // hilo de Telegram al cliente es uno solo por tareaOdooId (ver
+  // registrarOptIn) y un "completo" del técnico equivocado le puede avisar al
+  // cliente que la visita terminó cuando el titular todavía sigue ahí. Se
+  // excluyen los viajes cancelados a mitad de camino (abierta:false y nunca
+  // llegaron a 'completo', ver cancelarVisita) para no dejar a alguien que
+  // canceló su intento marcado como titular para siempre.
+  let titular = null;
+  if (req.user!.role === 'tecnico') {
+    const titularDoc = await VisitaNotificacionModel.findOne({
+      tareaOdooId,
+      fecha,
+      enCaminoAt: { $ne: null },
+      $or: [{ abierta: true }, { estado: 'completo' }],
+    })
+      .sort({ enCaminoAt: 1 })
+      .populate<{ tecnicoId: { _id: unknown; nombre: string } | null }>('tecnicoId', 'nombre');
+    if (titularDoc?.tecnicoId) {
+      titular = {
+        tecnicoId: String(titularDoc.tecnicoId._id),
+        nombre: titularDoc.tecnicoId.nombre,
+        esUnoMismo: String(titularDoc.tecnicoId._id) === String(req.user!.usuarioId),
+        estado: titularDoc.estado,
+        enCaminoAt: titularDoc.enCaminoAt,
+        enSitioAt: titularDoc.enSitioAt,
+      };
+    }
+  }
+
   res.json({
     tareaOdooId,
     estado: visita?.estado ?? 'pendiente',
@@ -69,6 +120,7 @@ export const getVisita = asyncHandler(async (req: Request, res: Response) => {
     abierta: visita?.abierta ?? true,
     optedIn: Boolean(visita?.chatId),
     optInLink: buildOptInLink(tareaOdooId),
+    titular,
   });
 });
 
@@ -100,6 +152,10 @@ export const getVisitaActiva = asyncHandler(async (req: Request, res: Response) 
   res.json({
     visita: {
       tareaOdooId: visita.tareaOdooId,
+      // El front la necesita para poder cancelar/cerrar ESTE viaje puntual
+      // (ver cancelarVisita) — sin esto no sabría a cuál de las posibles
+      // entradas de calendario de esta tareaOdooId corresponde.
+      fecha: visita.fecha,
       estado: visita.estado,
       enCaminoAt: visita.enCaminoAt,
     },
@@ -117,8 +173,9 @@ export const getVisitaActiva = asyncHandler(async (req: Request, res: Response) 
 // iniciada a mano por el propio técnico.
 export const finalizarVisitaLote = asyncHandler(async (req: Request, res: Response) => {
   const { tareaOdooId } = req.params as unknown as TareaIdParam;
+  const { fecha } = req.body as FinalizarVisitaInput;
   await assertTecnicoOwnership(tareaOdooId, req);
-  const visita = await notificarEstadoVisita(tareaOdooId, 'completo', req.user!.usuarioId);
+  const visita = await notificarEstadoVisita(tareaOdooId, 'completo', req.user!.usuarioId, fecha);
   res.json(visita);
 });
 
@@ -139,8 +196,9 @@ export const finalizarVisitaLote = asyncHandler(async (req: Request, res: Respon
 // Salió/Llegó de este para que coordinación vea que existió.
 export const cancelarVisita = asyncHandler(async (req: Request, res: Response) => {
   const { tareaOdooId } = req.params as unknown as TareaIdParam;
+  const { fecha } = req.query as unknown as FechaQuery;
   await VisitaNotificacionModel.updateOne(
-    { tareaOdooId, tecnicoId: req.user!.usuarioId, abierta: true },
+    { tareaOdooId, tecnicoId: req.user!.usuarioId, fecha, abierta: true },
     { $set: { abierta: false } },
   );
   res.status(204).send();

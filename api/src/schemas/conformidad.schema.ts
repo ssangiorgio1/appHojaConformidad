@@ -19,8 +19,13 @@ const isR2Url = (url: string) => url.startsWith(`${R2_PUBLIC_BASE}/`);
 const fotoSchema = z.object({
   id: z.string().min(1),
   slotKey: z.string().optional(),
-  url: z.string().min(1).refine(isR2Url, 'url must point to the R2 public bucket'),
-  key: z.string().min(1),
+  // Absent when `motivo` is set (técnico couldn't take this photo, see
+  // GalleryPhotoCapture in the PWA) — nothing was uploaded, same idea as
+  // firmaSchema's optional url/key below.
+  url: z.string().min(1).refine(isR2Url, 'url must point to the R2 public bucket').optional(),
+  key: z.string().min(1).optional(),
+  motivo: z.string().optional(),
+  mimeType: z.enum(['image/jpeg', 'image/png', 'video/webm']).optional(),
 });
 
 const firmaSchema = z
@@ -38,6 +43,11 @@ const firmaSchema = z
 const phaseInputSchema = z.object({
   checklist: checklistSchema.optional(),
   fallaDetalle: z.string().optional(),
+  item6AirbagDetalle: z.string().optional(),
+  item6GuineDetalle: z.string().optional(),
+  item6AlternadorDetalle: z.string().optional(),
+  item6PresionDetalle: z.string().optional(),
+  item6TempDetalle: z.string().optional(),
   item7Detalle: z.string().optional(),
   item8Detalle: z.string().optional(),
   observaciones: z.string().optional(),
@@ -71,6 +81,11 @@ const subtareaOdooSchema = z
   .object({
     id: z.number().int().positive(),
     nombre: z.string().optional(),
+    // Otras project.task reales que se colapsaron en esta unidad — ver
+    // ALCANCE_BACKOFFICE.md §15.9b y collapseDuplicateNames en
+    // calendarTask.service.ts. Se necesita para poder marcar TODAS como
+    // "Hecha"/"En espera" en Odoo, no solo la primaria.
+    mergedTaskIds: z.array(z.number().int().positive()).optional(),
   })
   .nullable();
 
@@ -88,6 +103,9 @@ const pdfReporteSchema = z
 const equipoShape = {
   ...Object.fromEntries(EQUIP_TEXT_KEYS.map((key) => [key, z.string().optional()])),
   ...Object.fromEntries(EQUIP_CHECK_KEYS.map((key) => [key, z.enum(['SI', 'NO']).nullable().optional()])),
+  // No es parte de EQUIP_TEXT_KEYS (no viene de EQUIP_GROUPS) — ver
+  // Equipo.equipoRetiradoSinSerie en @wara/shared/equipo.ts.
+  equipoRetiradoSinSerie: z.string().optional(),
 };
 const equipoSchema = z.object(equipoShape).partial();
 

@@ -10,16 +10,20 @@ import { useAuth } from '@/auth/AuthContext';
 import { getArDay, getArWeek, formatArFullDate, formatArRange } from '@/lib/calendarDates';
 import { CalendarGrid } from '@/components/calendar/CalendarGrid';
 import { TaskDetailPanel } from '@/components/calendar/TaskDetailPanel';
-import { TechnicianColorPicker } from '@/components/calendar/TechnicianColorPicker';
 import { TechnicianMultiSelect } from '@/components/calendar/TechnicianMultiSelect';
-import { loadTechnicianColorOverrides, resolveTechnicianSwatch, saveTechnicianColorOverrides, type TechnicianColorMap } from '@/lib/technicianColors';
+import { resolveStatusSwatch } from '@/lib/taskStatusColors';
 import type { CalendarTask } from '@/lib/types';
 
 const POLL_MS = 45_000;
 const WRITE_ROLES = new Set(['coordinacion', 'admin', 'superadmin']);
 
 type View = 'day' | 'week';
-type PendingMove = { start: string; end: string };
+// Keyado por occurrenceKey, no por id — con el split de calendario, dos
+// entradas distintas (una por fecha real de un lote reprogramado) pueden
+// compartir el mismo `id` de Odoo, así que `id` solo no alcanza para saber
+// CUÁL franja se movió. `id` queda adentro porque moveCalendarTask sigue
+// escribiendo por id real de Odoo.
+type PendingMove = { id: number; start: string; end: string };
 
 export default function CalendarioPage() {
   const { usuario, getIdToken } = useAuth();
@@ -33,25 +37,9 @@ export default function CalendarioPage() {
   const [dayOffset, setDayOffset] = useState(0);
   const [technicianIds, setTechnicianIds] = useState<number[]>([]);
   const [selectedTask, setSelectedTask] = useState<CalendarTask | null>(null);
-  const [colorPickerOpen, setColorPickerOpen] = useState(false);
-  const [colorOverrides, setColorOverrides] = useState<TechnicianColorMap>({});
-  const [pendingMoves, setPendingMoves] = useState<Record<number, PendingMove>>({});
+  const [pendingMoves, setPendingMoves] = useState<Record<string, PendingMove>>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-
-  useEffect(() => {
-    // localStorage no existe durante el render en el servidor; se sincroniza acá para evitar un mismatch de hidratación.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setColorOverrides(loadTechnicianColorOverrides());
-  }, []);
-
-  function handleColorChange(techId: number, key: string) {
-    setColorOverrides((prev) => {
-      const next = { ...prev, [techId]: key };
-      saveTechnicianColorOverrides(next);
-      return next;
-    });
-  }
 
   function goToday() {
     setWeekOffset(0);
@@ -87,14 +75,15 @@ export default function CalendarioPage() {
   }, [refetch]);
 
   const displayedTasks = useMemo(
-    () => (tasks ?? []).map((t) => (pendingMoves[t.id] ? { ...t, ...pendingMoves[t.id] } : t)),
+    () =>
+      (tasks ?? []).map((t) => (pendingMoves[t.occurrenceKey] ? { ...t, ...pendingMoves[t.occurrenceKey] } : t)),
     [tasks, pendingMoves],
   );
   const pendingCount = Object.keys(pendingMoves).length;
 
-  function handleTaskMoved(taskId: number, start: string, end: string) {
+  function handleTaskMoved(occurrenceKey: string, taskId: number, start: string, end: string) {
     setSaveError(null);
-    setPendingMoves((prev) => ({ ...prev, [taskId]: { start, end } }));
+    setPendingMoves((prev) => ({ ...prev, [occurrenceKey]: { id: taskId, start, end } }));
   }
 
   function discardChanges() {
@@ -107,12 +96,12 @@ export default function CalendarioPage() {
     setSaveError(null);
     const token = await getIdToken();
     const entries = Object.entries(pendingMoves);
-    const failed: Record<number, PendingMove> = {};
-    for (const [taskId, move] of entries) {
+    const failed: Record<string, PendingMove> = {};
+    for (const [occurrenceKey, move] of entries) {
       try {
-        await moveCalendarTask(token, Number(taskId), move);
+        await moveCalendarTask(token, move.id, { start: move.start, end: move.end });
       } catch (err) {
-        failed[Number(taskId)] = move;
+        failed[occurrenceKey] = move;
         setSaveError(err instanceof ApiError ? err.message : 'No se pudo guardar uno o más cambios.');
       }
     }
@@ -163,11 +152,6 @@ export default function CalendarioPage() {
         <div className="ml-auto w-[240px]">
           <TechnicianMultiSelect technicians={technicians ?? []} selected={technicianIds} onChange={setTechnicianIds} />
         </div>
-
-        <Button variant="ghost" className="shadow-inset" onClick={() => setColorPickerOpen(true)}>
-          <IconEdit />
-          Colores
-        </Button>
 
         {canWrite && (
           <Button
@@ -226,7 +210,6 @@ export default function CalendarioPage() {
           <CalendarGrid
             range={range}
             tasks={displayedTasks}
-            colorOverrides={colorOverrides}
             canDrag={canDrag}
             onSelectTask={setSelectedTask}
             onTaskMoved={handleTaskMoved}
@@ -235,20 +218,7 @@ export default function CalendarioPage() {
       )}
 
       {selectedTask && (
-        <TaskDetailPanel
-          task={selectedTask}
-          swatch={resolveTechnicianSwatch(selectedTask.technicianId, colorOverrides)}
-          onClose={() => setSelectedTask(null)}
-        />
-      )}
-
-      {colorPickerOpen && (
-        <TechnicianColorPicker
-          technicians={technicians ?? []}
-          overrides={colorOverrides}
-          onChange={handleColorChange}
-          onClose={() => setColorPickerOpen(false)}
-        />
+        <TaskDetailPanel task={selectedTask} swatch={resolveStatusSwatch(selectedTask.stage)} onClose={() => setSelectedTask(null)} />
       )}
     </div>
   );
