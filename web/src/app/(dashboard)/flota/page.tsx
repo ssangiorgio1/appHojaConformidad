@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useDeferredValue, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import type { AreaSeleccionada } from '@/components/flota/FlotaMap';
 import { FlotaAreaTabla } from '@/components/flota/FlotaAreaTabla';
 import { useAuth } from '@/auth/AuthContext';
@@ -17,7 +17,7 @@ import {
   FLOTA_CATEGORIA_DESC,
   FLOTA_CATEGORIA_LABEL,
 } from '@/components/flota/categorias';
-import { getFlota, refrescarFlota } from '@/lib/api';
+import { buscarEquipos, getFlota, refrescarFlota } from '@/lib/api';
 import { useApiData } from '@/lib/useApiData';
 import { formatIsoDateTime } from '@/lib/format';
 import type { FlotaCategoria, FlotaUnidad } from '@/lib/types';
@@ -65,11 +65,32 @@ export default function FlotaPage() {
     () =>
       (data?.unidades ?? []).map((u) => ({
         u,
-        texto: normalizar(`${u.clienteNombre ?? ''} ${u.nombre} ${u.matricula ?? ''} ${u.interno ?? ''}`),
+        texto: normalizar(`${u.clienteNombre ?? ''} ${u.nombre} ${u.matricula ?? ''} ${u.interno ?? ''} ${u.equipoId ?? ''}`),
       })),
     [data],
   );
   const busquedaDiferida = useDeferredValue(busqueda);
+
+  // El número de equipo que se ve en bo3 (ej. t14s398) y la serie no vienen en los datos del mapa:
+  // se resuelven con el buscador de bo3 (equipo/buscar), con espera para no consultar en cada tecla.
+  const [equiposDeBo3, setEquiposDeBo3] = useState<{ q: string; ids: Set<number> }>({ q: '', ids: new Set() });
+  useEffect(() => {
+    const q = busqueda.trim();
+    if (q.length < 3) return;
+    let cancelado = false;
+    const t = setTimeout(async () => {
+      try {
+        const res = await buscarEquipos(await getIdToken(), q);
+        if (!cancelado) setEquiposDeBo3({ q: normalizar(q), ids: new Set(res.map((r) => r.equipoId)) });
+      } catch {
+        // Sin respuesta de bo3 la búsqueda sigue funcionando por cliente, unidad, patente e interno.
+      }
+    }, 400);
+    return () => {
+      cancelado = true;
+      clearTimeout(t);
+    };
+  }, [busqueda, getIdToken]);
   const seleccionados = useMemo(() => new Set(clientesSel), [clientesSel]);
 
   const filtradas = useMemo(() => {
@@ -78,11 +99,11 @@ export default function FlotaPage() {
     for (const { u, texto } of indice) {
       if (!visibles.has(u.categoria)) continue;
       if (seleccionados.size > 0 && !(u.clienteNombre && seleccionados.has(u.clienteNombre))) continue;
-      if (q && !texto.includes(q)) continue;
+      if (q && !texto.includes(q) && !(equiposDeBo3.q === q && u.equipoId !== null && equiposDeBo3.ids.has(u.equipoId))) continue;
       out.push(u);
     }
     return out;
-  }, [indice, visibles, busquedaDiferida, seleccionados]);
+  }, [indice, visibles, busquedaDiferida, seleccionados, equiposDeBo3]);
 
   const enArea = useMemo(
     () =>
@@ -171,7 +192,7 @@ export default function FlotaPage() {
         <div className="flex flex-wrap items-center gap-3">
           <Input
             className="max-w-sm"
-            placeholder="Buscar cliente, unidad o patente…"
+            placeholder="Buscar cliente, unidad, patente o nº de equipo…"
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
           />
