@@ -142,6 +142,14 @@ function equipoGrid(record: PrintableConformidad): string {
   );
   const datosEquipoTitle = tipoServicio === 'desinstalacion' ? 'Datos del equipo a desinstalar' : 'Datos del equipo';
 
+  const retirados = ((equipo.elementosRetirados as string | undefined) ?? '').split(',').filter(Boolean);
+  const retiradosCard = retirados.length
+    ? equipCard(
+        'Sensores / módulos retirados',
+        retirados.map((k) => `<tr><td class="k">${esc(EQUIP_ITEM_PHOTO_LABEL[k] ?? k)}</td><td class="v">Retirado</td></tr>`).join(''),
+      )
+    : '';
+
   const cards = [
     equipCard(datosEquipoTitle, fieldRows(equipo, datosEquipoFields, tipoServicio)),
     equipCard('Sensores', fieldRows(equipo, byTitle['Sensores'].fields, tipoServicio)),
@@ -160,6 +168,7 @@ function equipoGrid(record: PrintableConformidad): string {
         ),
     ),
     equipCard('Elementos adicionales instalados', fieldRows(equipo, byTitle['Elementos adicionales instalados'].fields, tipoServicio)),
+    retiradosCard,
     equipCard(
       'Control de instalación',
       fieldRows(equipo, byTitle['Control de instalación'].fields, tipoServicio) + checkRows(equipo, EQUIP_CHECK_FIELDS),
@@ -346,7 +355,7 @@ export async function buildPrintHtml(
   <div class="keep-together">
     <table class="info-table">
       <tr><td class="k">Cliente</td><td class="v">${esc(record.cliente)}</td><td class="k">Matrícula</td><td class="v">${esc(record.matricula)}</td></tr>
-      <tr><td class="k">Fecha y hora</td><td class="v">${esc(fmtDateTime(record.fecha, record.hora))}</td><td class="k">Instalador</td><td class="v">${esc(record.instalador)}</td></tr>
+      <tr><td class="k">Fecha y hora</td><td class="v">${esc(fmtDateTime(record.fecha, record.hora))}</td><td class="k">Técnico</td><td class="v">${esc(record.instalador)}</td></tr>
       <tr>
         <td class="k">Responsable empresa</td>
         <td class="v"${record.ticketOdoo?.numero ? '' : ' colspan="3"'}>${esc(record.responsableEmpresa)}</td>

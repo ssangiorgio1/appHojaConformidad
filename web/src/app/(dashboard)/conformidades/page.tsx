@@ -320,7 +320,7 @@ export default function ConformidadesPage() {
                       <div className="p-3.5 text-[13px] font-semibold text-muted">{tecnicoNombre(c.tecnicoId)}</div>
                       <div className="p-3.5 text-[13px] font-semibold">{c.matricula || '—'}</div>
                       <div className="p-3.5 text-[13px] font-semibold text-muted">{c.ticketOdoo?.numero || '—'}</div>
-                      <div className="p-3.5 text-[13px] font-semibold text-muted">{formatFechaHora(c.fecha)}</div>
+                      <div className="p-3.5 text-[13px] font-semibold text-muted">{formatFechaHora(c.fecha, c.hora)}</div>
                       <div className="p-3.5">
                         <Badge tone={ESTADO_TONE[c.status]}>{ESTADO_LABEL[c.status]}</Badge>
                       </div>

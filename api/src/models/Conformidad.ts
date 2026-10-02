@@ -78,6 +78,7 @@ const equipoFields = {
   // No es parte de EQUIP_TEXT_KEYS (no viene de EQUIP_GROUPS) — ver
   // Equipo.equipoRetiradoSinSerie en @wara/shared/equipo.ts.
   equipoRetiradoSinSerie: { type: String, default: '' },
+  elementosRetirados: { type: String, default: '' },
 };
 const EquipoSchema = new Schema(equipoFields, { _id: false });
 

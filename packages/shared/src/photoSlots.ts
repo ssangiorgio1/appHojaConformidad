@@ -44,9 +44,9 @@ export function prePhotoSlotsFor(mode: ServiceMode): PhotoSlotDef[] {
 // sometimes 5, a fixed slot per unit didn't scale.
 const POST_PHOTO_SLOTS_INSTALACION: PhotoSlotDef[] = [
   { key: 'equipo_serie', label: 'Equipo a colocar (N° de serie)', required: true },
-  { key: 'precintos', label: 'N° de precintos a usar', required: true },
+  { key: 'precintos', label: 'N° de precintos a usar', required: false },
   { key: 'ubicacion_equipo', label: 'Ubicación y colocación del equipo', required: true },
-  { key: 'ramales', label: 'Ramales', required: true },
+  { key: 'ramales', label: 'Ramales', required: false },
   { key: 'torpedo', label: 'Torpedo (tablero encendido, luces de check y estado general)', required: true },
   { key: 'odometro', label: 'Odómetro', required: true },
   // Optional for now — not every service has a panic button. Once the
@@ -70,7 +70,7 @@ const POST_PHOTO_SLOTS_RETIRO: PhotoSlotDef[] = [
   { key: 'equipo_a_retirar', label: 'Equipo/elemento retirado', required: true },
   { key: 'torpedo', label: 'Torpedo (tablero encendido, luces de check y estado general)', required: true },
   { key: 'odometro', label: 'Odómetro', required: true },
-  { key: 'lugar_vacio', label: 'Lugar donde estaba el equipo', required: false },
+  { key: 'lugar_vacio', label: 'Lugar donde estaba el equipo', required: true },
   { key: 'cableado_retirado', label: 'Cableado retirado / puntas aisladas', required: false },
 ];
 
@@ -87,9 +87,9 @@ const POST_PHOTO_SLOTS_RETIRO: PhotoSlotDef[] = [
 const POST_PHOTO_SLOTS_CAMBIO_EQUIPO: PhotoSlotDef[] = [
   { key: 'equipo_a_retirar', label: 'Equipo a retirar (N° de serie)', required: true },
   { key: 'equipo_serie', label: 'Equipo a colocar (N° de serie)', required: true },
-  { key: 'precintos', label: 'N° de precintos a usar', required: true },
+  { key: 'precintos', label: 'N° de precintos a usar', required: false },
   { key: 'ubicacion_equipo', label: 'Ubicación y colocación del equipo', required: true },
-  { key: 'ramales', label: 'Ramales', required: true },
+  { key: 'ramales', label: 'Ramales', required: false },
   { key: 'torpedo', label: 'Torpedo (tablero encendido, luces de check y estado general)', required: true },
   { key: 'odometro', label: 'Odómetro', required: true },
   // Optional for now — see comment in POST_PHOTO_SLOTS_INSTALACION.

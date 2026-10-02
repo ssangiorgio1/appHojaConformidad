@@ -41,11 +41,47 @@ async function assertTecnicoOwnership(tareaOdooId: number, req: Request): Promis
   }
 }
 
+// Un técnico no puede tener dos viajes/trabajos en curso a la vez: si ya tiene
+// una visita abierta (en_camino/en_sitio) de OTRA tarea, no puede arrancar esta.
+// Solo aplica al abrir una visita nueva — si esta (tarea, fecha) ya está abierta
+// es una transición normal (Salí -> Llegué) y no se toca. Un lote (varias
+// unidades) es la misma tareaOdooId, así que nunca se bloquea a sí mismo.
+// Las abiertas hace más de VISITA_VENCE_HORAS no cuentan: son huérfanas
+// (navegador cerrado a mitad de viaje, tarea borrada en Odoo) y no deben dejar
+// al técnico sin poder trabajar.
+const VISITA_VENCE_HORAS = 12;
+
+async function assertSinOtraVisitaAbierta(tareaOdooId: number, fecha: string, req: Request): Promise<void> {
+  if (req.user!.role !== 'tecnico') return;
+  const tecnicoId = req.user!.usuarioId;
+
+  const yaAbierta = await VisitaNotificacionModel.exists({ tareaOdooId, tecnicoId, fecha, abierta: true });
+  if (yaAbierta) return;
+
+  const desde = new Date(Date.now() - VISITA_VENCE_HORAS * 3_600_000);
+  const otra = await VisitaNotificacionModel.findOne({
+    tecnicoId,
+    abierta: true,
+    estado: { $in: ['en_camino', 'en_sitio'] },
+    // Otra visita = distinta tarea, o la misma tarea en otra fecha (franja reprogramada/partida): el
+    // mismo lote en la misma fecha no se bloquea a sí mismo.
+    $nor: [{ tareaOdooId, fecha }],
+    updatedAt: { $gte: desde },
+  }).sort({ updatedAt: -1 });
+  if (otra) {
+    throw new HttpError(
+      409,
+      `Ya tenés un ${otra.estado === 'en_camino' ? 'viaje' : 'trabajo'} en curso (tarea #${otra.tareaOdooId}). Terminalo o cancelalo antes de empezar otro.`,
+    );
+  }
+}
+
 export const setEstadoVisita = asyncHandler(async (req: Request, res: Response) => {
   const { tareaOdooId } = req.params as unknown as TareaIdParam;
   const { estado, fecha } = req.body as EstadoVisitaInput;
 
   await assertTecnicoOwnership(tareaOdooId, req);
+  await assertSinOtraVisitaAbierta(tareaOdooId, fecha, req);
   const visita = await notificarEstadoVisita(tareaOdooId, estado, req.user!.usuarioId, fecha);
   res.json(visita);
 });

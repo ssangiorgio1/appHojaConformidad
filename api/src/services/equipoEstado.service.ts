@@ -61,8 +61,29 @@ const MAX_COINCIDENCIAS = 15;
 export async function buscarEquipos(texto: string): Promise<EquipoCoincidencia[]> {
   const res = await visionbloPostJson<Record<string, string>>('equipo/buscar', { texto });
   return Object.entries(res)
+    .filter(([, descripcion]) => !esOtraPatente(texto, descripcion))
     .slice(0, MAX_COINCIDENCIAS)
     .map(([id, descripcion]) => ({ equipoId: Number(id), descripcion }));
+}
+
+// Patente argentina vieja (ABC123) o Mercosur (AB123CD), sin espacios.
+const PATENTE_RE = /[A-Z]{2,3}\d{3}[A-Z]{0,2}/g;
+const PATENTE_EXACTA_RE = /^(?:[A-Z]{3}\d{3}|[A-Z]{2}\d{3}[A-Z]{2})$/;
+
+function soloAlfanumerico(s: string): string {
+  return s.toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+// equipo/buscar es aproximado: buscando "AA 123 AA" también devuelve "AF 123 AA".
+// Si lo buscado es una patente completa, se descartan los resultados cuya descripción
+// trae patentes y ninguna es esa. Si la descripción no trae patente, se conserva
+// (puede haber coincidido por IMEI, serie o nombre).
+function esOtraPatente(texto: string, descripcion: string): boolean {
+  const buscada = soloAlfanumerico(texto);
+  if (!PATENTE_EXACTA_RE.test(buscada)) return false;
+  const compacta = soloAlfanumerico(descripcion);
+  if (compacta.includes(buscada)) return false;
+  return (descripcion.toUpperCase().replace(/[\s-]/g, '').match(PATENTE_RE) ?? []).length > 0;
 }
 
 interface DiagnosticoCrudo {
@@ -153,6 +174,8 @@ export function formatoFirmware(raw: string | null): string | null {
 export interface EstadoEquipo {
   consultadoAt: string;
   equipoId: number;
+  // Lo que bo3 muestra como "número de equipo" (ej. t14s398); la serie de fábrica es otra cosa (1711398).
+  nombre: string | null;
   serie: string | null;
   imei: string | null;
   iccid: string | null;
@@ -209,6 +232,7 @@ async function consultarEstado(equipoId: number): Promise<EstadoEquipo> {
   return {
     consultadoAt: hoy.toISOString(),
     equipoId,
+    nombre: eq.nombre?.trim() || null,
     serie: eq.serie,
     imei: eq.imei,
     iccid: eq.iccid,

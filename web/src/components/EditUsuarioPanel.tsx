@@ -83,7 +83,7 @@ export function EditUsuarioPanel({
   return (
     <div className="fixed inset-0 z-20">
       <div className="absolute inset-0 bg-black/45" onClick={onClose} />
-      <Card className="absolute bottom-6 right-6 top-6 flex w-[440px] flex-col p-5">
+      <Card className="absolute bottom-2 right-2 top-2 flex w-[440px] max-w-[calc(100vw-1rem)] flex-col p-5 sm:bottom-6 sm:right-6 sm:top-6">
         <div className="flex items-center justify-between">
           <div className="text-lg font-extrabold">Editar usuario</div>
           <button
@@ -96,7 +96,7 @@ export function EditUsuarioPanel({
           </button>
         </div>
 
-        <div className="mt-6 flex flex-1 flex-col gap-4">
+        <div className="mt-6 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
           <div className="text-[12.5px] font-semibold text-muted">{usuario.email}</div>
 
           <div>
@@ -175,7 +175,7 @@ export function EditUsuarioPanel({
             {resetError && <div className="mt-2 text-[12.5px] font-semibold text-bad">{resetError}</div>}
           </div>
 
-          <Button variant="ghost" className="mt-auto" onClick={onClose}>
+          <Button variant="ghost" className="mt-auto flex-none" onClick={onClose}>
             Cerrar
           </Button>
         </div>

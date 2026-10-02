@@ -99,9 +99,10 @@ export function EstadoEquipoView({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-lg font-extrabold text-text">
-              Equipo {estado.serie ?? `#${estado.equipoId}`}
+              Equipo {estado.nombre || '---'}
               {estado.movil ? ` · ${estado.movil.movil}` : ' · sin unidad asignada'}
             </div>
+            {estado.serie ? <div className="text-xs text-muted">Serie {estado.serie}</div> : null}
             <div className="text-sm text-muted">
               {estado.movil?.cliente || (estado.movil ? 'Cliente reservado' : 'No está instalado en ningún vehículo')}
             </div>

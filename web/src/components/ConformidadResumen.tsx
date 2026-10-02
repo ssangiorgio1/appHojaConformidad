@@ -31,6 +31,15 @@ function fotoLabel(fase: 'pre' | 'post', slotKey?: string): string | null {
   return PHOTO_SLOT_LABELS[fase][slotKey] ?? GALLERY_LABELS[slotKey] ?? null;
 }
 
+// Nombres cortos para el resumen: la etiqueta de EQUIP_CHECK_FIELDS ("Revisión de ...")
+// venía de cuando era un Sí/No manual.
+const CONTROL_LABEL: Record<string, string> = {
+  controlRevisionIgnicion: 'Ignición',
+  controlRevisionPanico: 'Pánico',
+  controlConexionRed: 'Conexión a la red',
+  controlRevisionSensores: 'Sensores / módulos',
+};
+
 export function InfoField({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
@@ -114,6 +123,16 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
       });
   }, [c]);
 
+  // Sensores/módulos que se desinstalaron además del equipo (ver Equipo.elementosRetirados en @wara/shared).
+  const retiradosResumen = useMemo(
+    () =>
+      (c.equipo.elementosRetirados ?? '')
+        .split(',')
+        .filter(Boolean)
+        .map((k) => EQUIP_ITEM_PHOTO_LABEL[k] ?? k),
+    [c],
+  );
+
   const todasLasFotos = useMemo(
     () => [
       ...c.pre.fotos.map((foto) => ({ ...foto, fase: 'PRE' as const })),
@@ -154,16 +173,33 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
           )}
         </div>
 
+        {retiradosResumen.length > 0 && (
+          <div>
+            <div className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">
+              Sensores / módulos retirados
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {retiradosResumen.map((label) => (
+                <Badge key={label} tone="neutral">
+                  {label}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div>
           <div className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Control de instalación</div>
           <div className="flex flex-wrap gap-1.5">
             {EQUIP_CHECK_FIELDS.map((f) => {
+              // Ya no es un Sí/No que marca el técnico: la PWA lo resuelve sola contra
+              // lo que informa el equipo en VisionBLO. Sin valor = no aplicaba a este servicio.
               const value = c.equipo[f.key];
               const tone = value === 'SI' ? 'ok' : value === 'NO' ? 'bad' : 'neutral';
-              const label = value === 'SI' ? 'Sí' : value === 'NO' ? 'No' : 'Sin responder';
+              const estado = value === 'SI' ? 'Verificado' : value === 'NO' ? 'No verificado' : 'No aplica';
               return (
                 <Badge key={f.key} tone={tone}>
-                  {f.label}: {label}
+                  {CONTROL_LABEL[f.key] ?? f.label}: {estado}
                 </Badge>
               );
             })}

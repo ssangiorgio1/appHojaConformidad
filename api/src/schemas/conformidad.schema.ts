@@ -106,6 +106,7 @@ const equipoShape = {
   // No es parte de EQUIP_TEXT_KEYS (no viene de EQUIP_GROUPS) — ver
   // Equipo.equipoRetiradoSinSerie en @wara/shared/equipo.ts.
   equipoRetiradoSinSerie: z.string().optional(),
+  elementosRetirados: z.string().optional(),
 };
 const equipoSchema = z.object(equipoShape).partial();
 

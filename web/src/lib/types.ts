@@ -383,6 +383,7 @@ export interface EventoEquipo {
 export interface EstadoEquipo {
   consultadoAt: string;
   equipoId: number;
+  nombre?: string | null;
   serie: string | null;
   imei: string | null;
   iccid: string | null;

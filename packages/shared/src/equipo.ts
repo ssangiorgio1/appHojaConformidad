@@ -123,6 +123,9 @@ export type Equipo = Partial<Record<EquipoTextKey, string>> &
     // paso "Equipo a desinstalar". Tildado, "Modelo" pasa a usarse como
     // descripción libre de lo desinstalado y el IMEI deja de ser obligatorio.
     equipoRetiradoSinSerie?: string;
+    // Retiro only: keys (EQUIP_ITEM_PHOTO_LABEL) of extra sensors/modules/items also
+    // uninstalled, comma-separated — each with its own photo gallery (slotKey = key).
+    elementosRetirados?: string;
   };
 
 export function emptyEquipo(): Equipo {

@@ -191,7 +191,7 @@ export default function ConformidadDetailPage() {
         </div>
 
         <div className="flex flex-wrap gap-x-8 gap-y-3 border-t border-line pt-4">
-          <InfoField label="Instalador">{c.instalador || '—'}</InfoField>
+          <InfoField label="Técnico">{c.instalador || '—'}</InfoField>
           <InfoField label="Fecha">{formatFechaHora(c.fecha, c.hora)}</InfoField>
           <InfoField label="Tipo de servicio">{tipoServicioLabel || '—'}</InfoField>
           <InfoField label="Unidad">{c.matricula || 'Sin matrícula'}</InfoField>
@@ -416,6 +416,22 @@ export default function ConformidadDetailPage() {
                     ))}
                 </div>
               ))}
+              {(c.equipo.elementosRetirados ?? '').split(',').filter(Boolean).length > 0 && (
+                <div>
+                  <div className="mb-1 mt-1 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">
+                    Sensores / módulos retirados
+                  </div>
+                  {(c.equipo.elementosRetirados ?? '')
+                    .split(',')
+                    .filter(Boolean)
+                    .map((k) => (
+                      <div key={k} className="flex justify-between border-b border-line py-1.5 last:border-none">
+                        <span className="font-semibold text-muted">{EQUIP_ITEM_PHOTO_LABEL[k] ?? k}</span>
+                        <span className="font-bold">Retirado</span>
+                      </div>
+                    ))}
+                </div>
+              )}
               <div>
                 <div className="mb-1 mt-1 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Control de instalación</div>
                 {EQUIP_CHECK_FIELDS.map((f) => {
