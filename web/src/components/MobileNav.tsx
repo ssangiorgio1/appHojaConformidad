@@ -80,22 +80,22 @@ export function MobileNav() {
           <Link
             key={href}
             href={href}
-            className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[10.5px] font-semibold ${
+            className={`flex min-w-0 flex-1 flex-col items-center gap-1 px-1 py-3 text-[11.5px] font-semibold ${
               activo(href) ? 'text-primary-700' : 'text-muted'
             }`}
           >
-            <Icon />
+            <Icon size={24} />
             <span className="max-w-full truncate">{label === 'Unidades no encontradas' ? 'Unidades' : label}</span>
           </Link>
         ))}
         <button
           type="button"
           onClick={() => setMasAbierto(true)}
-          className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 px-1 py-2 text-[10.5px] font-semibold ${
+          className={`flex min-w-0 flex-1 flex-col items-center gap-1 px-1 py-3 text-[11.5px] font-semibold ${
             masActivo || masAbierto ? 'text-primary-700' : 'text-muted'
           }`}
         >
-          <span className="flex h-5 items-center text-lg leading-none">⋯</span>
+          <span className="flex h-6 items-center text-2xl leading-none">⋯</span>
           Más
         </button>
       </nav>

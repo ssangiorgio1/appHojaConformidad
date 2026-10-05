@@ -509,24 +509,29 @@ export function GraficasEquipo({ equipoId, compacto = false }: { equipoId: numbe
   const mostrar = SERIES.filter((x) => visibles.includes(x.id));
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-end gap-3">
-        <div className="text-sm font-extrabold text-text">Gráficas de estado</div>
-        <label className="flex flex-col gap-0.5 text-xs font-bold text-muted">
-          Desde
-          <Input type="date" className="w-40" value={desde} min={minFecha} max={hoyAr()} onChange={(e) => cambiarDesde(e.target.value)} />
-        </label>
-        <label className="flex flex-col gap-0.5 text-xs font-bold text-muted">
-          Hasta
-          <Input type="date" className="w-40" value={hasta} min={minFecha} max={hoyAr()} onChange={(e) => cambiarHasta(e.target.value)} />
-        </label>
-        <Button onClick={consultar} disabled={cargando || !desde || !hasta}>
+        <div className="w-full text-sm font-extrabold text-text sm:w-auto">Gráficas de estado</div>
+        {/* Celular: Desde/Hasta en dos columnas iguales (los inputs de fecha de iOS/Android tienen ancho propio y,
+            con ancho fijo y poco espacio, se pisaban entre sí). */}
+        <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto">
+          <label className="flex min-w-0 flex-col gap-0.5 text-xs font-bold text-muted">
+            Desde
+            <Input type="date" className="min-w-0 sm:w-40" value={desde} min={minFecha} max={hoyAr()} onChange={(e) => cambiarDesde(e.target.value)} />
+          </label>
+          <label className="flex min-w-0 flex-col gap-0.5 text-xs font-bold text-muted">
+            Hasta
+            <Input type="date" className="min-w-0 sm:w-40" value={hasta} min={minFecha} max={hoyAr()} onChange={(e) => cambiarHasta(e.target.value)} />
+          </label>
+        </div>
+        <Button onClick={consultar} disabled={cargando || !desde || !hasta} className="w-full justify-center sm:w-auto">
           {cargando ? 'Consultando…' : 'Consultar'}
         </Button>
         <span className="pb-2 text-xs text-muted">Hasta {MAX_DIAS} días</span>
         {!compacto && (
-          <div className="ml-auto flex items-center gap-3">
-            <div role="group" aria-label="Disposición" className="inline-flex overflow-hidden rounded-md border border-neutral-200">
+          <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 sm:ml-auto sm:w-auto">
+            {/* Con una sola columna (celular) elegir disposición no tiene efecto: solo se ofrece desde md. */}
+            <div role="group" aria-label="Disposición" className="hidden overflow-hidden md:inline-flex rounded-md border border-neutral-200">
               {(['apiladas', 'columnas'] as const).map((d) => (
                 <button
                   key={d}
