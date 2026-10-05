@@ -34,7 +34,7 @@ export function MobileNav() {
   return (
     <div className="lg:hidden">
       {/* Mismo header que la PWA: barra primary-dark con el logo centrado. */}
-      <header className="fixed inset-x-0 top-0 z-30 flex items-center justify-center bg-primary-dark px-4 py-4">
+      <header className="fixed inset-x-0 top-0 z-30 flex items-center justify-center bg-primary-dark px-4 pb-4 pt-[calc(1rem+env(safe-area-inset-top))]">
         <Image src="/logo-wara.png" alt="WARA" width={140} height={36} className="h-9 w-auto" priority />
       </header>
 

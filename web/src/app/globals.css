@@ -252,3 +252,38 @@ body {
     animation: none;
   }
 }
+
+/* Se siente como app instalada, no como una página web. Sin zoom por pellizco ni doble toque (el mapa de
+   flota lo exceptúa: Leaflet pone su propio touch-action: none en .leaflet-container), sin rebote de
+   overscroll/pull-to-refresh y sin resaltado al tocar. */
+html,
+body {
+  touch-action: pan-x pan-y;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Solo en táctil: en escritorio se sigue pudiendo seleccionar y copiar (IMEI, patentes, etc.). */
+@media (pointer: coarse) {
+  html,
+  body {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  input,
+  textarea,
+  [contenteditable] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  img {
+    -webkit-user-drag: none;
+  }
+  /* Con menos de 16px iOS hace zoom automático al enfocar un campo. */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
