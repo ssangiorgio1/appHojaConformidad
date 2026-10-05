@@ -193,7 +193,7 @@ export default function FlotaPage() {
         >
           <div className="min-h-0 overflow-hidden">
             <div className="flex flex-col gap-3 pt-3 lg:pt-0">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2.5 lg:gap-2">
           {FLOTA_CATEGORIAS_ORDEN.map((c) => {
             const activa = visibles.has(c);
             return (
@@ -202,12 +202,12 @@ export default function FlotaPage() {
                 type="button"
                 title={FLOTA_CATEGORIA_DESC[c]}
                 onClick={() => toggle(c)}
-                className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold transition ${
+                className={`inline-flex min-h-11 items-center gap-2.5 rounded-full px-4 py-2.5 text-[13px] font-bold transition lg:min-h-0 lg:gap-2 lg:px-3 lg:py-1.5 lg:text-xs ${
                   activa ? 'bg-neutral-100 text-text' : 'text-muted opacity-60 hover:opacity-100'
                 }`}
               >
                 <span
-                  className="inline-block h-2.5 w-2.5 rounded-full"
+                  className="inline-block h-3 w-3 flex-none rounded-full lg:h-2.5 lg:w-2.5"
                   style={{ backgroundColor: activa ? FLOTA_CATEGORIA_COLOR[c] : 'transparent', border: `2px solid ${FLOTA_CATEGORIA_COLOR[c]}` }}
                 />
                 {FLOTA_CATEGORIA_LABEL[c]} · {(conteos[c] ?? 0).toLocaleString('es-AR')}
@@ -231,7 +231,7 @@ export default function FlotaPage() {
             onChange={setClientesSel}
             opciones={clientes.map(([nombre, n]) => ({ value: nombre, label: nombre, detalle: n.toLocaleString('es-AR') }))}
           />
-          <Button onClick={toggleSeleccion}>{seleccionando ? 'Terminar selección' : 'Seleccionar área'}</Button>
+          <Button onClick={toggleSeleccion} className="min-h-11 w-full justify-center sm:w-auto">{seleccionando ? 'Terminar selección' : 'Seleccionar área'}</Button>
           {seleccionando && (
             <span className="text-xs font-medium text-muted">
               Arrastrá sobre el mapa para marcar un rectángulo. Barra espaciadora para mover el mapa, Esc para limpiar.

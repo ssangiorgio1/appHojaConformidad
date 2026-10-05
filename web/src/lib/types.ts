@@ -316,6 +316,8 @@ export interface SubtareaIncidencia {
   estado: EstadoSubtareaIncidencia;
   resueltaPor: string | null;
   resueltaAt: string | null;
+  // Nueva fecha y hora de la visita reprogramada; null en las anteriores a este dato.
+  reprogramadaPara?: string | null;
   createdAt: string;
   updatedAt: string;
   // Armados server-side (ver getSubtareaIncidencias) — llevan directo a la

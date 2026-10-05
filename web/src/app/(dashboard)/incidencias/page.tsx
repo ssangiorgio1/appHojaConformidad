@@ -10,7 +10,7 @@ import { ReprogramarIncidenciaPanel } from '@/components/ReprogramarIncidenciaPa
 import { listSubtareaIncidencias } from '@/lib/api';
 import { useApiData } from '@/lib/useApiData';
 import { useAuth } from '@/auth/AuthContext';
-import { formatFechaHora, formatIsoDateTime } from '@/lib/format';
+import { formatFechaConHoraReporte, formatIsoDateTime } from '@/lib/format';
 import type { EstadoSubtareaIncidencia, SubtareaIncidencia } from '@/lib/types';
 
 const TABS: { value: EstadoSubtareaIncidencia; label: string }[] = [
@@ -102,7 +102,7 @@ export default function IncidenciasPage() {
               </div>
             </div>
             <div className="text-[12.5px] font-semibold">
-              {inc.tecnicoId?.nombre || inc.tecnicoId?.email || '—'} · <span className="text-muted">{formatFechaHora(inc.fecha)}</span>
+              {inc.tecnicoId?.nombre || inc.tecnicoId?.email || '—'} · <span className="text-muted">{formatFechaConHoraReporte(inc.fecha, inc.createdAt)}</span>
             </div>
             {inc.motivo && <div className="text-[12.5px] text-muted">{inc.motivo}</div>}
             {inc.estado === 'pendiente_reprogramar' ? (
@@ -111,7 +111,7 @@ export default function IncidenciasPage() {
               </Button>
             ) : (
               <span className="text-xs font-bold text-success-700">
-                Reprogramada{inc.resueltaAt ? ` · ${formatIsoDateTime(inc.resueltaAt)}` : ''}
+                Reprogramada{inc.reprogramadaPara ? ` para ${formatIsoDateTime(inc.reprogramadaPara)}` : ''}{inc.resueltaAt ? ` · el ${formatIsoDateTime(inc.resueltaAt)}` : ''}
               </span>
             )}
           </Card>
@@ -164,7 +164,7 @@ export default function IncidenciasPage() {
                     </div>
                   </div>
                   <div className="p-3.5 text-[13px] font-semibold">{inc.tecnicoId?.nombre || inc.tecnicoId?.email || '—'}</div>
-                  <div className="p-3.5 text-[13px] font-semibold text-muted">{formatFechaHora(inc.fecha)}</div>
+                  <div className="p-3.5 text-[13px] font-semibold text-muted">{formatFechaConHoraReporte(inc.fecha, inc.createdAt)}</div>
                   <div className="p-3.5 text-[13px] text-muted">{inc.motivo || '—'}</div>
                   <div className="p-3.5">
                     {inc.estado === 'pendiente_reprogramar' ? (
@@ -173,7 +173,7 @@ export default function IncidenciasPage() {
                       </Button>
                     ) : (
                       <span className="text-xs font-bold text-success-700">
-                        Reprogramada{inc.resueltaAt ? ` · ${formatIsoDateTime(inc.resueltaAt)}` : ''}
+                        Reprogramada{inc.reprogramadaPara ? ` para ${formatIsoDateTime(inc.reprogramadaPara)}` : ''}{inc.resueltaAt ? ` · el ${formatIsoDateTime(inc.resueltaAt)}` : ''}
                       </span>
                     )}
                   </div>

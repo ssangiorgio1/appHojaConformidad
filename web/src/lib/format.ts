@@ -31,6 +31,17 @@ export function formatIsoDateTime(iso?: string): string {
   return formatFechaHora(`${parts.year}-${parts.month}-${parts.day}`, `${parts.hour}:${parts.minute}`);
 }
 
+// Fecha del intento de visita con la hora en que se reportó (createdAt), solo si el reporte fue ese mismo día
+// (en Argentina): un reporte offline sincronizado otro día no daría una hora válida de ese intento.
+export function formatFechaConHoraReporte(fecha: string, createdAtIso?: string): string {
+  if (!createdAtIso) return formatFechaHora(fecha);
+  const completo = formatIsoDateTime(createdAtIso);
+  const hora = completo.split(', ')[1];
+  const [y, m, d] = fecha.split('-').map(Number);
+  const mismoDia = !!y && completo.startsWith(`${d} ${MONTHS_ES[m - 1]} ${y}`);
+  return mismoDia && hora ? formatFechaHora(fecha, hora) : formatFechaHora(fecha);
+}
+
 // Duración de traslado/trabajo del reporte de técnicos — null significa que
 // todavía no se cruzó la transición siguiente (ej. sigue en camino), no un dato faltante.
 export function formatMinutos(min?: number | null): string {
