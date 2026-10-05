@@ -9,6 +9,8 @@ import { Schema, model, type InferSchemaType } from 'mongoose';
 // hoja para esa subtarea ese día.
 const SubtareaIncidenciaSchema = new Schema(
   {
+    // uuid generado en el dispositivo (reportes encolados sin señal) — ver createSubtareaIncidencia.
+    clientId: { type: String, index: { unique: true, sparse: true } },
     tareaOdooId: { type: Number, required: true, index: true },
     subtareaOdooId: { type: Number, required: true, index: true },
     // Ver Conformidad.subtareaOdoo.mergedTaskIds / ALCANCE_BACKOFFICE.md
@@ -34,6 +36,9 @@ const SubtareaIncidenciaSchema = new Schema(
     },
     resueltaPor: { type: Schema.Types.ObjectId, ref: 'Usuario', default: null },
     resueltaAt: { type: Date, default: null },
+    // Nueva fecha y hora a la que se reprogramó la visita (la que se eligió al reprogramar desde el panel);
+    // null en las reprogramadas antes de guardarse este dato y en las marcadas sin mover la tarea en Odoo.
+    reprogramadaPara: { type: Date, default: null },
   },
   { timestamps: true },
 );

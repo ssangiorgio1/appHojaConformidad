@@ -37,7 +37,24 @@ function esc(s: unknown): string {
 export const createSubtareaIncidencia = asyncHandler(async (req: Request, res: Response) => {
   const body = req.body as CreateSubtareaIncidenciaInput;
 
+  // Idempotencia: si este reporte ya llegó (el cliente reintenta tras un timeout), se devuelve el existente sin
+  // repetir la nota en Odoo ni los avisos.
+  if (body.clientId) {
+    const existente = await SubtareaIncidenciaModel.findOne({ clientId: body.clientId, tecnicoId: req.user!.usuarioId });
+    if (existente) {
+      res.status(200).json(existente.toObject());
+      return;
+    }
+  }
+
+  // Momento real del reporte (offline): se acepta si no es futuro y tiene menos de 72 h; si no, hora del servidor.
+  const ocurrio = body.ocurrioAt ? new Date(body.ocurrioAt) : null;
+  const ahora = Date.now();
+  const createdAt = ocurrio && ocurrio.getTime() <= ahora && ahora - ocurrio.getTime() < 72 * 3_600_000 ? ocurrio : undefined;
+
   const incidencia = await SubtareaIncidenciaModel.create({
+    clientId: body.clientId,
+    ...(createdAt ? { createdAt } : {}),
     tareaOdooId: body.tareaOdooId,
     subtareaOdooId: body.subtareaOdooId,
     subtareaNombre: body.subtareaNombre ?? '',
@@ -207,6 +224,11 @@ export const resolveSubtareaIncidencia = asyncHandler(async (req: Request, res: 
   incidencia.estado = body.estado;
   incidencia.resueltaPor = req.user!.usuarioId;
   incidencia.resueltaAt = new Date();
+  // `start` viene como string UTC de Odoo ("YYYY-MM-DD HH:mm:ss").
+  if (body.start) {
+    const para = new Date(`${body.start.replace(' ', 'T')}Z`);
+    if (!Number.isNaN(para.getTime())) incidencia.reprogramadaPara = para;
+  }
   await incidencia.save();
 
   res.json({ ...incidencia.toObject(), parentDateMoved });

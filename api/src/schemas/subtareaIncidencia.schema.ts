@@ -12,6 +12,11 @@ export const createSubtareaIncidenciaSchema = z.object({
   mergedTaskIds: z.array(z.number().int().positive()).optional(),
   fecha: fechaField,
   motivo: z.string().trim().min(1, 'El motivo es obligatorio').max(500),
+  // Reporte hecho sin señal y enviado después: clientId (uuid del dispositivo) hace el POST idempotente — un
+  // reintento tras un timeout no crea otra incidencia (ni repite el aviso a Odoo) — y ocurrioAt es el momento
+  // real del toque (ISO).
+  clientId: z.string().min(8).max(64).optional(),
+  ocurrioAt: z.string().datetime().optional(),
 });
 export type CreateSubtareaIncidenciaInput = z.infer<typeof createSubtareaIncidenciaSchema>;
 
