@@ -302,13 +302,13 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
     }
 
     if (!record.subtareaOdoo) {
-      if (record.tecnicoId) await notificarEstadoVisita(record.tareaOdoo.id, 'completo', record.tecnicoId, record.fecha);
+      if (record.tecnicoId) await notificarEstadoVisita(record.tareaOdoo.id, 'completo', record.tecnicoId, record.fecha, body.completadoAt);
     } else {
       // req.user!.usuarioId, no record.tecnicoId: en un handoff cross-técnico
       // (ver isAssignedToPendingSwap) quien está cerrando esta unidad ahora
       // es quien tiene la visita abierta y las subtareas propias en curso —
       // no el técnico original que dejó la hoja en pendiente_post.
-      await cerrarVisitaLoteSiTodoResuelto(record.tareaOdoo.id, req.user!.usuarioId, record.fecha);
+      await cerrarVisitaLoteSiTodoResuelto(record.tareaOdoo.id, req.user!.usuarioId, record.fecha, body.completadoAt);
     }
   }
 

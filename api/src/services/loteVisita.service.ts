@@ -20,6 +20,7 @@ export async function cerrarVisitaLoteSiTodoResuelto(
   tareaOdooId: number,
   tecnicoId: Types.ObjectId | string | null | undefined,
   fecha: string,
+  ocurrioAt?: string,
 ): Promise<void> {
   if (!tecnicoId) return;
   try {
@@ -45,7 +46,7 @@ export async function cerrarVisitaLoteSiTodoResuelto(
     const todasResueltas = propias.every((id) => resueltas.has(id));
     if (!todasResueltas) return;
 
-    await notificarEstadoVisita(tareaOdooId, 'completo', tecnicoId, fecha);
+    await notificarEstadoVisita(tareaOdooId, 'completo', tecnicoId, fecha, ocurrioAt);
   } catch (err) {
     // Best-effort: si Odoo no responde a tiempo o falla la consulta, el
     // técnico sigue teniendo el botón manual "Finalizar visita" como red de

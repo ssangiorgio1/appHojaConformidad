@@ -165,6 +165,8 @@ export const patchConformidadSchema = topLevelSchema.partial().extend({
   equipo: equipoSchema.optional(),
   ticketOdoo: ticketOdooSchema.optional(),
   tipoServicio: tipoServicioSchema.optional(),
+  // Hora real de la firma del POST en el dispositivo (ver resolverMomento en telegram.service.ts).
+  completadoAt: z.string().datetime().optional(),
   // odooSync is intentionally NOT accepted here — it's written only by the
   // dedicated /odoo-sync endpoint once Odoo actually confirms success.
   pdfReporte: pdfReporteSchema.optional(),

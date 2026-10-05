@@ -13,16 +13,23 @@ export const fechaQuerySchema = z.object({
   fecha: fechaField,
 });
 
+// Momento real en que el técnico tocó el botón — solo lo manda la PWA al reproducir una acción que quedó
+// encolada sin señal, para que los tiempos de traslado/trabajo no se midan contra la hora en que volvió
+// la conexión. notificarEstadoVisita lo valida (rango razonable) y si es inválido usa la hora del servidor.
+const ocurrioAtField = z.string().datetime().optional();
+
 export const estadoVisitaSchema = z.object({
   // 'completo' no se acepta acá a propósito — ese estado lo dispara
   // patchConformidad server-side cuando se firma el POST, nunca un PATCH
   // directo del técnico.
   estado: z.enum(['en_camino', 'en_sitio']),
   fecha: fechaField,
+  ocurrioAt: ocurrioAtField,
 });
 
 export const finalizarVisitaSchema = z.object({
   fecha: fechaField,
+  ocurrioAt: ocurrioAtField,
 });
 
 export type TareaIdParam = z.infer<typeof tareaIdParamSchema>;

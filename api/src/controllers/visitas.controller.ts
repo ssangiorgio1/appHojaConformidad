@@ -78,11 +78,11 @@ async function assertSinOtraVisitaAbierta(tareaOdooId: number, fecha: string, re
 
 export const setEstadoVisita = asyncHandler(async (req: Request, res: Response) => {
   const { tareaOdooId } = req.params as unknown as TareaIdParam;
-  const { estado, fecha } = req.body as EstadoVisitaInput;
+  const { estado, fecha, ocurrioAt } = req.body as EstadoVisitaInput;
 
   await assertTecnicoOwnership(tareaOdooId, req);
   await assertSinOtraVisitaAbierta(tareaOdooId, fecha, req);
-  const visita = await notificarEstadoVisita(tareaOdooId, estado, req.user!.usuarioId, fecha);
+  const visita = await notificarEstadoVisita(tareaOdooId, estado, req.user!.usuarioId, fecha, ocurrioAt);
   res.json(visita);
 });
 
@@ -209,9 +209,9 @@ export const getVisitaActiva = asyncHandler(async (req: Request, res: Response) 
 // iniciada a mano por el propio técnico.
 export const finalizarVisitaLote = asyncHandler(async (req: Request, res: Response) => {
   const { tareaOdooId } = req.params as unknown as TareaIdParam;
-  const { fecha } = req.body as FinalizarVisitaInput;
+  const { fecha, ocurrioAt } = req.body as FinalizarVisitaInput;
   await assertTecnicoOwnership(tareaOdooId, req);
-  const visita = await notificarEstadoVisita(tareaOdooId, 'completo', req.user!.usuarioId, fecha);
+  const visita = await notificarEstadoVisita(tareaOdooId, 'completo', req.user!.usuarioId, fecha, ocurrioAt);
   res.json(visita);
 });
 

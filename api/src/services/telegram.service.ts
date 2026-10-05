@@ -57,12 +57,16 @@ export async function notificarEstadoVisita(
   estado: 'en_camino' | 'en_sitio' | 'completo',
   tecnicoId: Types.ObjectId | string,
   fecha: string,
+  ocurrioAt?: string,
 ) {
   const visita = await upsertViajeAbierto(tareaOdooId, estado, tecnicoId, fecha);
 
   // Timestamp por transición, seteado una sola vez: un reintento o un PATCH
   // duplicado del mismo estado no debe correr el reloj de traslado/trabajo.
-  const now = new Date();
+  // `ocurrioAt` (acción encolada sin señal en la PWA) es el momento real del
+  // toque: se acepta solo si es razonable (no futuro, no más de 24 h atrás) y
+  // sin retroceder más allá de la transición anterior; si no, hora del servidor.
+  const now = resolverMomento(ocurrioAt, estado === 'en_sitio' ? visita.enCaminoAt : estado === 'completo' ? (visita.enSitioAt ?? visita.enCaminoAt) : null);
   if (estado === 'en_camino' && !visita.enCaminoAt) visita.enCaminoAt = now;
   if (estado === 'en_sitio' && !visita.enSitioAt) visita.enSitioAt = now;
   if (estado === 'completo' && !visita.completoAt) visita.completoAt = now;
@@ -84,6 +88,16 @@ export async function notificarEstadoVisita(
 
   await visita.save();
   return visita;
+}
+
+export function resolverMomento(ocurrioAt: string | undefined, previo: Date | null | undefined): Date {
+  const ahora = new Date();
+  if (!ocurrioAt) return ahora;
+  const t = new Date(ocurrioAt);
+  const ms = t.getTime();
+  if (Number.isNaN(ms) || ms > ahora.getTime() + 60_000 || ms < ahora.getTime() - 24 * 3_600_000) return ahora;
+  if (previo && ms < previo.getTime()) return ahora;
+  return t;
 }
 
 // Filtra por `{tareaOdooId, tecnicoId, abierta: true}` en vez de solo
