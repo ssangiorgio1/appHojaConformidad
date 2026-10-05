@@ -252,6 +252,9 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
   }
 
   if (body.equipo) Object.assign(record.equipo, body.equipo);
+  if (body.verificacionEquipo) {
+    record.verificacionEquipo = { ...body.verificacionEquipo, at: new Date(body.verificacionEquipo.at) } as typeof record.verificacionEquipo;
+  }
 
   await record.save();
 
@@ -356,6 +359,8 @@ export const listConformidades = asyncHandler(async (req: Request, res: Response
     filter['cambioEquipo.rol'] = { $ne: null };
     filter['cambioEquipo.parejaId'] = null;
   }
+  if (query.verificacionEquipo === 'bajo_responsabilidad') filter['verificacionEquipo.avanzoBajoResponsabilidad'] = true;
+  else if (query.verificacionEquipo) filter['verificacionEquipo.estado'] = query.verificacionEquipo;
   if (query.altaMesaAyuda) filter['altaEquipo.mesaAyuda.checked'] = query.altaMesaAyuda === 'hecho';
   if (query.altaCoordinacion) filter['altaEquipo.coordinacion.checked'] = query.altaCoordinacion === 'hecho';
   if (query.matricula) filter.matricula = new RegExp(escapeRegExp(query.matricula), 'i');

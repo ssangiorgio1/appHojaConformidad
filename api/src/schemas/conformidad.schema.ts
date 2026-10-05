@@ -159,7 +159,15 @@ export const createConformidadSchema = topLevelSchema
     cambioEquipo: cambioEquipoSchema.optional(),
   });
 
+const verificacionEquipoSchema = z.object({
+  estado: z.enum(['verificado', 'con_problemas', 'sin_verificar']),
+  problemas: z.array(z.string().max(300)).max(20),
+  avanzoBajoResponsabilidad: z.boolean(),
+  at: z.string().datetime(),
+});
+
 export const patchConformidadSchema = topLevelSchema.partial().extend({
+  verificacionEquipo: verificacionEquipoSchema.optional(),
   pre: phaseInputSchema.optional(),
   post: phaseInputSchema.optional(),
   equipo: equipoSchema.optional(),
@@ -199,6 +207,9 @@ export const listConformidadesQuerySchema = z.object({
   // todavía no tienen su pareja vinculada — para que coordinación las pueda
   // encontrar todas juntas en vez de tener que abrir cada hoja para verlo.
   cambioEquipoPendiente: z.coerce.boolean().optional(),
+  // Verificación del equipo en el paso de control: 'bajo_responsabilidad' = el técnico avanzó igual con el
+  // equipo sin confirmar (ver verificacionEquipo en el modelo).
+  verificacionEquipo: z.enum(['verificado', 'con_problemas', 'sin_verificar', 'bajo_responsabilidad']).optional(),
 });
 
 // Query del endpoint acotado de búsqueda de pendientes de emparejar — ver

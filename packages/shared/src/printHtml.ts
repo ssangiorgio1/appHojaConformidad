@@ -288,7 +288,7 @@ export async function buildPrintHtml(
   .info-table .k { background: var(--tint); font-weight: 700; color: var(--secondary); width: 15%; white-space: nowrap; }
   .info-table .v { width: 35%; }
 
-  .section-banner { background: var(--secondary); color: #fff; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; padding: 6px 10px; border-radius: 4px; margin: 14px 0 6px; page-break-after: avoid; break-after: avoid; }
+  .section-banner { background: var(--secondary); color: #fff; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; padding: 6px 10px; border-radius: 4px; margin: 10px 0 6px; page-break-after: avoid; break-after: avoid; }
 
   table.check-table { width: 100%; border-collapse: collapse; font-size: 10.8px; margin-bottom: 4px; page-break-inside: auto; }
   .check-table th { background: var(--tint); color: var(--dark); border: 1px solid var(--border); padding: 6px 8px; text-align: left; }
@@ -308,25 +308,25 @@ export async function buildPrintHtml(
   .equip-card { flex: 1 1 0; min-width: 0; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; page-break-inside: avoid; break-inside: avoid; }
   .equip-card-title { background: var(--dark); color: #fff; font-weight: 700; font-size: 10.5px; padding: 5px 8px; text-transform: uppercase; letter-spacing: 0.2px; }
   .equip-card-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 9.3px; }
-  .equip-card-table td { border-bottom: 1px solid var(--border); padding: 4px 6px; vertical-align: top; }
-  .equip-card-table .k { color: #6b6367; width: 54%; }
+  .equip-card-table td { border-bottom: 1px solid var(--border); padding: 3px 6px; vertical-align: top; }
+  .equip-card-table .k { color: #6b6367; width: 58%; }
   .equip-card-table .v { font-weight: 600; color: var(--dark); text-align: right; overflow-wrap: anywhere; }
   .equip-card-table .mini-sub { background: var(--tint); color: var(--secondary); font-weight: 700; font-size: 9px; text-transform: uppercase; }
 
   .obs-box { border: 1px solid var(--border); border-radius: 5px; padding: 8px 10px; font-size: 11px; min-height: 34px; margin-bottom: 8px; background: #fff; }
-  .obs-label { font-weight: 700; color: var(--secondary); font-size: 11px; margin: 12px 0 5px; text-transform: uppercase; letter-spacing: 0.2px; page-break-after: avoid; break-after: avoid; }
+  .obs-label { font-weight: 700; color: var(--secondary); font-size: 11px; margin: 9px 0 4px; text-transform: uppercase; letter-spacing: 0.2px; page-break-after: avoid; break-after: avoid; }
 
   .sig-row { display: flex; gap: 20px; margin: 6px 0 4px; page-break-inside: avoid; break-inside: avoid; }
   .sig-block { flex: 1; text-align: center; }
-  .sig-block img.sig { max-width: 100%; max-height: 90px; border-bottom: 1px solid var(--dark); display: block; margin: 0 auto 4px; }
-  .sig-line { border-bottom: 1px solid var(--dark); height: 60px; margin-bottom: 4px; }
+  .sig-block img.sig { max-width: 100%; max-height: 72px; border-bottom: 1px solid var(--dark); display: block; margin: 0 auto 4px; }
+  .sig-line { border-bottom: 1px solid var(--dark); height: 50px; margin-bottom: 4px; }
   .sig-refused { display: flex; align-items: center; justify-content: center; color: var(--bad); font-size: 10.5px; font-weight: 700; }
   .sig-caption { font-size: 10px; color: #6b6367; font-weight: 600; }
 
-  .photo-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-  .photo-cell { width: 120px; text-align: center; page-break-inside: avoid; break-inside: avoid; }
-  .photo { width: 120px; height: 120px; object-fit: cover; border: 1px solid var(--border); border-radius: 3px; display: block; }
-  .video-placeholder { width: 120px; height: 90px; border: 1px dashed #999; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #666; text-align: center; }
+  .photo-grid { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+  .photo-cell { width: 108px; text-align: center; page-break-inside: avoid; break-inside: avoid; }
+  .photo { width: 108px; height: 108px; object-fit: cover; border: 1px solid var(--border); border-radius: 3px; display: block; }
+  .video-placeholder { width: 108px; height: 80px; border: 1px dashed #999; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #666; text-align: center; }
   .photo-caption { font-size: 9px; color: #6b6367; margin-top: 2px; }
 
   /* Groups a section title with its immediately-following content so print

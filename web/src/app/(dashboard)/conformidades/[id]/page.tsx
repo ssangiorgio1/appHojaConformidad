@@ -12,7 +12,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { IconCamera, IconChevronLeft, IconLock, IconDocument, IconX } from '@/components/ui/Icons';
 import { AltaCheckToggle, canToggleAlta } from '@/components/AltaCheckToggle';
-import { ConformidadResumen, InfoField, isEquipoFieldVisible } from '@/components/ConformidadResumen';
+import { ConformidadResumen, InfoField, VerificacionEquipoAviso, isEquipoFieldVisible } from '@/components/ConformidadResumen';
 import {
   getConformidad,
   generateConformidadPdf,
@@ -336,6 +336,9 @@ export default function ConformidadDetailPage() {
                         )}
                       </span>
                       <span className="truncate text-[10px] font-semibold text-muted">{label ?? 'Foto'}</span>
+                      {foto.descripcion && (
+                        <span className="line-clamp-3 text-[10px] font-medium leading-tight text-text">{foto.descripcion}</span>
+                      )}
                     </button>
                   );
                 })}
@@ -446,6 +449,7 @@ export default function ConformidadDetailPage() {
                     </div>
                   );
                 })}
+                <VerificacionEquipoAviso c={c} />
               </div>
             </div>
           </Card>

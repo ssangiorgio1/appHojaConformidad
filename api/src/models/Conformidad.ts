@@ -158,6 +158,20 @@ const CambioEquipoSchema = new Schema(
   { _id: false },
 );
 
+// Resultado de la verificación en vivo del equipo (paso "Control" de la PWA, ver VerificacionEquipo): lo que
+// reporta bo3 vs lo tildado en la hoja. `avanzoBajoResponsabilidad` es true cuando el técnico vio el aviso
+// "Equipo sin confirmar" y eligió avanzar igual (sin señal, sin datos o con discrepancias) — queda registro
+// explícito para que coordinación pueda revisar esas hojas, y no solo un NO suelto en el control.
+const VerificacionEquipoSchema = new Schema(
+  {
+    estado: { type: String, enum: ['verificado', 'con_problemas', 'sin_verificar'], required: true },
+    problemas: { type: [String], default: [] },
+    avanzoBajoResponsabilidad: { type: Boolean, default: false },
+    at: { type: Date, default: null },
+  },
+  { _id: false },
+);
+
 const ConformidadSchema = new Schema(
   {
     clientId: { type: String, required: true, unique: true },
@@ -203,6 +217,8 @@ const ConformidadSchema = new Schema(
     odooSync: { type: OdooSyncSchema, default: () => ({}) },
     pdfReporte: { type: PdfReporteSchema, default: null },
     cambioEquipo: { type: CambioEquipoSchema, default: () => ({}) },
+    // null = hoja anterior a este dato (o sin paso de control): no se puede afirmar nada.
+    verificacionEquipo: { type: VerificacionEquipoSchema, default: null },
 
     deletedAt: { type: Date, default: null },
   },

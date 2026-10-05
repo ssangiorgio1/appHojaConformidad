@@ -6,6 +6,8 @@ import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST
 import type { ServiceMode } from '@wara/shared/src/serviceMode';
 import { TIPO_SERVICIO_LABELS } from '@wara/shared';
 import { Badge } from '@/components/ui/Badge';
+import { IconAlertTriangle } from '@/components/ui/Icons';
+import { formatIsoDateTime } from '@/lib/format';
 import { IconCamera, IconChevronDown, IconX } from '@/components/ui/Icons';
 import type { ConformidadDoc } from '@/lib/types';
 
@@ -39,6 +41,32 @@ const CONTROL_LABEL: Record<string, string> = {
   controlConexionRed: 'Conexión a la red',
   controlRevisionSensores: 'Sensores / módulos',
 };
+
+// Aviso del resultado de la verificación en vivo del equipo (paso de control de la PWA). Solo se muestra cuando el
+// técnico avanzó igual con el equipo sin confirmar: coordinación puede revisar esas hojas. Las hojas anteriores
+// a este dato (sin `verificacionEquipo`) no muestran nada, porque no se puede afirmar nada de ellas.
+export function VerificacionEquipoAviso({ c }: { c: ConformidadDoc }) {
+  const v = c.verificacionEquipo;
+  if (!v?.avanzoBajoResponsabilidad) return null;
+  return (
+    <div className="mt-2 rounded-md border border-warning-200 bg-warning-50 p-3 text-xs text-warning-700">
+      <div className="flex items-center gap-1.5 font-extrabold">
+        <IconAlertTriangle size={14} />
+        {v.estado === 'sin_verificar' ? 'Cerrada sin verificar el equipo' : 'Cerrada con el equipo sin confirmar'}
+      </div>
+      <div className="mt-0.5 font-semibold">
+        El técnico avanzó igual y quedó bajo su responsabilidad{v.at ? ` (${formatIsoDateTime(v.at)})` : ''}.
+      </div>
+      {v.problemas.length > 0 && (
+        <ul className="mt-1 list-disc pl-4 font-medium">
+          {v.problemas.map((p, i) => (
+            <li key={i}>{p}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 export function InfoField({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -204,6 +232,7 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
               );
             })}
           </div>
+          <VerificacionEquipoAviso c={c} />
         </div>
 
         <div>
@@ -255,6 +284,9 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
                       </span>
                     </span>
                     <span className="truncate text-[10px] font-semibold text-muted">{label ?? 'Foto'}</span>
+                    {foto.descripcion && (
+                      <span className="line-clamp-3 text-[10px] font-medium leading-tight text-text">{foto.descripcion}</span>
+                    )}
                   </button>
                 );
               })}

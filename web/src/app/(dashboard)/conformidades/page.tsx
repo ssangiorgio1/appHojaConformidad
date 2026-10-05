@@ -7,14 +7,14 @@ import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Pagination } from '@/components/ui/Pagination';
-import { IconChevronDown, IconEye, IconSearch, IconX } from '@/components/ui/Icons';
+import { IconAlertTriangle, IconChevronDown, IconEye, IconSearch, IconX } from '@/components/ui/Icons';
 import { AltaCheckToggle, canToggleAlta } from '@/components/AltaCheckToggle';
 import { ConformidadResumenBody } from '@/components/ConformidadResumen';
 import { listConformidades, listUsuarios, setAltaConformidad } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
 import { useApiData } from '@/lib/useApiData';
 import { formatFechaHora } from '@/lib/format';
-import type { EstadoConformidad } from '@/lib/types';
+import type { ConformidadDoc, EstadoConformidad } from '@/lib/types';
 
 const ESTADO_LABEL: Record<EstadoConformidad, string> = {
   borrador_pre: 'Borrador PRE',
@@ -30,6 +30,28 @@ const ESTADO_TONE: Record<EstadoConformidad, BadgeTone> = {
 
 const PAGE_SIZE = 20;
 
+type FiltroVerificacion = NonNullable<import('@/lib/types').ListConformidadesQuery['verificacionEquipo']>;
+const VERIFICACION_LABEL: Record<FiltroVerificacion, string> = {
+  bajo_responsabilidad: 'Avanzó bajo responsabilidad',
+  sin_verificar: 'Sin verificar',
+  con_problemas: 'Con problemas',
+  verificado: 'Verificado',
+};
+
+// Etiqueta chica en el listado: el técnico cerró el control con el equipo sin confirmar.
+function BajoResponsabilidadBadge({ c }: { c: ConformidadDoc }) {
+  if (!c.verificacionEquipo?.avanzoBajoResponsabilidad) return null;
+  return (
+    <span
+      title="El técnico avanzó con el equipo sin confirmar (ver el detalle de la hoja)"
+      className="mt-1 inline-flex items-center gap-1 rounded-full bg-warning-50 px-2 py-0.5 text-[10.5px] font-bold text-warning-700"
+    >
+      <IconAlertTriangle size={11} />
+      Sin verificar
+    </span>
+  );
+}
+
 export default function ConformidadesPage() {
   const { usuario, getIdToken } = useAuth();
   const [search, setSearch] = useState('');
@@ -39,6 +61,7 @@ export default function ConformidadesPage() {
   const [altaMesaAyuda, setAltaMesaAyuda] = useState<'pendiente' | 'hecho' | ''>('');
   const [altaCoordinacion, setAltaCoordinacion] = useState<'pendiente' | 'hecho' | ''>('');
   const [cambioEquipoPendiente, setCambioEquipoPendiente] = useState(false);
+  const [verificacion, setVerificacion] = useState<FiltroVerificacion | ''>('');
   const [page, setPage] = useState(1);
   // En celular los selects de filtro arrancan plegados (la búsqueda queda siempre a la vista).
   const [showFiltros, setShowFiltros] = useState(false);
@@ -82,8 +105,9 @@ export default function ConformidadesPage() {
         altaMesaAyuda: altaMesaAyuda || undefined,
         altaCoordinacion: altaCoordinacion || undefined,
         cambioEquipoPendiente: cambioEquipoPendiente || undefined,
+        verificacionEquipo: verificacion || undefined,
       }),
-    [page, debouncedSearch, status, tecnicoId, altaMesaAyuda, altaCoordinacion, cambioEquipoPendiente],
+    [page, debouncedSearch, status, tecnicoId, altaMesaAyuda, altaCoordinacion, cambioEquipoPendiente, verificacion],
   );
 
   // Reemplaza solo la fila tocada con la respuesta del servidor — evita el
@@ -119,8 +143,13 @@ export default function ConformidadesPage() {
           label: 'Cambio de equipo: pendiente de vincular',
           onRemove: () => setCambioEquipoPendiente(false),
         },
+        verificacion && {
+          key: 'verificacion',
+          label: `Equipo: ${VERIFICACION_LABEL[verificacion]}`,
+          onRemove: () => setVerificacion(''),
+        },
       ].filter((f): f is { key: string; label: string; onRemove: () => void } => Boolean(f)),
-    [search, tecnicoId, status, altaMesaAyuda, altaCoordinacion, cambioEquipoPendiente, tecnicoNombre],
+    [search, tecnicoId, status, altaMesaAyuda, altaCoordinacion, cambioEquipoPendiente, verificacion, tecnicoNombre],
   );
 
   function clearAllFilters() {
@@ -131,6 +160,7 @@ export default function ConformidadesPage() {
     setAltaMesaAyuda('');
     setAltaCoordinacion('');
     setCambioEquipoPendiente(false);
+    setVerificacion('');
   }
 
   return (
@@ -260,6 +290,23 @@ export default function ConformidadesPage() {
               <option value="pendiente">Pendiente de vincular</option>
             </Select>
           </div>
+
+          <div>
+            <div className="mb-1 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Verificación del equipo</div>
+            <Select
+              value={verificacion}
+              onChange={(e) => {
+                setPage(1);
+                setVerificacion(e.target.value as FiltroVerificacion | '');
+              }}
+            >
+              <option value="">Todas</option>
+              <option value="bajo_responsabilidad">Avanzó bajo responsabilidad</option>
+              <option value="sin_verificar">Sin verificar</option>
+              <option value="con_problemas">Con problemas</option>
+              <option value="verificado">Verificado</option>
+            </Select>
+          </div>
         </div>
 
         {activeFilters.length > 0 && (
@@ -297,7 +344,10 @@ export default function ConformidadesPage() {
                     <div className="text-[13px] font-extrabold text-primary">{c.codigoActa}</div>
                     <div className="truncate text-[14px] font-bold">{c.cliente || '—'}</div>
                   </div>
-                  <Badge tone={ESTADO_TONE[c.status]}>{ESTADO_LABEL[c.status]}</Badge>
+                  <div className="flex flex-col items-end">
+                    <Badge tone={ESTADO_TONE[c.status]}>{ESTADO_LABEL[c.status]}</Badge>
+                    <BajoResponsabilidadBadge c={c} />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[12px] font-semibold">
                   <div className="truncate text-muted">Unidad: <span className="text-text">{c.matricula || '—'}</span></div>
@@ -416,6 +466,7 @@ export default function ConformidadesPage() {
                       <div className="p-3.5 text-[13px] font-semibold text-muted">{formatFechaHora(c.fecha, c.hora)}</div>
                       <div className="p-3.5">
                         <Badge tone={ESTADO_TONE[c.status]}>{ESTADO_LABEL[c.status]}</Badge>
+                        <BajoResponsabilidadBadge c={c} />
                       </div>
                       <div className="p-3.5">
                         <AltaCheckToggle

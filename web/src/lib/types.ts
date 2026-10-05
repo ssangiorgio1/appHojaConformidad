@@ -37,6 +37,8 @@ export interface Foto {
   url?: string;
   key?: string;
   motivo?: string;
+  // Qué encontró el técnico en la foto extra del PRE — solo panel, no va al PDF.
+  descripcion?: string;
   // Ausente = 'image/jpeg' (fotos existentes). 'video/webm' es un video
   // corto de verificación (Pantalla N° de serie / Cámaras ADAS, ver
   // GalleryPhotoCapture `allowVideo` en la PWA) — hay que renderizarlo como
@@ -105,6 +107,15 @@ export interface Phase {
   firma: Firma | null;
 }
 
+export type EstadoVerificacionEquipo = 'verificado' | 'con_problemas' | 'sin_verificar';
+
+export interface VerificacionEquipo {
+  estado: EstadoVerificacionEquipo;
+  problemas: string[];
+  avanzoBajoResponsabilidad: boolean;
+  at: string | null;
+}
+
 export interface ConformidadDoc {
   _id: string;
   clientId: string;
@@ -127,6 +138,9 @@ export interface ConformidadDoc {
   altaEquipo: AltaEquipo;
   ticketOdoo: TicketOdoo | null;
   cambioEquipo: CambioEquipo | null;
+  // Verificación del equipo en el paso de control de la PWA. `avanzoBajoResponsabilidad`: el técnico avanzó igual
+  // con el equipo sin confirmar. null/ausente = hoja anterior a este dato.
+  verificacionEquipo?: VerificacionEquipo | null;
   // Set once the app has generated and uploaded the PDF report (see
   // mobile/src/sync/sync.ts) — null until then, e.g. for borrador_pre records.
   pdfReporte: { url: string; key: string } | null;
@@ -221,6 +235,7 @@ export interface ListConformidadesQuery {
   altaMesaAyuda?: 'pendiente' | 'hecho';
   altaCoordinacion?: 'pendiente' | 'hecho';
   cambioEquipoPendiente?: boolean;
+  verificacionEquipo?: EstadoVerificacionEquipo | 'bajo_responsabilidad';
 }
 
 // Mirrors api/src/schemas/reporte.schema.ts
