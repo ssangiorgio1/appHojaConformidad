@@ -16,6 +16,8 @@ virtualStoreDir: ".vs"
 # already-fragile native build tooling for a legacy app being phased out.
 overrides:
   qs: ^6.16.0
+  "@grpc/grpc-js": ^1.14.5
+  "brace-expansion@2": ^2.1.6
 allowBuilds:
   '@firebase/util': true
   esbuild: true
