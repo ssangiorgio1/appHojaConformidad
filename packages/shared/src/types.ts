@@ -29,6 +29,9 @@ export interface Foto {
   // dataUrl/url; counts the same as a real photo for that item's
   // "required" check.
   motivo?: string;
+  // Qué encontró el técnico en esta foto (slot 'extra' del PRE). Solo para el
+  // panel: buildPrintHtml NO lo imprime, el PDF que ve el cliente no lo lleva.
+  descripcion?: string;
   // Absent = 'image/jpeg' (compat with existing photos, always JPEG until
   // now). 'video/webm' is a short clip recorded with MediaRecorder (see
   // GalleryPhotoCapture `allowVideo`, "Pantalla N° de serie"/"Cámaras ADAS")

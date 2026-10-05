@@ -25,6 +25,7 @@ const fotoSchema = z.object({
   url: z.string().min(1).refine(isR2Url, 'url must point to the R2 public bucket').optional(),
   key: z.string().min(1).optional(),
   motivo: z.string().optional(),
+  descripcion: z.string().max(1000).optional(),
   mimeType: z.enum(['image/jpeg', 'image/png', 'video/webm']).optional(),
 });
 

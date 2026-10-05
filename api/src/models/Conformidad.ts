@@ -17,6 +17,8 @@ const FotoSchema = new Schema(
     url: { type: String },
     key: { type: String },
     motivo: { type: String },
+    // Qué encontró el técnico (slot 'extra' del PRE) — solo panel, no va al PDF.
+    descripcion: { type: String },
     // Ausente = 'image/jpeg' (fotos existentes). 'video/webm' es un video
     // corto de verificación (Pantalla N° de serie / Cámaras ADAS).
     mimeType: { type: String, enum: ['image/jpeg', 'image/png', 'video/webm'] },
@@ -215,6 +217,8 @@ const ConformidadSchema = new Schema(
     tareaOdoo: { type: TareaOdooSchema, default: null },
     subtareaOdoo: { type: SubtareaOdooSchema, default: null },
     odooSync: { type: OdooSyncSchema, default: () => ({}) },
+    // Envío del PDF solo-PRE al ticket al terminar el PRE (odooSync es el del PDF completo).
+    preOdooSync: { type: OdooSyncSchema, default: () => ({}) },
     pdfReporte: { type: PdfReporteSchema, default: null },
     cambioEquipo: { type: CambioEquipoSchema, default: () => ({}) },
     // null = hoja anterior a este dato (o sin paso de control): no se puede afirmar nada.

@@ -3,6 +3,7 @@ import { firebaseAuth } from '../config/firebase.js';
 import { env } from '../config/env.js';
 import { UsuarioModel } from '../models/Usuario.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { userLimiter } from './rateLimit.middleware.js';
 import type { AuthUser } from '../types/express.js';
 
 export const requireAuth = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
@@ -80,7 +81,7 @@ export const requireAuth = asyncHandler(async (req: Request, res: Response, next
     role: usuario.role as AuthUser['role'],
   };
   req.user = authUser;
-  next();
+  userLimiter(req, res, next);
 });
 
 export function requireRole(roles: Array<AuthUser['role']>) {

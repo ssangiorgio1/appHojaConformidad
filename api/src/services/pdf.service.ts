@@ -1,3 +1,4 @@
+import { env } from '../config/env.js';
 import { readFileSync } from 'node:fs';
 import puppeteer, { type Browser } from 'puppeteer';
 import sharp from 'sharp';
@@ -67,8 +68,9 @@ async function getBrowser(): Promise<Browser> {
   return browserPromise;
 }
 
-async function renderPdfBuffer(record: PrintableConformidad): Promise<Buffer> {
+async function renderPdfBuffer(record: PrintableConformidad, opts?: { soloPre?: boolean }): Promise<Buffer> {
   const html = await buildPrintHtml(record, {
+    soloPre: opts?.soloPre,
     logoDataUri: LOGO_DATA_URI,
     resolvePhotoSrc: async (foto) => {
       if (!foto.url) return foto.dataUrl;
@@ -77,6 +79,16 @@ async function renderPdfBuffer(record: PrintableConformidad): Promise<Buffer> {
   });
   const browser = await getBrowser();
   const page = await browser.newPage();
+  // Defensa en profundidad: el HTML se arma con datos del técnico; si algún
+  // campo lograra inyectar un <img>/<link>, Chromium (que corre dentro de la
+  // red del servidor) no puede pegarle a nada que no sea el bucket R2.
+  const r2Prefix = `${env.R2_PUBLIC_BASE_URL.replace(/\/$/, '')}/`;
+  await page.setRequestInterception(true);
+  page.on('request', (r) => {
+    const u = r.url();
+    if (u.startsWith('data:') || u === 'about:blank' || u.startsWith(r2Prefix)) void r.continue();
+    else void r.abort();
+  });
   try {
     // 'load' (not just 'domcontentloaded') so the <img> tags pointing at R2
     // photo/signature URLs finish loading before the page is printed —
@@ -94,7 +106,8 @@ async function renderPdfBuffer(record: PrintableConformidad): Promise<Buffer> {
 // memoria, sin almacenamiento persistente.
 export async function buildConformidadPdfBuffer(
   record: PrintableConformidad,
+  opts?: { soloPre?: boolean },
 ): Promise<Buffer> {
-  return renderPdfBuffer(record);
+  return renderPdfBuffer(record, opts);
 }
 

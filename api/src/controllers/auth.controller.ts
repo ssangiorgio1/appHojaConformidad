@@ -3,6 +3,7 @@ import { UsuarioModel } from '../models/Usuario.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { HttpError } from '../middleware/error.middleware.js';
 import type { CreateUsuarioInput, UpdateMeInput, UpdateUsuarioInput } from '../schemas/auth.schema.js';
+import { audit } from '../services/audit.service.js';
 import { ensureFirebaseUser, isProtectedSuperadmin, resetFirebasePassword, serializeUsuario } from '../services/usuario.service.js';
 
 export const getMe = asyncHandler(async (req: Request, res: Response) => {
@@ -56,6 +57,10 @@ export const updateUsuario = asyncHandler(async (req: Request, res: Response) =>
 
   const usuario = await UsuarioModel.findByIdAndUpdate(req.params.id, { $set: body }, { new: true });
   if (!usuario) throw new HttpError(404, 'Usuario not found');
+  await audit(req, 'usuario.update', target.email, {
+    cambios: body,
+    antes: { role: target.role, activo: target.activo },
+  });
   res.json(serializeUsuario(usuario));
 });
 
@@ -65,6 +70,7 @@ export const resetUsuarioPassword = asyncHandler(async (req: Request, res: Respo
   if (!usuario.firebaseUid) throw new HttpError(400, 'Usuario has no Firebase account yet');
 
   const tempPassword = await resetFirebasePassword(usuario.firebaseUid);
+  await audit(req, 'usuario.reset-password', usuario.email);
   res.json({ tempPassword });
 });
 
@@ -90,5 +96,6 @@ export const createUsuario = asyncHandler(async (req: Request, res: Response) =>
     { $set: { nombre: body.nombre, legajo: body.legajo ?? '', role: body.role, activo: body.activo, firebaseUid: uid } },
     { upsert: true, new: true },
   );
+  await audit(req, 'usuario.create', body.email, { role: body.role, activo: body.activo });
   res.status(201).json({ usuario: serializeUsuario(usuario), tempPassword });
 });

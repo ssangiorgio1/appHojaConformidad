@@ -26,3 +26,17 @@ export const calendarMutationLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// Límite por usuario autenticado (se aplica dentro de requireAuth, ya con
+// req.user). El apiLimiter de arriba agrupa por IP, así que varios técnicos
+// detrás de la misma IP (oficina, CGNAT del carrier) comparten balde y un
+// token robado puede scrapear dentro del cupo de la IP. Este lo acota por
+// cuenta. Holgado a propósito: la PWA hace polling de agenda/flota.
+export const userLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `u:${String(req.user?.usuarioId ?? req.ip)}`,
+  validate: { keyGeneratorIpFallback: false },
+});

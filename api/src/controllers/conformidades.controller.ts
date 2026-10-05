@@ -1,3 +1,4 @@
+import { audit } from '../services/audit.service.js';
 import type { Request, Response } from 'express';
 import { Types } from 'mongoose';
 import { ConformidadModel } from '../models/Conformidad.js';
@@ -483,6 +484,13 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
   if (!record) throw new HttpError(404, 'Conformidad not found');
   await assertOwnedByRequester(req, record);
 
+  // ?fase=pre: adjunta al ticket el PDF solo-PRE (estado en que se encontró la
+  // unidad) apenas termina el PRE, con su propio estado (preOdooSync) — el
+  // odooSync de siempre sigue siendo el del PDF completo al cerrar el POST.
+  const fase: 'pre' | 'completo' = req.query.fase === 'pre' ? 'pre' : 'completo';
+  const syncKey = fase === 'pre' ? 'preOdooSync' : 'odooSync';
+  if (fase === 'pre' && record.status === 'borrador_pre') throw new HttpError(400, 'El PRE todavía no se finalizó');
+
   if (!record.ticketOdoo?.numero) throw new HttpError(400, 'This record has no ticket de Odoo linked');
 
   // The PDF is posted to Odoo as the técnico, not a shared service account —
@@ -493,21 +501,21 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
   // TEMP — QA only: `?force=1` bypasses the idempotency guard below so a
   // record that already synced can be resent while testing the printHtml
   // PDF layout fix. Remove this query check once QA is done.
-  if (record.odooSync?.status === 'SYNCED' && req.query.force !== '1') {
-    res.json({ odooSync: record.odooSync });
+  if (record[syncKey]?.status === 'SYNCED' && req.query.force !== '1') {
+    res.json({ [syncKey]: record[syncKey] });
     return;
   }
 
   const ticketId = record.ticketOdoo.odooId ?? Number(record.ticketOdoo.numero);
   if (!Number.isFinite(ticketId)) {
-    record.odooSync = {
+    record[syncKey] = {
       status: 'FAILED',
-      attempts: (record.odooSync?.attempts ?? 0) + 1,
+      attempts: (record[syncKey]?.attempts ?? 0) + 1,
       lastError: 'Ticket sin id numérico válido',
       lastAttemptAt: new Date(),
     };
     await record.save();
-    res.json({ odooSync: record.odooSync });
+    res.json({ [syncKey]: record[syncKey] });
     return;
   }
 
@@ -518,14 +526,14 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
   // cualquiera con solo ese número.
   const ticket = await verifyTicketExists(ticketId);
   if (!ticket) {
-    record.odooSync = {
+    record[syncKey] = {
       status: 'FAILED',
-      attempts: (record.odooSync?.attempts ?? 0) + 1,
+      attempts: (record[syncKey]?.attempts ?? 0) + 1,
       lastError: 'El ticket de Odoo vinculado ya no existe',
       lastAttemptAt: new Date(),
     };
     await record.save();
-    res.json({ odooSync: record.odooSync });
+    res.json({ [syncKey]: record[syncKey] });
     return;
   }
 
@@ -547,41 +555,42 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
   const postItem7 = record.post?.item7Detalle ? `<p><b>Tornillos de panel/tablero (POST):</b> ${esc(record.post.item7Detalle)}</p>` : '';
   const preItem8 = record.pre?.item8Detalle ? `<p><b>Tapizados (PRE):</b> ${esc(record.pre.item8Detalle)}</p>` : '';
   const postItem8 = record.post?.item8Detalle ? `<p><b>Tapizados (POST):</b> ${esc(record.post.item8Detalle)}</p>` : '';
-  const resumenHtml = `<p><b>Hoja de conformidad completada</b> — ${esc(record.cliente)} (${esc(record.matricula)})</p>
+  const titulo = fase === 'pre' ? 'Revisión inicial (PRE) de la unidad' : 'Hoja de conformidad completada';
+  const resumenHtml = `<p><b>${titulo}</b> — ${esc(record.cliente)} (${esc(record.matricula)})</p>
     <p>Fecha: ${esc(formatFechaArg(record.fecha))} ${esc(record.hora)}<br>Técnico: ${esc(record.instalador)}</p>
-    ${satisfaccion ? `<p>Estado de firma: ${esc(SATISFACCION_LABELS[satisfaccion] ?? satisfaccion)}</p>` : ''}
-    ${motivo ? `<p>Motivo: ${esc(motivo)}</p>` : ''}
-    ${record.post.firma?.clienteAusente ? '<p>Cliente ausente</p>' : ''}
+    ${fase === 'pre' ? '' : satisfaccion ? `<p>Estado de firma: ${esc(SATISFACCION_LABELS[satisfaccion] ?? satisfaccion)}</p>` : ''}
+    ${fase === 'pre' ? '' : motivo ? `<p>Motivo: ${esc(motivo)}</p>` : ''}
+    ${fase === 'pre' ? (record.pre.firma?.clienteAusente ? '<p>Cliente ausente</p>' : '') : record.post.firma?.clienteAusente ? '<p>Cliente ausente</p>' : ''}
     ${preFalla}
-    ${postFalla}
+    ${fase === 'pre' ? '' : postFalla}
     ${preAirbag}
-    ${postAirbag}
+    ${fase === 'pre' ? '' : postAirbag}
     ${preGuine}
-    ${postGuine}
+    ${fase === 'pre' ? '' : postGuine}
     ${preAlternador}
-    ${postAlternador}
+    ${fase === 'pre' ? '' : postAlternador}
     ${prePresion}
-    ${postPresion}
+    ${fase === 'pre' ? '' : postPresion}
     ${preTemp}
-    ${postTemp}
+    ${fase === 'pre' ? '' : postTemp}
     ${preItem7}
-    ${postItem7}
+    ${fase === 'pre' ? '' : postItem7}
     ${preItem8}
-    ${postItem8}`;
+    ${fase === 'pre' ? '' : postItem8}`;
 
   try {
     // Generar el PDF en memoria para adjuntarlo a Odoo — no se guarda en R2.
-    const pdfBuffer = await renderConformidadPdf(record.toObject() as unknown as Parameters<typeof renderConformidadPdf>[0]);
+    const pdfBuffer = await renderConformidadPdf(record.toObject() as unknown as Parameters<typeof renderConformidadPdf>[0], { soloPre: fase === 'pre' });
     await pushConformidadToTicket({
       ticketId,
       pdfBuffer,
-      fileName: `hoja_conformidad_${record.codigoActa}.pdf`,
+      fileName: fase === 'pre' ? `pre_conformidad_${record.codigoActa}.pdf` : `hoja_conformidad_${record.codigoActa}.pdf`,
       resumenHtml,
       as: { login: usuario.odoo.login, password: decryptSecret(usuario.odoo.passwordEnc) },
     });
-    record.odooSync = {
+    record[syncKey] = {
       status: 'SYNCED',
-      attempts: (record.odooSync?.attempts ?? 0) + 1,
+      attempts: (record[syncKey]?.attempts ?? 0) + 1,
       syncedAt: new Date(),
       lastError: '',
       lastAttemptAt: new Date(),
@@ -589,16 +598,16 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
   } catch (err) {
     const message = err instanceof OdooError ? `${err.code}: ${err.message}` : err instanceof Error ? err.message : String(err);
     console.error('ODOO_SYNC_FAILURE', record.id, message);
-    record.odooSync = {
+    record[syncKey] = {
       status: 'FAILED',
-      attempts: (record.odooSync?.attempts ?? 0) + 1,
+      attempts: (record[syncKey]?.attempts ?? 0) + 1,
       lastError: message,
       lastAttemptAt: new Date(),
     };
   }
 
   await record.save();
-  res.json({ odooSync: record.odooSync });
+  res.json({ [syncKey]: record[syncKey] });
 });
 
 export const deleteConformidad = asyncHandler(async (req: Request, res: Response) => {
@@ -608,5 +617,6 @@ export const deleteConformidad = asyncHandler(async (req: Request, res: Response
     { new: true },
   );
   if (!record) throw new HttpError(404, 'Conformidad not found');
+  await audit(req, 'conformidad.delete', String(record._id), { numero: record.numero });
   res.status(204).send();
 });

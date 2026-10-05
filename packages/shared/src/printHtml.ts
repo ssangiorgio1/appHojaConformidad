@@ -60,11 +60,11 @@ function siNoBadge(value: ChecklistValue): string {
   return `<span class="opt si${si ? ' sel' : ''}">SI</span><span class="sep">/</span><span class="opt no${no ? ' sel' : ''}">NO</span>`;
 }
 
-function checklistTable(record: PrintableConformidad): string {
+function checklistTable(record: PrintableConformidad, soloPre = false): string {
   let rows = '';
   for (const item of CHECKLIST_ITEMS) {
     if (item.group) {
-      rows += `<tr class="subhead-row"><td colspan="3" class="subhead">${esc(item.group)}</td></tr>`;
+      rows += `<tr class="subhead-row"><td colspan="${soloPre ? 2 : 3}" class="subhead">${esc(item.group)}</td></tr>`;
     }
     if (item.hiddenInPdf) continue;
     const indented = item.key.startsWith('item6_');
@@ -80,14 +80,14 @@ function checklistTable(record: PrintableConformidad): string {
         ${esc(item.label)}
         ${item.note ? `<div class="note">${esc(item.note)}</div>` : ''}
         ${preDetalle ? `<div class="note"><strong>Detalle PRE:</strong> ${esc(preDetalle)}</div>` : ''}
-        ${postDetalle ? `<div class="note"><strong>Detalle POST:</strong> ${esc(postDetalle)}</div>` : ''}
+        ${!soloPre && postDetalle ? `<div class="note"><strong>Detalle POST:</strong> ${esc(postDetalle)}</div>` : ''}
       </td>
       <td class="opt-cell">${siNoBadge(pre)}</td>
-      <td class="opt-cell">${siNoBadge(post)}</td>
+      ${soloPre ? '' : `<td class="opt-cell">${siNoBadge(post)}</td>`}
     </tr>`;
   }
   return `<table class="check-table">
-    <thead><tr><th>Ítem a revisar</th><th>PRE instalación</th><th>POST instalación</th></tr></thead>
+    <thead><tr><th>Ítem a revisar</th><th>PRE instalación</th>${soloPre ? '' : '<th>POST instalación</th>'}</tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }
@@ -240,18 +240,31 @@ async function photosBlock(slots: PhotoSlotDef[], fotos: Foto[], titulo: string,
 
 export async function buildPrintHtml(
   record: PrintableConformidad,
-  opts?: { logoDataUri?: string; resolvePhotoSrc?: PhotoSrcResolver },
+  opts?: {
+    logoDataUri?: string;
+    resolvePhotoSrc?: PhotoSrcResolver;
+    // Versión del PDF que se manda al ticket al terminar el PRE: estado en el
+    // que se encontró la unidad, sin las secciones de POST ni equipamiento.
+    soloPre?: boolean;
+  },
 ): Promise<string> {
   const resolvePhotoSrc = opts?.resolvePhotoSrc ?? defaultResolvePhotoSrc;
+  const soloPre = opts?.soloPre === true;
   const statusLabel =
-    record.status === 'completo' ? 'Completo' : record.status === 'pendiente_post' ? 'Pendiente POST' : 'PRE en progreso';
+    soloPre ? 'Revisión inicial (PRE)' : record.status === 'completo' ? 'Completo' : record.status === 'pendiente_post' ? 'Pendiente POST' : 'PRE en progreso';
   const tipoServicioLabel = record.tipoServicio ? TIPO_SERVICIO_LABELS[record.tipoServicio] : null;
   const mode = getServiceMode(record);
 
   const [prePhotos, postPhotos] = await Promise.all([
     photosBlock(prePhotoSlotsFor(mode), record.pre.fotos, 'Fotos PRE', resolvePhotoSrc),
-    photosBlock(postPhotoSlotsFor(mode), record.post.fotos, 'Fotos POST', resolvePhotoSrc),
+    soloPre ? '' : photosBlock(postPhotoSlotsFor(mode), record.post.fotos, 'Fotos POST', resolvePhotoSrc),
   ]);
+  // Lo que escribe el técnico en el paso "Observaciones" del PRE — lo ve el
+  // cliente. Foto.descripcion (qué encontró en la foto extra) es solo para el
+  // panel y no se imprime acá.
+  const preObservaciones = record.pre.observaciones?.trim()
+    ? `<div class="keep-together"><div class="obs-label">Observaciones encontradas (PRE)</div><div class="obs-box" style="white-space: pre-wrap;">${esc(record.pre.observaciones)}</div></div>`
+    : '';
 
   return `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
@@ -366,14 +379,15 @@ export async function buildPrintHtml(
 
   <div class="keep-together">
     <div class="section-banner">Revisión general del vehículo antes de comenzar la instalación</div>
-    ${checklistTable(record)}
+    ${checklistTable(record, soloPre)}
   </div>
 
-  <div class="keep-together">
+  ${soloPre ? '' : `<div class="keep-together">
     <div class="section-banner">Datos de equipamiento</div>
     ${equipoGrid(record)}
-  </div>
+  </div>`}
 
+  ${preObservaciones}
   ${prePhotos}
   <div class="keep-together">
     <div class="sig-row">
@@ -389,7 +403,7 @@ export async function buildPrintHtml(
     </div>
   </div>
 
-  ${postPhotos}
+  ${soloPre ? '' : `${postPhotos}
   <div class="keep-together">
     <div class="sig-row">
       <div class="sig-block">
@@ -404,6 +418,6 @@ export async function buildPrintHtml(
         }
       </div>
     </div>
-  </div>
+  </div>`}
 </body></html>`;
 }
