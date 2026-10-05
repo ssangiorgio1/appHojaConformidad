@@ -110,13 +110,13 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <div className="text-2xl font-extrabold">Buen día, {usuario?.nombre?.split(' ')[0] || usuario?.email}</div>
+        <div className="text-xl font-extrabold lg:text-2xl">Buen día, {usuario?.nombre?.split(' ')[0] || usuario?.email}</div>
         <div className="mt-0.5 text-sm font-semibold text-muted">Resumen general</div>
       </div>
 
       {error && <Card className="p-4 text-sm font-semibold text-bad">{error}</Card>}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
         <KpiCard icon={<IconDocument size={21} />} tone="primary" value={data?.total} label="Conformidades totales" loading={loading} />
         <KpiCard icon={<IconCheck size={21} />} tone="ok" value={data?.completadas} label="Completadas" loading={loading} />
         <KpiCard icon={<IconAlertTriangle size={21} />} tone="warn" value={data?.pendientes} label="Pendientes de POST" loading={loading} />
@@ -180,7 +180,7 @@ export default function DashboardPage() {
         </>
       )}
 
-      <Card className="p-6">
+      <Card className="p-4 lg:p-6">
         <div className="mb-4 text-[15px] font-extrabold">Últimas conformidades</div>
         {loading && <div className="text-sm font-semibold text-muted">Cargando...</div>}
         {!loading && data?.recientes.length === 0 && (
@@ -224,7 +224,7 @@ function PendientesAltaCard({
   onToggle: (id: string, area: 'mesaAyuda' | 'coordinacion', checked: boolean) => Promise<void>;
 }) {
   return (
-    <Card className="p-6">
+    <Card className="p-4 lg:p-6">
       <div className="mb-4 text-[15px] font-extrabold">{titulo}</div>
       {loading && <div className="text-sm font-semibold text-muted">Cargando...</div>}
       {!loading && items?.length === 0 && (
@@ -268,7 +268,7 @@ function UltimasAltasCard({
   usuarioNombre: (usuarioId: string) => string;
 }) {
   return (
-    <Card className="p-6">
+    <Card className="p-4 lg:p-6">
       <div className="mb-4 text-[15px] font-extrabold">{titulo}</div>
       {loading && <div className="text-sm font-semibold text-muted">Cargando...</div>}
       {!loading && items?.length === 0 && <div className="text-sm font-semibold text-muted">Todavía no se dio ninguna alta.</div>}
@@ -309,7 +309,7 @@ function KpiCard({
     neutral: 'bg-neutral-100 text-neutral-700',
   };
   return (
-    <Card className="flex flex-col gap-4 p-5">
+    <Card className="flex flex-col gap-3 p-4 lg:gap-4 lg:p-5">
       <div className={`flex h-10 w-10 items-center justify-center rounded-md ${toneClasses[tone]}`}>{icon}</div>
       <div>
         <div className="text-[27px] font-extrabold leading-none">{loading ? '—' : (value ?? 0)}</div>

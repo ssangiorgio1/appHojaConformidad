@@ -255,5 +255,5 @@ export default function FlotaMap({
     }
   }, [unidades, enfocarClave]);
 
-  return <div ref={containerRef} className="h-[calc(100vh-15rem)] min-h-[420px] w-full rounded-lg" />;
+  return <div ref={containerRef} className="h-[60vh] min-h-[360px] w-full rounded-lg lg:h-[calc(100vh-15rem)] lg:min-h-[420px]" />;
 }

@@ -18,7 +18,7 @@ import {
   IconUsers,
 } from '@/components/ui/Icons';
 
-const NAV_ITEMS = [
+export const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: IconGrid },
   { href: '/conformidades', label: 'Conformidades', icon: IconDocument },
   { href: '/calendario', label: 'Calendario', icon: IconCalendar },
@@ -46,7 +46,7 @@ const NAV_ITEMS = [
 
 const COLLAPSE_KEY = 'wara.sidebar.collapsed';
 
-function roleLabel(role: string) {
+export function roleLabel(role: string) {
   if (role === 'superadmin') return 'Superadmin';
   if (role === 'admin') return 'Admin';
   if (role === 'coordinacion') return 'Coordinación';
@@ -83,7 +83,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`sticky top-6 flex h-[calc(100vh-3rem)] flex-none flex-col gap-7 overflow-y-auto overflow-x-hidden rounded-lg bg-surface p-4 shadow-soft transition-[width] duration-200 ${
+      className={`sticky top-6 hidden lg:flex h-[calc(100vh-3rem)] flex-none flex-col gap-7 overflow-y-auto overflow-x-hidden rounded-lg bg-surface p-4 shadow-soft transition-[width] duration-200 ${
         collapsed ? 'w-[76px]' : 'w-[236px]'
       }`}
     >

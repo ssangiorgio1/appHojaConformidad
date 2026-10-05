@@ -25,6 +25,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { useApiData } from '@/lib/useApiData';
 import { formatFechaHora, formatIsoDateTime } from '@/lib/format';
 import type { ConformidadDoc, EstadoConformidad, Phase, RetiroPendiente } from '@/lib/types';
+import { useBodyScrollLock } from '@/lib/useBodyScrollLock';
 
 const ESTADO_LABEL: Record<EstadoConformidad, string> = {
   borrador_pre: 'Borrador PRE',
@@ -521,6 +522,7 @@ function CambioEquipoCard({ c, onLinked }: { c: ConformidadDoc; onLinked: (updat
 
   const [pareja, setPareja] = useState<ConformidadDoc | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  useBodyScrollLock(modalOpen);
   const [query, setQuery] = useState(c.matricula);
   const [results, setResults] = useState<RetiroPendiente[]>([]);
   const [searching, setSearching] = useState(false);
@@ -612,9 +614,9 @@ function CambioEquipoCard({ c, onLinked }: { c: ConformidadDoc; onLinked: (updat
       )}
 
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-6" onClick={() => setModalOpen(false)}>
-          <div className="w-full max-w-[440px]" onClick={(e) => e.stopPropagation()}>
-            <Card className="max-h-[80vh] overflow-y-auto p-5">
+        <div className="animate-sheet-fade fixed inset-0 z-50 flex items-end justify-center bg-black/45 lg:items-center lg:p-6" onClick={() => setModalOpen(false)}>
+          <div className="w-full max-w-[440px] animate-sheet-up lg:animate-none" onClick={(e) => e.stopPropagation()}>
+            <Card className="max-h-[85dvh] overflow-y-auto overscroll-contain rounded-b-none p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] lg:max-h-[80vh] lg:rounded-b-lg lg:pb-5">
               <div className="mb-2.5 text-base font-bold">
                 Buscar {parejaRol === 'retiro' ? 'hoja de retiro' : 'hoja de instalación'}
               </div>

@@ -7,18 +7,20 @@ import { IconEye, IconX } from '@/components/ui/Icons';
 import type { CalendarSubtask, CalendarTask } from '@/lib/types';
 import { formatArTimeRange } from '@/lib/calendarDates';
 import type { StatusColorSwatch } from '@/lib/taskStatusColors';
+import { useBodyScrollLock } from '@/lib/useBodyScrollLock';
 
 // Solo lectura por ahora — crear/mover/archivar tareas queda para una etapa
 // posterior (ver plan). Esto es para poder inspeccionar una tarea (sobre
 // todo las que ocupan varias horas y no entran enteras en el bloque de la
 // grilla).
 export function TaskDetailPanel({ task, swatch, onClose }: { task: CalendarTask; swatch: StatusColorSwatch; onClose: () => void }) {
+  useBodyScrollLock();
   const [selectedSubtask, setSelectedSubtask] = useState<CalendarSubtask | null>(null);
 
   return (
-    <div className="fixed inset-0 z-20">
-      <div className="absolute inset-0 bg-black/45" onClick={onClose} />
-      <Card className="absolute bottom-6 right-6 top-6 flex w-[420px] flex-col p-5">
+    <div className="fixed inset-0 z-40">
+      <div className="absolute inset-0 animate-sheet-fade bg-black/45" onClick={onClose} />
+      <Card className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col overflow-y-auto overscroll-contain rounded-b-none p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] animate-sheet-up lg:overflow-visible lg:rounded-b-lg lg:animate-none lg:inset-x-auto lg:bottom-6 lg:right-6 lg:top-6 lg:max-h-none lg:w-[420px] lg:pb-5">
         <div className="flex items-start justify-between gap-3">
           <div className="text-lg font-extrabold">{task.title}</div>
           <button
@@ -125,9 +127,9 @@ export function TaskDetailPanel({ task, swatch, onClose }: { task: CalendarTask;
       </Card>
 
       {selectedSubtask && (
-        <div className="fixed inset-0 z-30">
-          <div className="absolute inset-0 bg-black/45" onClick={() => setSelectedSubtask(null)} />
-          <Card className="absolute bottom-10 left-1/2 top-10 flex w-[380px] -translate-x-1/2 flex-col p-5">
+        <div className="fixed inset-0 z-[45]">
+          <div className="absolute inset-0 animate-sheet-fade bg-black/45" onClick={() => setSelectedSubtask(null)} />
+          <Card className="absolute inset-x-0 bottom-0 flex max-h-[88dvh] flex-col overflow-y-auto overscroll-contain rounded-b-none p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] animate-sheet-up lg:overflow-visible lg:rounded-b-lg lg:animate-none lg:inset-x-auto lg:bottom-10 lg:left-1/2 lg:top-10 lg:max-h-none lg:w-[380px] lg:-translate-x-1/2 lg:pb-5">
             <div className="flex items-start justify-between gap-3">
               <div className="text-base font-extrabold">{selectedSubtask.name}</div>
               <button

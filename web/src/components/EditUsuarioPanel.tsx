@@ -10,6 +10,7 @@ import { updateUsuario, resetUsuarioPassword, listTechnicians, ApiError } from '
 import { useApiData } from '@/lib/useApiData';
 import { useAuth } from '@/auth/AuthContext';
 import type { Usuario } from '@/lib/types';
+import { useBodyScrollLock } from '@/lib/useBodyScrollLock';
 
 export function EditUsuarioPanel({
   usuario,
@@ -20,6 +21,7 @@ export function EditUsuarioPanel({
   onClose: () => void;
   onUpdated: () => void;
 }) {
+  useBodyScrollLock();
   const { getIdToken } = useAuth();
   const [nombre, setNombre] = useState(usuario.nombre);
   const [legajo, setLegajo] = useState(usuario.legajo);
@@ -81,9 +83,9 @@ export function EditUsuarioPanel({
   }
 
   return (
-    <div className="fixed inset-0 z-20">
-      <div className="absolute inset-0 bg-black/45" onClick={onClose} />
-      <Card className="absolute bottom-2 right-2 top-2 flex w-[440px] max-w-[calc(100vw-1rem)] flex-col p-5 sm:bottom-6 sm:right-6 sm:top-6">
+    <div className="fixed inset-0 z-40">
+      <div className="absolute inset-0 animate-sheet-fade bg-black/45" onClick={onClose} />
+      <Card className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col overflow-y-auto overscroll-contain rounded-b-none p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] animate-sheet-up lg:overflow-visible lg:rounded-b-lg lg:animate-none lg:inset-x-auto lg:bottom-6 lg:right-6 lg:top-6 lg:max-h-none lg:w-[440px] lg:pb-5">
         <div className="flex items-center justify-between">
           <div className="text-lg font-extrabold">Editar usuario</div>
           <button

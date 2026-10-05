@@ -40,6 +40,8 @@ export default function ConformidadesPage() {
   const [altaCoordinacion, setAltaCoordinacion] = useState<'pendiente' | 'hecho' | ''>('');
   const [cambioEquipoPendiente, setCambioEquipoPendiente] = useState(false);
   const [page, setPage] = useState(1);
+  // En celular los selects de filtro arrancan plegados (la búsqueda queda siempre a la vista).
+  const [showFiltros, setShowFiltros] = useState(false);
   // Fila desplegada para ver el resumen (equipo, control de instalación,
   // fotos) sin salir del listado — el check de alta de esa fila solo se
   // puede tocar mientras está desplegada, para forzar a revisarla antes de
@@ -146,6 +148,15 @@ export default function ConformidadesPage() {
             <div className="text-[13px] font-extrabold">Filtros</div>
             {activeFilters.length > 0 && <Badge tone="primary">{activeFilters.length}</Badge>}
           </div>
+          <button
+            type="button"
+            onClick={() => setShowFiltros((v) => !v)}
+            aria-expanded={showFiltros}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-bold text-primary sm:hidden"
+          >
+            {showFiltros ? 'Ocultar' : 'Más filtros'}
+            <IconChevronDown className={`transition-transform ${showFiltros ? 'rotate-180' : ''}`} />
+          </button>
           {activeFilters.length > 0 && (
             <button
               type="button"
@@ -171,7 +182,7 @@ export default function ConformidadesPage() {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className={`${showFiltros ? 'grid' : 'hidden'} grid-cols-2 gap-3 sm:grid sm:grid-cols-4`}>
           <div>
             <div className="mb-1 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Técnico</div>
             <Select
@@ -270,7 +281,89 @@ export default function ConformidadesPage() {
 
       {error && <Card className="p-4 text-sm font-semibold text-bad">{error}</Card>}
 
-      <Card className="p-2.5 pb-4">
+      {/* < lg: una tarjeta por conformidad (la tabla de 11 columnas no entra en el celular). */}
+      <div className={`flex flex-col gap-3 transition-opacity lg:hidden ${loading && data ? 'opacity-60' : ''}`}>
+        {loading && !data && <Card className="p-4 text-sm font-semibold text-muted">Cargando...</Card>}
+        {!loading && data?.data.length === 0 && <Card className="p-4 text-sm font-semibold text-muted">No se encontraron conformidades.</Card>}
+        {data?.data.map((c) => {
+          const expanded = expandedIds.has(c._id);
+          const roleCanToggleMA = canToggleAlta(usuario?.role, 'mesaAyuda');
+          const roleCanToggleCoord = canToggleAlta(usuario?.role, 'coordinacion');
+          return (
+            <Card key={c._id} className="overflow-hidden">
+              <div className="flex flex-col gap-2 p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-extrabold text-primary">{c.codigoActa}</div>
+                    <div className="truncate text-[14px] font-bold">{c.cliente || '—'}</div>
+                  </div>
+                  <Badge tone={ESTADO_TONE[c.status]}>{ESTADO_LABEL[c.status]}</Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[12px] font-semibold">
+                  <div className="truncate text-muted">Unidad: <span className="text-text">{c.matricula || '—'}</span></div>
+                  <div className="truncate text-muted">Ticket: <span className="text-text">{c.ticketOdoo?.numero || '—'}</span></div>
+                  <div className="truncate text-muted">Téc.: <span className="text-text">{tecnicoNombre(c.tecnicoId)}</span></div>
+                  <div className="truncate text-muted">{formatFechaHora(c.fecha, c.hora)}</div>
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleExpanded(c._id)}
+                    aria-expanded={expanded}
+                    className="flex min-h-10 items-center gap-1 rounded-md px-2 text-[12.5px] font-bold text-muted"
+                  >
+                    {expanded ? 'Ocultar resumen' : 'Ver resumen'}
+                    <IconChevronDown className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                  </button>
+                  <Link
+                    href={`/conformidades/${c._id}`}
+                    aria-label="Ver detalle"
+                    className="flex h-10 w-10 items-center justify-center rounded-md bg-surface shadow-soft-sm"
+                  >
+                    <IconEye />
+                  </Link>
+                </div>
+              </div>
+              {expanded && (
+                <div className="flex flex-col gap-4 border-t border-line bg-bg p-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="mb-1 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Alta MA</div>
+                      <AltaCheckToggle
+                        area="mesaAyuda"
+                        value={c.altaEquipo.mesaAyuda}
+                        canToggle={roleCanToggleMA}
+                        usuarioNombre={tecnicoNombre}
+                        onToggle={(checked) => handleToggleAlta(c._id, 'mesaAyuda', checked)}
+                        showDetail
+                      />
+                    </div>
+                    <div>
+                      <div className="mb-1 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Alta Coord</div>
+                      <AltaCheckToggle
+                        area="coordinacion"
+                        value={c.altaEquipo.coordinacion}
+                        canToggle={roleCanToggleCoord}
+                        usuarioNombre={tecnicoNombre}
+                        onToggle={(checked) => handleToggleAlta(c._id, 'coordinacion', checked)}
+                        showDetail
+                      />
+                    </div>
+                  </div>
+                  <ConformidadResumenBody c={c} />
+                </div>
+              )}
+            </Card>
+          );
+        })}
+        {data && (
+          <Card className="pb-4">
+            <Pagination page={page} totalPages={data.totalPages} onPageChange={setPage} />
+          </Card>
+        )}
+      </div>
+
+      <Card className="hidden p-2.5 pb-4 lg:block">
         <div className="overflow-x-auto">
           <div className="min-w-[1110px]">
             <div className="grid grid-cols-[32px_1.2fr_1.4fr_1.1fr_0.9fr_0.9fr_1fr_0.9fr_1fr_1fr_60px] pb-2.5 pt-4">

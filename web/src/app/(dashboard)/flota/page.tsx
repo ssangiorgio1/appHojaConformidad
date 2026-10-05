@@ -8,7 +8,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { EquipoEstadoPanel } from '@/components/equipo/EquipoEstadoPanel';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { IconRefresh } from '@/components/ui/Icons';
+import { IconChevronDown, IconRefresh } from '@/components/ui/Icons';
 import { Combobox } from '@/components/ui/Combobox';
 import { Input } from '@/components/ui/Input';
 import {
@@ -41,6 +41,8 @@ export default function FlotaPage() {
   const { data, loading, error, refetch } = useApiData((idToken) => getFlota(idToken), []);
   const [visibles, setVisibles] = useState<Set<FlotaCategoria>>(VISIBLES_POR_DEFECTO);
   const [busqueda, setBusqueda] = useState('');
+  // En celular todo el bloque de filtros arranca plegado (en lg+ siempre se ve).
+  const [filtrosAbiertos, setFiltrosAbiertos] = useState(false);
   const [clientesSel, setClientesSel] = useState<string[]>([]);
   const [equipoAbierto, setEquipoAbierto] = useState<number | null>(null);
   const [seleccionando, setSeleccionando] = useState(false);
@@ -150,13 +152,13 @@ export default function FlotaPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-text">Mapa de flota</h1>
+          <h1 className="text-xl font-bold text-text lg:text-2xl">Mapa de flota</h1>
           <p className="text-sm text-muted">
             Posición de las unidades de VisionBLO cruzada con el estado del abono del cliente.{' '}
             {data?.actualizadoAt ? `Datos de ${formatIsoDateTime(data.actualizadoAt)}.` : 'Todavía no hay datos cargados.'}
           </p>
         </div>
-        <Button onClick={refrescar} disabled={refrescando}>
+        <Button onClick={refrescar} disabled={refrescando} className="w-full justify-center sm:w-auto">
           <IconRefresh className={refrescando ? 'animate-spin' : ''} />
           {refrescando ? 'Actualizando desde VisionBLO…' : 'Actualizar desde VisionBLO'}
         </Button>
@@ -166,7 +168,31 @@ export default function FlotaPage() {
         <Card className="p-4 text-sm font-medium text-danger-700">{errorRefresco ?? error}</Card>
       )}
 
-      <Card className="flex flex-col gap-3 p-4">
+      <Card className="flex flex-col p-4">
+        <button
+          type="button"
+          onClick={() => setFiltrosAbiertos((v) => !v)}
+          aria-expanded={filtrosAbiertos}
+          className="flex min-h-10 items-center justify-between gap-3 text-left lg:hidden"
+        >
+          <span className="min-w-0">
+            <span className="block text-[14px] font-extrabold text-text">Filtros</span>
+            <span className="block truncate text-xs font-medium text-muted">
+              {loading ? 'Cargando…' : `${filtradas.length.toLocaleString('es-AR')} unidades en el mapa`}
+              {clientesSel.length > 0 ? ` · ${clientesSel.length} cliente${clientesSel.length === 1 ? '' : 's'}` : ''}
+              {busqueda.trim() ? ' · búsqueda' : ''}
+            </span>
+          </span>
+          <IconChevronDown className={`flex-none text-muted transition-transform ${filtrosAbiertos ? 'rotate-180' : ''}`} />
+        </button>
+        {/* Despliegue animado (grid 0fr -> 1fr); en lg+ queda siempre abierto. */}
+        <div
+          className={`grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none lg:grid-rows-[1fr] ${
+            filtrosAbiertos ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+          }`}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div className="flex flex-col gap-3 pt-3 lg:pt-0">
         <div className="flex flex-wrap gap-2">
           {FLOTA_CATEGORIAS_ORDEN.map((c) => {
             const activa = visibles.has(c);
@@ -191,7 +217,7 @@ export default function FlotaPage() {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Input
-            className="max-w-sm"
+            className="w-full sm:max-w-sm"
             placeholder="Buscar cliente, unidad, patente o nº de equipo…"
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
@@ -211,14 +237,17 @@ export default function FlotaPage() {
               Arrastrá sobre el mapa para marcar un rectángulo. Barra espaciadora para mover el mapa, Esc para limpiar.
             </span>
           )}
-          <span className="text-xs font-medium text-muted">
+          <span className="hidden text-xs font-medium text-muted lg:inline">
             {loading ? 'Cargando…' : `${filtradas.length.toLocaleString('es-AR')} unidades en el mapa`}
           </span>
+        </div>
+            </div>
+          </div>
         </div>
       </Card>
 
       <div className="flex items-start gap-4">
-        <Card className="min-w-0 flex-1 overflow-hidden p-1">
+        <Card className="relative isolate z-0 min-w-0 flex-1 overflow-hidden p-1">
           <FlotaMap
             unidades={filtradas}
             onInspectEquipo={setEquipoAbierto}

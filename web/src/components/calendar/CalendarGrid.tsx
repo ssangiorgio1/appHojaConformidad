@@ -225,7 +225,7 @@ export function CalendarGrid({
 
   return (
     <div className="overflow-x-auto">
-      <div ref={containerRef} className="min-w-[860px]">
+      <div ref={containerRef} className={dayCount > 1 ? 'min-w-[860px]' : 'min-w-[300px]'}>
         <div className="grid border-b border-line pb-2.5" style={{ gridTemplateColumns: `${LABEL_COLUMN_PX}px repeat(${dayCount}, 1fr)` }}>
           <div />
           {range.days.map((d, i) => (

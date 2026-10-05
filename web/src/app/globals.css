@@ -221,3 +221,34 @@ body {
 [data-radix-popper-content-wrapper] {
   z-index: 1100 !important;
 }
+
+/* Formularios/paneles en celular: suben desde abajo (hoja) con curva ease-out-expo, igual que las hojas de la
+   PWA. En lg+ el panel sigue siendo lateral y sin animación (lg:animate-none en cada uso). */
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes sheet-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-sheet-up {
+  animation: sheet-up 0.38s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.animate-sheet-fade {
+  animation: sheet-fade 0.24s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-sheet-up,
+  .animate-sheet-fade {
+    animation: none;
+  }
+}

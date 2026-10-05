@@ -11,6 +11,7 @@ import { useApiData } from '@/lib/useApiData';
 import { useAuth } from '@/auth/AuthContext';
 import { arWallClockDateTimeToOdooUtcString, parseOdooUtcString, formatOdooUtcString, DEFAULT_TASK_DURATION_HOURS } from '@/lib/calendarDates';
 import type { SubtareaIncidencia } from '@/lib/types';
+import { useBodyScrollLock } from '@/lib/useBodyScrollLock';
 
 // Reprograma de verdad la subtarea en Odoo (fecha nueva + la reabre de
 // "Visita fallida"/"En espera" a "Nuevo"/"En progreso", ver
@@ -26,6 +27,7 @@ export function ReprogramarIncidenciaPanel({
   onClose: () => void;
   onUpdated: () => Promise<void> | void;
 }) {
+  useBodyScrollLock();
   const { getIdToken } = useAuth();
   const { data: technicians } = useApiData(listTechnicians, []);
   const [fecha, setFecha] = useState('');
@@ -67,9 +69,9 @@ export function ReprogramarIncidenciaPanel({
   }
 
   return (
-    <div className="fixed inset-0 z-20">
-      <div className="absolute inset-0 bg-black/45" onClick={onClose} />
-      <Card className="absolute bottom-6 right-6 top-6 flex w-[440px] flex-col p-5">
+    <div className="fixed inset-0 z-40">
+      <div className="absolute inset-0 animate-sheet-fade bg-black/45" onClick={onClose} />
+      <Card className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col overflow-y-auto overscroll-contain rounded-b-none p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] animate-sheet-up lg:overflow-visible lg:rounded-b-lg lg:animate-none lg:inset-x-auto lg:bottom-6 lg:right-6 lg:top-6 lg:max-h-none lg:w-[440px] lg:pb-5">
         <div className="flex items-center justify-between">
           <div className="text-lg font-extrabold">Reprogramar visita</div>
           <button

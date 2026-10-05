@@ -30,6 +30,11 @@ export default function CalendarioPage() {
   const canWrite = !!usuario && WRITE_ROLES.has(usuario.role);
 
   const [view, setView] = useState<View>('week');
+  // En celular la semana (7 columnas) no se lee: arranca en vista de día.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- depende de window, no existe en el servidor
+    if (window.matchMedia('(max-width: 1023px)').matches) setView('day');
+  }, []);
   const [editMode, setEditMode] = useState(false);
   const canDrag = canWrite && editMode;
 
@@ -114,7 +119,7 @@ export default function CalendarioPage() {
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-2xl font-extrabold">Calendario</div>
+          <div className="text-xl font-extrabold lg:text-2xl">Calendario</div>
           <div className="mt-0.5 text-sm font-semibold text-muted">
             {view === 'week' ? formatArRange(range.rangeStartUtc, range.days[6]) : formatArFullDate(range.rangeStartUtc)}
           </div>
@@ -149,7 +154,7 @@ export default function CalendarioPage() {
           </button>
         </div>
 
-        <div className="ml-auto w-[240px]">
+        <div className="w-full sm:ml-auto sm:w-[240px]">
           <TechnicianMultiSelect technicians={technicians ?? []} selected={technicianIds} onChange={setTechnicianIds} />
         </div>
 
@@ -183,7 +188,7 @@ export default function CalendarioPage() {
       )}
 
       {pendingCount > 0 && (
-        <Card className="flex items-center gap-3 p-3.5">
+        <Card className="flex flex-wrap items-center gap-3 p-3.5">
           <div className="text-sm font-bold">
             {pendingCount} cambio{pendingCount === 1 ? '' : 's'} sin guardar
           </div>
