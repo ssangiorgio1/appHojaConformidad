@@ -11,6 +11,22 @@ import { buildObjectKey, uploadBuffer } from './r2.service.js';
 // mismo motivo por el que las fotos ya vienen resueltas antes de setContent.
 const LOGO_DATA_URI = `data:image/png;base64,${readFileSync(new URL('../assets/logo-wara.png', import.meta.url)).toString('base64')}`;
 
+// Semáforo mínimo: como mucho `max` tareas a la vez, el resto espera en cola (FIFO).
+function crearSemaforo(max: number) {
+  let activos = 0;
+  const cola: Array<() => void> = [];
+  return async function <T>(tarea: () => Promise<T>): Promise<T> {
+    if (activos >= max) await new Promise<void>((resolve) => cola.push(resolve));
+    activos++;
+    try {
+      return await tarea();
+    } finally {
+      activos--;
+      cola.shift()?.();
+    }
+  };
+}
+
 // Las fotos ya vienen resizeadas a ~1100px/JPEG 72% del lado del técnico
 // (para poder hacer zoom en el panel web) — pero en el PDF se imprimen en
 // cajas de apenas 120x120px, y Chromium al exportar a PDF embebe el archivo
@@ -27,6 +43,11 @@ const PDF_PHOTO_QUALITY = 60;
 const PHOTO_CACHE_MAX = 400;
 const photoCache = new Map<string, string>();
 
+// Tope de fotos descargándose/reescalándose a la vez (en total, entre todos los PDFs en curso): un acta trae hasta
+// ~19 y varias a la vez disparaban la memoria de la instancia.
+const PHOTO_FETCH_TIMEOUT_MS = 15_000;
+const photoSlots = crearSemaforo(4);
+
 async function resizePhotoForPdf(url: string): Promise<string | undefined> {
   const hit = photoCache.get(url);
   if (hit) {
@@ -34,7 +55,7 @@ async function resizePhotoForPdf(url: string): Promise<string | undefined> {
     photoCache.set(url, hit);
     return hit;
   }
-  const resized = await resizePhotoUncached(url);
+  const resized = await photoSlots(() => resizePhotoUncached(url));
   if (resized) {
     photoCache.set(url, resized);
     if (photoCache.size > PHOTO_CACHE_MAX) photoCache.delete(photoCache.keys().next().value as string);
@@ -44,7 +65,7 @@ async function resizePhotoForPdf(url: string): Promise<string | undefined> {
 
 async function resizePhotoUncached(url: string): Promise<string | undefined> {
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(PHOTO_FETCH_TIMEOUT_MS) });
     if (!res.ok) return undefined;
     const original = Buffer.from(await res.arrayBuffer());
     const resized = await sharp(original)
@@ -63,6 +84,32 @@ async function resizePhotoUncached(url: string): Promise<string | undefined> {
 // One Chromium instance shared across requests — launching it per-request
 // would add several seconds to every PDF generation.
 let browserPromise: Promise<Browser> | null = null;
+
+// Chromium de larga vida va acumulando memoria: se lo recicla cada tantos renders y tras un rato ocioso. Un solo
+// render a la vez (PDF_RENDER_CONCURRENCY) porque cada pestaña pesa 100-200 MB y compite por CPU con el resto de la API.
+const PDF_RENDER_CONCURRENCY = 1;
+const RENDERS_ANTES_DE_RECICLAR = 40;
+const BROWSER_IDLE_MS = 5 * 60_000;
+const RENDER_TIMEOUT_MS = 45_000;
+const renderSlots = crearSemaforo(PDF_RENDER_CONCURRENCY);
+let rendersEnBrowser = 0;
+let rendersActivos = 0;
+let idleTimer: NodeJS.Timeout | undefined;
+
+function programarCierreOcioso(): void {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => void cerrarBrowser(), BROWSER_IDLE_MS);
+  idleTimer.unref();
+}
+
+async function cerrarBrowser(): Promise<void> {
+  if (rendersActivos > 0 || !browserPromise) return;
+  const p = browserPromise;
+  browserPromise = null;
+  rendersEnBrowser = 0;
+  const b = await p.catch(() => null);
+  await b?.close().catch(() => {});
+}
 
 // Si el launch() de más abajo rechaza una sola vez (ej. un cold start
 // apretado de recursos en Render), browserPromise quedaba cacheado como una
@@ -90,7 +137,26 @@ async function getBrowser(): Promise<Browser> {
   return browserPromise;
 }
 
-async function renderPdfBuffer(record: PrintableConformidad, opts?: { soloPre?: boolean }): Promise<Buffer> {
+function renderPdfBuffer(record: PrintableConformidad, opts?: { soloPre?: boolean }): Promise<Buffer> {
+  return renderSlots(async () => {
+    rendersActivos++;
+    clearTimeout(idleTimer);
+    try {
+      if (rendersEnBrowser >= RENDERS_ANTES_DE_RECICLAR) {
+        rendersActivos--; // este render todavía no usa el browser viejo
+        await cerrarBrowser();
+        rendersActivos++;
+      }
+      rendersEnBrowser++;
+      return await renderPdfBufferNow(record, opts);
+    } finally {
+      rendersActivos--;
+      programarCierreOcioso();
+    }
+  });
+}
+
+async function renderPdfBufferNow(record: PrintableConformidad, opts?: { soloPre?: boolean }): Promise<Buffer> {
   const html = await buildPrintHtml(record, {
     soloPre: opts?.soloPre,
     logoDataUri: LOGO_DATA_URI,
@@ -115,8 +181,8 @@ async function renderPdfBuffer(record: PrintableConformidad, opts?: { soloPre?: 
     // 'load' (not just 'domcontentloaded') so the <img> tags pointing at R2
     // photo/signature URLs finish loading before the page is printed —
     // otherwise they render blank. setContent doesn't support networkidle0.
-    await page.setContent(html, { waitUntil: 'load' });
-    const pdf = await page.pdf({ format: 'A4', printBackground: true });
+    await page.setContent(html, { waitUntil: 'load', timeout: RENDER_TIMEOUT_MS });
+    const pdf = await page.pdf({ format: 'A4', printBackground: true, timeout: RENDER_TIMEOUT_MS });
     return Buffer.from(pdf);
   } finally {
     await page.close();

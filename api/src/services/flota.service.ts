@@ -11,6 +11,12 @@ const COOLDOWN_MS = 2 * 60_000;
 let enCurso: Promise<RefrescoResult> | null = null;
 let ultimoRefrescoAt = 0;
 
+// Sube con cada refresco: el controlador lo usa para saber si su respuesta cacheada quedó vieja.
+let versionFlota = 0;
+export function getVersionFlota(): number {
+  return versionFlota;
+}
+
 interface MovilCrudo {
   id: number;
   baja: boolean;
@@ -160,6 +166,7 @@ export async function refrescarFlota(): Promise<RefrescoResult | { cooldown: num
   enCurso = ejecutarRefresco()
     .then((r) => {
       ultimoRefrescoAt = Date.now();
+      versionFlota++;
       return r;
     })
     .finally(() => {
