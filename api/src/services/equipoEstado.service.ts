@@ -196,6 +196,9 @@ export interface EstadoEquipo {
   // Última posición del historial (el diagnóstico solo trae lat/lng): trae la cantidad de satélites,
   // que el técnico necesita en el control de instalación.
   gps: { satelites: number | null; hdop: number | null; fecha: string } | null;
+  // Fecha de la última posición, sin coordenadas: vistaTecnico oculta `posicion` (dónde está el equipo) pero el
+  // chequeo de GPS necesita saber SI hay posición y cuándo — sin esto un técnico veía siempre "sin posición".
+  posicionFecha: string | null;
   eventosRecientes: EventoCrudo[];
 }
 
@@ -241,6 +244,7 @@ async function consultarEstado(equipoId: number): Promise<EstadoEquipo> {
     ultimoReporte: eq.fecha_ultimo_reporte,
     posicion:
       eq.latitud && eq.longitud ? { latitud: eq.latitud / 1e7, longitud: eq.longitud / 1e7, fecha: eq.fecha_posicion } : null,
+    posicionFecha: eq.latitud && eq.longitud ? (eq.fecha_posicion ?? null) : null,
     ignicion: eq.ignicion === null || eq.ignicion === undefined ? null : { encendida: eq.ignicion, fecha: eq.fecha_ignicion },
     voltajeCargador: numOrNull(eq.voltaje_cargador),
     bateriaInterna: ultimoValor('voltaje_bateria'),
