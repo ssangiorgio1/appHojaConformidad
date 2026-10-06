@@ -38,6 +38,10 @@ export function TaskDetailPanel({ task, swatch, onClose }: { task: CalendarTask;
             {formatArTimeRange(task.start, task.end)}
           </div>
 
+          {task.isSplitOccurrence && (
+            <div className="text-[12px] font-semibold text-muted">Tarea reprogramada</div>
+          )}
+
           <div>
             <div className="mb-1 text-[11px] font-extrabold uppercase tracking-wide text-muted">Técnico</div>
             <div className="text-sm font-semibold">{task.technicianName ?? 'Sin asignar'}</div>

@@ -6,8 +6,10 @@ import { useMemo, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Select } from '@/components/ui/Select';
-import { IconChevronLeft } from '@/components/ui/Icons';
-import { getReporteTecnicos, listCalendarTasks, listUsuarios } from '@/lib/api';
+import { Button } from '@/components/ui/Button';
+import { IconChevronLeft, IconEdit, IconLock } from '@/components/ui/Icons';
+import { ApiError, getReporteTecnicos, listCalendarTasks, listUsuarios, moveCalendarTask } from '@/lib/api';
+import { useAuth } from '@/auth/AuthContext';
 import { useApiData } from '@/lib/useApiData';
 import { formatMinutos } from '@/lib/format';
 import { getArWeek, formatArRange, formatArTimeRange, formatArWeekdayShort, parseOdooUtcString } from '@/lib/calendarDates';
@@ -15,6 +17,9 @@ import { CalendarGrid } from '@/components/calendar/CalendarGrid';
 import { TaskDetailPanel } from '@/components/calendar/TaskDetailPanel';
 import { resolveStatusSwatch } from '@/lib/taskStatusColors';
 import type { CalendarTask } from '@/lib/types';
+
+const WRITE_ROLES = new Set(['coordinacion', 'admin', 'superadmin']);
+type PendingMove = { id: number; start: string; end: string };
 
 // Vista individual de un técnico: sus promedios de campo + carga de
 // tareas/subtareas (mismos datos que la tarjeta en /reportes/tecnicos, ver
@@ -39,9 +44,10 @@ export default function ReporteTecnicoDetallePage() {
 
   const week = useMemo(() => getArWeek(0), []);
   const {
-    data: agendaTasks,
+    data: rawAgendaTasks,
     loading: loadingAgenda,
     error: errorAgenda,
+    refetch,
   } = useApiData(
     (idToken) =>
       tecnico?.odooUserId
@@ -49,6 +55,50 @@ export default function ReporteTecnicoDetallePage() {
         : Promise.resolve([]),
     [tecnico?.odooUserId, week.from, week.to],
   );
+
+  // Misma edición que /calendario: se arrastra en modo edición, los cambios
+  // quedan pendientes por occurrenceKey y recién se escriben en Odoo al guardar.
+  const { usuario, getIdToken } = useAuth();
+  const canWrite = !!usuario && WRITE_ROLES.has(usuario.role);
+  const [editMode, setEditMode] = useState(false);
+  const [pendingMoves, setPendingMoves] = useState<Record<string, PendingMove>>({});
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const pendingCount = Object.keys(pendingMoves).length;
+
+  const agendaTasks = useMemo(
+    () =>
+      rawAgendaTasks?.map((t) => (pendingMoves[t.occurrenceKey] ? { ...t, ...pendingMoves[t.occurrenceKey] } : t)),
+    [rawAgendaTasks, pendingMoves],
+  );
+
+  function handleTaskMoved(occurrenceKey: string, taskId: number, start: string, end: string) {
+    setSaveError(null);
+    setPendingMoves((prev) => ({ ...prev, [occurrenceKey]: { id: taskId, start, end } }));
+  }
+
+  function discardChanges() {
+    setPendingMoves({});
+    setSaveError(null);
+  }
+
+  async function saveChanges() {
+    setSaving(true);
+    setSaveError(null);
+    const token = await getIdToken();
+    const failed: Record<string, PendingMove> = {};
+    for (const [occurrenceKey, move] of Object.entries(pendingMoves)) {
+      try {
+        await moveCalendarTask(token, move.id, { start: move.start, end: move.end });
+      } catch (err) {
+        failed[occurrenceKey] = move;
+        setSaveError(err instanceof ApiError ? err.message : 'No se pudo guardar uno o más cambios.');
+      }
+    }
+    setPendingMoves(failed);
+    setSaving(false);
+    await refetch();
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -148,8 +198,48 @@ export default function ReporteTecnicoDetallePage() {
 
         {tecnico?.odooUserId && (
           <Card className={`p-4 transition-opacity ${loadingAgenda && !agendaTasks ? 'opacity-60' : ''}`}>
+            {canWrite && (
+              <div className="mb-3 flex flex-wrap items-center gap-3">
+                <Button
+                  variant={editMode ? 'primary' : 'ghost'}
+                  className={editMode ? '' : 'shadow-inset'}
+                  onClick={() => setEditMode((v) => !v)}
+                  title={editMode ? 'Desactivar edición para no mover tareas por accidente' : 'Activar para poder arrastrar y mover tareas'}
+                >
+                  {editMode ? <IconLock /> : <IconEdit />}
+                  {editMode ? 'Editando' : 'Editar'}
+                </Button>
+                {editMode && pendingCount === 0 && (
+                  <span className="text-[12.5px] font-bold text-primary-700">
+                    Arrastrá las tareas para moverlas; no se guarda en Odoo hasta &quot;Guardar cambios&quot;.
+                  </span>
+                )}
+                {pendingCount > 0 && (
+                  <>
+                    <span className="text-sm font-bold">
+                      {pendingCount} cambio{pendingCount === 1 ? '' : 's'} sin guardar
+                    </span>
+                    {saveError && <span className="text-sm font-semibold text-bad">{saveError}</span>}
+                    <div className="ml-auto flex gap-2">
+                      <Button variant="ghost" className="shadow-inset" onClick={discardChanges} disabled={saving}>
+                        Descartar
+                      </Button>
+                      <Button onClick={saveChanges} disabled={saving}>
+                        {saving ? 'Guardando...' : 'Guardar cambios'}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
             {agendaTasks && (
-              <CalendarGrid range={week} tasks={agendaTasks} canDrag={false} onSelectTask={setSelectedTask} onTaskMoved={() => {}} />
+              <CalendarGrid
+                range={week}
+                tasks={agendaTasks}
+                canDrag={canWrite && editMode}
+                onSelectTask={setSelectedTask}
+                onTaskMoved={handleTaskMoved}
+              />
             )}
             {!agendaTasks && !errorAgenda && <div className="px-3 py-6 text-sm font-semibold text-muted">Cargando...</div>}
           </Card>
@@ -163,7 +253,7 @@ export default function ReporteTecnicoDetallePage() {
             {agendaTasks.map((task) => {
               const swatch = resolveStatusSwatch(task.stage);
               return (
-                <div key={task.id} className="flex flex-col gap-1 border-b border-line py-1.5 last:border-0">
+                <div key={task.occurrenceKey} className="flex flex-col gap-1 border-b border-line py-1.5 last:border-0">
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
