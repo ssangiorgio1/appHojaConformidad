@@ -1,4 +1,5 @@
 import { env } from '../config/env.js';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import puppeteer, { type Browser } from 'puppeteer';
 import sharp from 'sharp';
@@ -20,7 +21,28 @@ const LOGO_DATA_URI = `data:image/png;base64,${readFileSync(new URL('../assets/l
 const PDF_PHOTO_MAX_DIM = 420;
 const PDF_PHOTO_QUALITY = 60;
 
+// Las fotos de R2 no cambian (cada una tiene su propia URL): se guarda el resultado ya reescalado para no volver a
+// bajarlas y re-encodarlas en cada "Ver PDF" ni en cada envío a Odoo de la misma hoja. LRU simple (el orden de
+// inserción del Map): ~20 KB por foto reescalada, así que 400 entradas son unos pocos MB.
+const PHOTO_CACHE_MAX = 400;
+const photoCache = new Map<string, string>();
+
 async function resizePhotoForPdf(url: string): Promise<string | undefined> {
+  const hit = photoCache.get(url);
+  if (hit) {
+    photoCache.delete(url);
+    photoCache.set(url, hit);
+    return hit;
+  }
+  const resized = await resizePhotoUncached(url);
+  if (resized) {
+    photoCache.set(url, resized);
+    if (photoCache.size > PHOTO_CACHE_MAX) photoCache.delete(photoCache.keys().next().value as string);
+  }
+  return resized;
+}
+
+async function resizePhotoUncached(url: string): Promise<string | undefined> {
   try {
     const res = await fetch(url);
     if (!res.ok) return undefined;
@@ -101,6 +123,40 @@ async function renderPdfBuffer(record: PrintableConformidad, opts?: { soloPre?: 
   }
 }
 
+// Caché de PDFs ya generados: el mismo contenido (ver contentKey) devuelve el mismo PDF sin volver a renderizar.
+// Sirve para "Ver PDF" repetido y para que el PDF que se generó al enviar a Odoo ya esté listo cuando el técnico
+// lo abre. En memoria y acotada por peso; se vacía sola al reiniciar el servicio (nada persistente).
+// Subir PDF_CACHE_VERSION si cambia el layout (buildPrintHtml) para no servir PDFs viejos tras un deploy sin reinicio.
+const PDF_CACHE_VERSION = 1;
+const PDF_CACHE_MAX_BYTES = 40 * 1024 * 1024;
+const pdfCache = new Map<string, Buffer>();
+let pdfCacheBytes = 0;
+const pdfEnCurso = new Map<string, Promise<Buffer>>();
+
+// Campos que cambian sin que cambie lo que se imprime (estado del envío a Odoo, fechas de guardado).
+const CAMPOS_VOLATILES = new Set(['updatedAt', 'odooSync', 'preOdooSync', 'pdfReporte', '__v']);
+
+function contentKey(record: PrintableConformidad, soloPre: boolean): string {
+  const json = JSON.stringify(record, (k, v) => (CAMPOS_VOLATILES.has(k) ? undefined : v));
+  return createHash('sha1').update(`${PDF_CACHE_VERSION}|${soloPre ? 'pre' : 'full'}|`).update(json).digest('hex');
+}
+
+function guardarPdf(key: string, buf: Buffer): void {
+  if (buf.length > PDF_CACHE_MAX_BYTES / 4) return; // un PDF desmesurado no vale la pena guardarlo
+  pdfCache.set(key, buf);
+  pdfCacheBytes += buf.length;
+  for (const [k, v] of pdfCache) {
+    if (pdfCacheBytes <= PDF_CACHE_MAX_BYTES) break;
+    pdfCache.delete(k);
+    pdfCacheBytes -= v.length;
+  }
+}
+
+// Lanza Chromium al arrancar el servicio (best-effort): el primer "Ver PDF" ya no paga el arranque del navegador.
+export function warmUpPdf(): void {
+  void getBrowser().catch((err) => console.error('PDF_WARMUP_FAILED', err));
+}
+
 // Genera el buffer del PDF sin subirlo a R2 — usado por los endpoints que
 // responden con streaming binario o adjuntan el PDF directamente a Odoo en
 // memoria, sin almacenamiento persistente.
@@ -108,6 +164,24 @@ export async function buildConformidadPdfBuffer(
   record: PrintableConformidad,
   opts?: { soloPre?: boolean },
 ): Promise<Buffer> {
-  return renderPdfBuffer(record, opts);
+  const soloPre = opts?.soloPre === true;
+  const key = contentKey(record, soloPre);
+  const hit = pdfCache.get(key);
+  if (hit) {
+    pdfCache.delete(key);
+    pdfCache.set(key, hit);
+    return hit;
+  }
+  // Dos pedidos iguales a la vez (doble toque, o "Ver PDF" justo mientras se envía a Odoo) comparten el render.
+  const enCurso = pdfEnCurso.get(key);
+  if (enCurso) return enCurso;
+  const p = renderPdfBuffer(record, opts)
+    .then((buf) => {
+      guardarPdf(key, buf);
+      return buf;
+    })
+    .finally(() => pdfEnCurso.delete(key));
+  pdfEnCurso.set(key, p);
+  return p;
 }
 
