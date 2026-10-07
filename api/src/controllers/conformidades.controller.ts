@@ -12,6 +12,7 @@ import { notificarEstadoVisita } from '../services/telegram.service.js';
 import { cerrarVisitaLoteSiTodoResuelto } from '../services/loteVisita.service.js';
 import { buildConformidadPdfBuffer as renderConformidadPdf } from '../services/pdf.service.js';
 import { decryptSecret } from '../utils/secretBox.js';
+import { EQUIP_ITEM_PHOTO_LABEL } from '@wara/shared';
 import {
   isSubtaskAssignedToTechnician,
   isTaskAssignedToTechnician,
@@ -253,6 +254,10 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
   }
 
   if (body.equipo) Object.assign(record.equipo, body.equipo);
+  if (body.noInstalados !== undefined) {
+    record.noInstalados = body.noInstalados;
+    record.markModified('noInstalados');
+  }
   if (body.verificacionEquipo) {
     record.verificacionEquipo = { ...body.verificacionEquipo, at: new Date(body.verificacionEquipo.at) } as typeof record.verificacionEquipo;
   }
@@ -555,6 +560,15 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
   const postItem7 = record.post?.item7Detalle ? `<p><b>Tornillos de panel/tablero (POST):</b> ${esc(record.post.item7Detalle)}</p>` : '';
   const preItem8 = record.pre?.item8Detalle ? `<p><b>Tapizados (PRE):</b> ${esc(record.pre.item8Detalle)}</p>` : '';
   const postItem8 = record.post?.item8Detalle ? `<p><b>Tapizados (POST):</b> ${esc(record.post.item8Detalle)}</p>` : '';
+  // Productos de la orden que no se instalaron/retiraron en el lugar y por qué: es lo que coordinación y comercial necesitan
+  // para dar de baja el producto de la orden (o ajustar la factura). Solo en la hoja completa.
+  const noInstalados = Object.entries((record.noInstalados ?? {}) as Record<string, string>);
+  const noInstaladosHtml =
+    fase !== 'pre' && noInstalados.length
+      ? `<p><b>No se instaló / no se retiró (dar de baja de la orden):</b></p><ul>${noInstalados
+          .map(([k, motivo]) => `<li>${esc(EQUIP_ITEM_PHOTO_LABEL[k] ?? k)} — ${esc(motivo)}</li>`)
+          .join('')}</ul>`
+      : '';
   const titulo = fase === 'pre' ? 'Revisión inicial (PRE) de la unidad' : 'Hoja de conformidad completada';
   const resumenHtml = `<p><b>${titulo}</b> — ${esc(record.cliente)} (${esc(record.matricula)})</p>
     <p>Fecha: ${esc(formatFechaArg(record.fecha))} ${esc(record.hora)}<br>Técnico: ${esc(record.instalador)}</p>
@@ -576,7 +590,8 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
     ${preItem7}
     ${fase === 'pre' ? '' : postItem7}
     ${preItem8}
-    ${fase === 'pre' ? '' : postItem8}`;
+    ${fase === 'pre' ? '' : postItem8}
+    ${noInstaladosHtml}`;
 
   try {
     // Generar el PDF en memoria para adjuntarlo a Odoo — no se guarda en R2.

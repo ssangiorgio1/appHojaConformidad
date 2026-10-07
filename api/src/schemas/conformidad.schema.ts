@@ -164,10 +164,17 @@ const verificacionEquipoSchema = z.object({
   estado: z.enum(['verificado', 'con_problemas', 'sin_verificar']),
   problemas: z.array(z.string().max(300)).max(20),
   avanzoBajoResponsabilidad: z.boolean(),
+  intentos: z.number().int().min(0).max(100).optional(),
   at: z.string().datetime(),
 });
 
+// Productos de la orden de venta que no se pudieron instalar o retirar en el lugar: clave de la casilla -> motivo.
+const noInstaladosSchema = z
+  .record(z.string().min(1).max(60), z.string().trim().min(1).max(300))
+  .refine((r) => Object.keys(r).length <= 40, { message: 'Demasiados productos no instalados' });
+
 export const patchConformidadSchema = topLevelSchema.partial().extend({
+  noInstalados: noInstaladosSchema.optional(),
   verificacionEquipo: verificacionEquipoSchema.optional(),
   pre: phaseInputSchema.optional(),
   post: phaseInputSchema.optional(),

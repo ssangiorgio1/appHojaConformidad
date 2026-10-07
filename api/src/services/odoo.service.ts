@@ -114,6 +114,40 @@ export async function postSubtareaNoEncontrada(params: {
   );
 }
 
+// Adjunta al ticket el PDF de reprogramación de una unidad, con un comentario. Mismo mecanismo que
+// pushConformidadToTicket pero `as` es opcional: si el técnico no vinculó su cuenta de Odoo se usa la cuenta de
+// servicio (la reprogramación no debe quedar sin constancia por eso).
+export async function pushReprogramacionToTicket(params: {
+  ticketId: number;
+  pdfBuffer: Buffer;
+  fileName: string;
+  resumenHtml: string;
+  as?: { login: string; password: string };
+}): Promise<void> {
+  try {
+    const call = (model: string, method: string, args: unknown[], kwargs: Record<string, unknown> = {}) =>
+      params.as ? executeKwAsCredentials(params.as.login, params.as.password, model, method, args, kwargs) : executeKw(model, method, args, kwargs);
+    const attachmentId = await withTimeout(
+      call('ir.attachment', 'create', [
+        { name: params.fileName, datas: params.pdfBuffer.toString('base64'), res_model: 'helpdesk.ticket', res_id: params.ticketId, mimetype: 'application/pdf' },
+      ]),
+      'pushReprogramacionToTicket:attachment',
+    );
+    await withTimeout(
+      call('helpdesk.ticket', 'message_post', [[params.ticketId]], {
+        body: params.resumenHtml,
+        body_is_html: true,
+        message_type: 'comment',
+        subtype_xmlid: 'mail.mt_comment',
+        attachment_ids: [attachmentId],
+      }),
+      'pushReprogramacionToTicket:message',
+    );
+  } catch (err) {
+    throw classify(err);
+  }
+}
+
 // Buscador genérico de res.users por nombre, para elegir a quién agregar
 // como destinatario de scheduleSubtareaReprogramarActivity de más abajo —
 // a diferencia de listTechnicians (calendarTask.service.ts, acotado a quien

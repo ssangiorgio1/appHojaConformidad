@@ -1,6 +1,9 @@
 import { executeKw } from '../config/odoo.js';
 import { cached } from '../config/odooSchemaCache.js';
 import { env } from '../config/env.js';
+import type { EsperadoUnidad } from '../config/productoMapeo.js';
+import { elegirContacto, limpiarTelefono, type ContactoCliente } from './contactoCliente.js';
+import { aplicarEsperado, idsDeLineas, type DetalleLinea, type ProductoUnidad } from './productosUnidad.js';
 import { classify, many2oneName, withTimeout } from './odooErrors.js';
 
 // Campos reales descubiertos con scripts/discoverOdooTaskSchema.ts (de solo
@@ -12,6 +15,28 @@ import { classify, many2oneName, withTimeout } from './odooErrors.js';
 // en features.md (coordinación estira el rango a mano para que no desaparezca
 // del técnico en Odoo). Confirmar contra la UI real de Field Service de Odoo.
 const START_FIELD = 'planned_date_begin';
+// "Ubicación de la unidad": dónde está la unidad dentro del predio del cliente (campo de Odoo Studio, tipo char).
+const UBICACION_FIELD = 'x_studio_ubicacin_de_la_unidad';
+
+// El campo es de Odoo Studio: puede existir en una base (staging) y no en otra (producción). Pedirle a Odoo un campo que no
+// existe hace fallar TODA la lectura, así que antes se consulta una vez si existe y se agrega a la lista solo si está. El
+// resultado se recuerda unos minutos; si la consulta falla, se asume que no está (la agenda sigue funcionando sin ubicación).
+const UBICACION_CACHE_MS = 10 * 60_000;
+let ubicacionDisponible: { valor: boolean; hasta: number } | null = null;
+
+async function conUbicacion(fields: string[]): Promise<string[]> {
+  if (!ubicacionDisponible || ubicacionDisponible.hasta < Date.now()) {
+    let valor = false;
+    try {
+      const def = (await withTimeout(executeKw('project.task', 'fields_get', [[UBICACION_FIELD]], { attributes: ['type'] }), 'ubicacionFieldCheck')) as Record<string, unknown>;
+      valor = UBICACION_FIELD in def;
+    } catch (err) {
+      console.error('UBICACION_FIELD_CHECK_FAILED', err);
+    }
+    ubicacionDisponible = { valor, hasta: Date.now() + UBICACION_CACHE_MS };
+  }
+  return ubicacionDisponible.valor ? [...fields, UBICACION_FIELD] : fields;
+}
 // date_deadline es el campo que mejor calza como fin de la ventana agendada
 // en esta versión de Odoo — planned_date_end no existe en este modelo. Pero
 // coordinación lo estira a propósito (a veces días después) para que la
@@ -34,6 +59,8 @@ export interface CalendarSubtask {
   technicianIds: number[];
   isClosed: boolean;
   description: string | null;
+  // Campo "Ubicación de la unidad" de la subtarea en Odoo (x_studio_ubicacin_de_la_unidad). null si está vacío.
+  ubicacion: string | null;
   odooUrl: string;
   // Otras tareas reales de Odoo que se colapsaron en esta (mismo `name` +
   // mismo padre — ver ALCANCE_BACKOFFICE.md §15.9b, ej. instalar GPS + RFID
@@ -46,7 +73,10 @@ export interface CalendarSubtask {
   // `sale_line_id` de cada tarea del grupo (cuando está cargado — no siempre,
   // ver §14.4 nota 2026-09-25). Informativo: qué producto(s) de la cotización
   // corresponden a esta unidad, tal como coordinación lo cargó en Odoo.
-  productos: Array<{ id: number; label: string }>;
+  productos: ProductoUnidad[];
+  // Qué se espera instalar/retirar en esta unidad según sus productos (mapeo en config/productoMapeo.ts). null =
+  // no se pudo calcular (Odoo no respondió al leer las líneas): la PWA no restringe nada en ese caso.
+  esperado: EsperadoUnidad | null;
 }
 
 export interface CalendarTask {
@@ -71,6 +101,8 @@ export interface CalendarTask {
   partnerName: string | null;
   stage: string | null;
   description: string | null;
+  // "Ubicación de la unidad" de una tarea suelta (sin subtareas); null en un lote.
+  ubicacion: string | null;
   odooUrl: string;
   subtaskCount: number;
   subtasks: CalendarSubtask[];
@@ -80,6 +112,14 @@ export interface CalendarTask {
   // lo usa para precargar el vínculo a Odoo del PRE sin que el técnico tenga
   // que volver a buscarlo.
   ticketOdoo: { id: number; label: string } | null;
+  // Solo para tareas SIN subtareas (la unidad es la tarea misma): sus productos y lo esperado. En un lote van vacíos y
+  // cada unidad trae los suyos en `subtasks`.
+  productos: ProductoUnidad[];
+  esperado: EsperadoUnidad | null;
+  // id del cliente (res.partner) de la tarea y su teléfono de contacto (del ticket o, si no hay, del cliente en Odoo):
+  // para llamarlo si no está en el lugar. null = sin teléfono cargado en ninguno de los dos.
+  partnerId: number | null;
+  contactoCliente: ContactoCliente | null;
 }
 
 function many2oneRef(v: unknown): { id: number; label: string } | null {
@@ -171,6 +211,11 @@ function stripHtml(html: string | false): string | null {
   return text || null;
 }
 
+// Campo de texto de Odoo: `false` cuando está vacío.
+function textoOpcional(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
+
 // Cacheado ~5min — es un filtro de dropdown, no necesita estar al segundo.
 // Se deriva de quién tiene tareas asignadas en los proyectos de Field
 // Service (no de todo res.users, que incluye miles de clientes/portal users)
@@ -218,6 +263,7 @@ const PARENT_FIELDS = [
   'child_ids',
   'subtask_count',
   'helpdesk_ticket_id',
+  'sale_line_id',
   START_FIELD,
   END_FIELD,
 ];
@@ -258,7 +304,7 @@ export async function listCalendarTasks(params: { from: string; to: string; tech
 
     const primaryRows = (await withTimeout(
       executeKw('project.task', 'search_read', [domain], {
-        fields: PARENT_FIELDS,
+        fields: await conUbicacion(PARENT_FIELDS),
         order: `${START_FIELD} asc`,
         limit: 500,
       }),
@@ -289,7 +335,7 @@ export async function listCalendarTasks(params: { from: string; to: string; tech
     const missingParentIds = Array.from(rawByParent.keys()).filter((id) => !parentRowsById.has(id));
     if (missingParentIds.length) {
       const driftedParentRows = (await withTimeout(
-        executeKw('project.task', 'read', [missingParentIds], { fields: PARENT_FIELDS }),
+        executeKw('project.task', 'read', [missingParentIds], { fields: await conUbicacion(PARENT_FIELDS) }),
         'listCalendarTasks:driftedParents',
       )) as Array<Record<string, unknown>>;
       for (const r of driftedParentRows) parentRowsById.set(r.id as number, r);
@@ -370,17 +416,89 @@ export async function listCalendarTasks(params: { from: string; to: string; tech
           partnerName: many2oneName(parentRow.partner_id),
           stage: many2oneName(parentRow.stage_id),
           description: stripHtml(parentRow.description as string | false),
+          // Solo para tarea suelta: en un lote, cada unidad trae la suya (ver CalendarSubtask.ubicacion).
+          ubicacion: parentHasChildren ? null : textoOpcional(parentRow[UBICACION_FIELD]),
           odooUrl: odooTaskUrl(parentId),
           subtaskCount: filtered.length,
           subtasks: filtered.map(toCalendarSubtask),
           ticketOdoo: many2oneRef(parentRow.helpdesk_ticket_id),
+          productos: parentHasChildren ? [] : productosDeLinea(many2oneRef(parentRow.sale_line_id)),
+          esperado: null,
+          partnerId: many2oneRef(parentRow.partner_id)?.id ?? null,
+          contactoCliente: null,
         });
       }
     }
 
+    await completarProductos(result);
+    await completarContacto(result);
+
     return result.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
   } catch (err) {
     throw classify(err);
+  }
+}
+
+// Teléfono del cliente por tarea: una consulta a los tickets y, solo para los que no tienen teléfono propio, otra a los
+// clientes. Best-effort: si Odoo falla, las tareas quedan sin contacto y la agenda sigue funcionando.
+async function completarContacto(tareas: CalendarTask[]): Promise<void> {
+  try {
+    const ticketIds = [...new Set(tareas.map((t) => t.ticketOdoo?.id).filter((x): x is number => typeof x === 'number'))];
+    const telDeTicket = new Map<number, string | false>();
+    if (ticketIds.length) {
+      const rows = (await withTimeout(
+        executeKw('helpdesk.ticket', 'read', [ticketIds], { fields: ['partner_phone'] }),
+        'completarContacto:tickets',
+      )) as Array<{ id: number; partner_phone: string | false }>;
+      for (const r of rows) telDeTicket.set(r.id, r.partner_phone);
+    }
+    const sinTelDeTicket = tareas.filter((t) => !limpiarTelefono(t.ticketOdoo ? telDeTicket.get(t.ticketOdoo.id) : null) && t.partnerId != null);
+    const partnerIds = [...new Set(sinTelDeTicket.map((t) => t.partnerId as number))];
+    const clientes = new Map<number, { mobile: string | false; phone: string | false }>();
+    if (partnerIds.length) {
+      const rows = (await withTimeout(
+        executeKw('res.partner', 'read', [partnerIds], { fields: ['mobile', 'phone'] }),
+        'completarContacto:clientes',
+      )) as Array<{ id: number; mobile: string | false; phone: string | false }>;
+      for (const r of rows) clientes.set(r.id, r);
+    }
+    for (const t of tareas) {
+      const c = t.partnerId != null ? clientes.get(t.partnerId) : undefined;
+      t.contactoCliente = elegirContacto({
+        ticketPhone: t.ticketOdoo ? telDeTicket.get(t.ticketOdoo.id) : null,
+        partnerMobile: c?.mobile,
+        partnerPhone: c?.phone,
+      });
+    }
+  } catch (err) {
+    console.error('CALENDAR_CONTACTO_FAILED', err);
+  }
+}
+
+function productosDeLinea(linea: { id: number; label: string } | null): ProductoUnidad[] {
+  return linea ? [{ id: linea.id, label: linea.label, productId: null, cantidad: null }] : [];
+}
+
+// Lee en Odoo el producto y la cantidad de cada línea de venta (una sola consulta por tanda) y calcula lo esperado
+// por unidad. Best-effort: si falla, las unidades quedan con `esperado: null` y la agenda sigue funcionando.
+async function completarProductos(tareas: CalendarTask[]): Promise<void> {
+  const ids = idsDeLineas(tareas);
+  if (ids.length === 0) {
+    aplicarEsperado(tareas, new Map());
+    return;
+  }
+  try {
+    const detalle = new Map<number, DetalleLinea>();
+    for (let i = 0; i < ids.length; i += 200) {
+      const rows = (await withTimeout(
+        executeKw('sale.order.line', 'read', [ids.slice(i, i + 200)], { fields: ['product_id', 'product_uom_qty'] }),
+        'completarProductos',
+      )) as Array<{ id: number; product_id: [number, string] | false; product_uom_qty: number }>;
+      for (const r of rows) detalle.set(r.id, { productId: r.product_id ? r.product_id[0] : null, cantidad: r.product_uom_qty });
+    }
+    aplicarEsperado(tareas, detalle);
+  } catch (err) {
+    console.error('CALENDAR_PRODUCTOS_FAILED', err);
   }
 }
 
@@ -403,6 +521,7 @@ interface RawSubtask {
   technicianIds: number[];
   isClosed: boolean;
   description: string | null;
+  ubicacion: string | null;
   saleLine: { id: number; label: string } | null;
   // Fecha propia de ESTA subtarea (ver listCalendarTasks) — no siempre
   // coincide con la del padre: reprogramar una unidad desde Incidencias
@@ -446,6 +565,7 @@ function mapOdooRowToRawSubtask(s: Record<string, unknown>): RawSubtask {
     technicianIds: (s.user_ids as number[]) || [],
     isClosed: !!s.is_closed,
     description: stripHtml(s.description as string | false),
+    ubicacion: textoOpcional(s[UBICACION_FIELD]),
     saleLine: many2oneRef(s.sale_line_id),
     start: s[START_FIELD] as string | false,
     end: s[END_FIELD] as string | false,
@@ -471,9 +591,11 @@ function toCalendarSubtask(g: GroupedSubtask): CalendarSubtask {
     technicianIds: g.technicianIds,
     isClosed: g.isClosed,
     description: g.description,
+    ubicacion: g.ubicacion,
     odooUrl: g.odooUrl,
     mergedTaskIds: g.mergedTaskIds,
     productos: g.productos,
+    esperado: g.esperado,
   };
 }
 
@@ -520,9 +642,7 @@ function collapseDuplicateNames(subtasks: RawSubtask[], parentStart: string | nu
       console.error('CALENDAR_SUBTASK_SIN_FECHA', primary.id);
       continue;
     }
-    const productos = sorted
-      .map((s) => s.saleLine)
-      .filter((p): p is { id: number; label: string } => p !== null);
+    const productos = sorted.flatMap((s) => productosDeLinea(s.saleLine));
     result.push({
       id: primary.id,
       name: primary.name,
@@ -536,9 +656,11 @@ function collapseDuplicateNames(subtasks: RawSubtask[], parentStart: string | nu
       // pendiente.
       isClosed: sorted.every((s) => s.isClosed),
       description: primary.description ?? sorted.find((s) => s.description)?.description ?? null,
+      ubicacion: primary.ubicacion ?? sorted.find((s) => s.ubicacion)?.ubicacion ?? null,
       odooUrl: odooTaskUrl(primary.id),
       mergedTaskIds: rest.map((s) => s.id),
       productos,
+      esperado: null,
       start,
       end: computeTaskEnd(start, primary.end, primary.allocatedHours),
     });
@@ -553,7 +675,7 @@ async function resolveSubtasksRaw(childIds: number[]): Promise<RawSubtask[]> {
   if (!uniqueIds.length) return [];
 
   const subtasksRaw = (await withTimeout(
-    executeKw('project.task', 'read', [uniqueIds], { fields: SUBTASK_FIELDS }),
+    executeKw('project.task', 'read', [uniqueIds], { fields: await conUbicacion(SUBTASK_FIELDS) }),
     'listCalendarTasks:subtasks',
   )) as Array<Record<string, unknown>>;
 
@@ -582,7 +704,7 @@ async function resolveDriftedChildrenRaw(
     [START_FIELD, '<', to],
   ];
   const rows = (await withTimeout(
-    executeKw('project.task', 'search_read', [domain], { fields: SUBTASK_FIELDS, limit: 500 }),
+    executeKw('project.task', 'search_read', [domain], { fields: await conUbicacion(SUBTASK_FIELDS), limit: 500 }),
     'listCalendarTasks:driftedChildren',
   )) as Array<Record<string, unknown>>;
 

@@ -113,6 +113,7 @@ export interface VerificacionEquipo {
   estado: EstadoVerificacionEquipo;
   problemas: string[];
   avanzoBajoResponsabilidad: boolean;
+  intentos?: number | null;
   at: string | null;
 }
 
@@ -311,10 +312,11 @@ export interface ReporteTecnico {
 // técnico no encontró en el lugar (no genera Conformidad, ver
 // ALCANCE_BACKOFFICE.md §14). Coordinación la ve acá para reprogramarla en
 // Odoo y marcarla resuelta.
-export type EstadoSubtareaIncidencia = 'pendiente_reprogramar' | 'reprogramada';
+export type EstadoSubtareaIncidencia = 'pendiente_reprogramar' | 'propuesta_pendiente' | 'rechazada' | 'reprogramada';
 
 export interface ListSubtareaIncidenciasQuery {
-  estado?: EstadoSubtareaIncidencia;
+  // Uno o varios estados separados por coma.
+  estado?: string;
   page?: number;
   pageSize?: number;
 }
@@ -329,6 +331,16 @@ export interface SubtareaIncidencia {
   fecha: string;
   motivo: string;
   estado: EstadoSubtareaIncidencia;
+  // 'pre_cancelado': el técnico empezó el PRE y no pudo seguir; puede traer una propuesta de nueva fecha y hora.
+  tipo?: 'no_encontrada' | 'pre_cancelado';
+  propuestaInicio?: string | null;
+  propuestaFin?: string | null;
+  motivoRechazo?: string;
+  clienteNombre?: string;
+  ticketOdooId?: number | null;
+  // Si el PDF de reprogramación no pudo adjuntarse al ticket de Odoo (la reprogramación igual quedó hecha).
+  pdfReprogramacionAt?: string | null;
+  pdfReprogramacionError?: string;
   resueltaPor: string | null;
   resueltaAt: string | null;
   // Nueva fecha y hora de la visita reprogramada; null en las anteriores a este dato.
@@ -412,6 +424,9 @@ export interface EstadoEquipo {
   voltajeCargador: number | null;
   bateriaInterna: number | null;
   senalDbm: number | null;
+  // Última posición con satélites y HDOP (precisión: más bajo es mejor); null si no hay posición.
+  gps?: { satelites: number | null; hdop: number | null; fecha: string } | null;
+  posicionFecha?: string | null;
   firmware: { version: string | null; fecha: string | null; actualizacionDisponible: boolean; detalleActualizacion: string | null };
   senalesVistas: { pantalla: boolean; rfid: boolean; fuel: boolean; sim: boolean; corteMotor: boolean; panico: string | null };
   movil: { cliente: string; movil: string; baja: boolean; bajaCliente: boolean; corteDeServicio: boolean } | null;

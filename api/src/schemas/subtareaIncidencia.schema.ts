@@ -2,10 +2,19 @@ import { z } from 'zod';
 
 const fechaField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'fecha must be YYYY-MM-DD');
 
-export const createSubtareaIncidenciaSchema = z.object({
+export const createSubtareaIncidenciaSchema = z
+  .object({
+  tipo: z.enum(['no_encontrada', 'pre_cancelado']).default('no_encontrada'),
+  // Propuesta de reprogramación para esta unidad (ISO). Opcional: sin ella la incidencia queda
+  // pendiente_reprogramar como siempre; con ella queda propuesta_pendiente.
+  propuestaInicio: z.string().datetime().optional(),
+  propuestaFin: z.string().datetime().optional(),
   tareaOdooId: z.number().int().positive(),
   subtareaOdooId: z.number().int().positive(),
   subtareaNombre: z.string().optional(),
+  // Ticket de Odoo y cliente, para el PDF de reprogramación que se adjunta al ticket.
+  ticketOdooId: z.number().int().positive().optional(),
+  clienteNombre: z.string().trim().max(200).optional(),
   // Ver conformidad.schema.ts / ALCANCE_BACKOFFICE.md §15.9b — otras
   // project.task reales colapsadas en esta misma unidad, a marcar "En
   // espera" junto con subtareaOdooId.
@@ -17,11 +26,21 @@ export const createSubtareaIncidenciaSchema = z.object({
   // real del toque (ISO).
   clientId: z.string().min(8).max(64).optional(),
   ocurrioAt: z.string().datetime().optional(),
-});
+  })
+  .refine((d) => !d.propuestaInicio === !d.propuestaFin, { message: 'propuestaInicio y propuestaFin van juntos', path: ['propuestaFin'] })
+  .refine((d) => !d.propuestaInicio || !d.propuestaFin || d.propuestaFin > d.propuestaInicio, {
+    message: 'propuestaFin debe ser posterior a propuestaInicio',
+    path: ['propuestaFin'],
+  });
 export type CreateSubtareaIncidenciaInput = z.infer<typeof createSubtareaIncidenciaSchema>;
 
 export const listSubtareaIncidenciasQuerySchema = z.object({
-  estado: z.enum(['pendiente_reprogramar', 'reprogramada']).optional(),
+  // Uno o varios estados separados por coma (ej. "pendiente_reprogramar,rechazada").
+  estado: z
+    .string()
+    .transform((s) => s.split(',').map((x) => x.trim()).filter(Boolean))
+    .pipe(z.array(z.enum(['pendiente_reprogramar', 'propuesta_pendiente', 'rechazada', 'reprogramada'])).min(1))
+    .optional(),
   fecha: fechaField.optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
@@ -36,11 +55,16 @@ export type ListSubtareaIncidenciasQuery = z.infer<typeof listSubtareaIncidencia
 // fecha, por consistencia.
 export const resolveSubtareaIncidenciaSchema = z
   .object({
-    estado: z.literal('reprogramada'),
+    // 'rechazada' solo vale para una propuesta del técnico (ver resolveSubtareaIncidencia) y exige motivo.
+    // 'reprogramada' sobre una propuesta sin start/end acepta la hora propuesta; con start/end la cambia.
+    estado: z.enum(['reprogramada', 'rechazada']),
     start: z.string().min(1).optional(),
     end: z.string().min(1).optional(),
     technicianId: z.number().int().positive().optional(),
+    motivoRechazo: z.string().trim().max(500).optional(),
   })
   .refine((d) => !d.start === !d.end, { message: 'start y end van juntos', path: ['end'] })
-  .refine((d) => !d.start || !d.end || d.end > d.start, { message: 'end debe ser posterior a start', path: ['end'] });
+  .refine((d) => !d.start || !d.end || d.end > d.start, { message: 'end debe ser posterior a start', path: ['end'] })
+  .refine((d) => d.estado !== 'rechazada' || !!d.motivoRechazo, { message: 'El motivo del rechazo es obligatorio', path: ['motivoRechazo'] })
+  .refine((d) => d.estado !== 'rechazada' || !d.start, { message: 'Un rechazo no lleva fecha nueva', path: ['start'] });
 export type ResolveSubtareaIncidenciaInput = z.infer<typeof resolveSubtareaIncidenciaSchema>;

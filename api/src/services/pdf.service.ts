@@ -5,6 +5,7 @@ import puppeteer, { type Browser } from 'puppeteer';
 import sharp from 'sharp';
 import { buildPrintHtml, type PrintableConformidad } from '@wara/shared';
 import { buildObjectKey, uploadBuffer } from './r2.service.js';
+import { buildReprogramacionHtml, type ReprogramacionPdfData } from './reprogramacionPdf.js';
 
 // Se embebe como data URI (no una URL de R2/Odoo) para que el PDF no dependa
 // de que Chromium resuelva una request de red aparte al renderizar — el
@@ -137,7 +138,7 @@ async function getBrowser(): Promise<Browser> {
   return browserPromise;
 }
 
-function renderPdfBuffer(record: PrintableConformidad, opts?: { soloPre?: boolean }): Promise<Buffer> {
+function renderPdfBuffer(makeHtml: () => Promise<string>): Promise<Buffer> {
   return renderSlots(async () => {
     rendersActivos++;
     clearTimeout(idleTimer);
@@ -148,7 +149,7 @@ function renderPdfBuffer(record: PrintableConformidad, opts?: { soloPre?: boolea
         rendersActivos++;
       }
       rendersEnBrowser++;
-      return await renderPdfBufferNow(record, opts);
+      return await renderPdfBufferNow(await makeHtml());
     } finally {
       rendersActivos--;
       programarCierreOcioso();
@@ -156,15 +157,7 @@ function renderPdfBuffer(record: PrintableConformidad, opts?: { soloPre?: boolea
   });
 }
 
-async function renderPdfBufferNow(record: PrintableConformidad, opts?: { soloPre?: boolean }): Promise<Buffer> {
-  const html = await buildPrintHtml(record, {
-    soloPre: opts?.soloPre,
-    logoDataUri: LOGO_DATA_URI,
-    resolvePhotoSrc: async (foto) => {
-      if (!foto.url) return foto.dataUrl;
-      return (await resizePhotoForPdf(foto.url)) ?? foto.url;
-    },
-  });
+async function renderPdfBufferNow(html: string): Promise<Buffer> {
   const browser = await getBrowser();
   const page = await browser.newPage();
   // Defensa en profundidad: el HTML se arma con datos del técnico; si algún
@@ -223,6 +216,11 @@ export function warmUpPdf(): void {
   void getBrowser().catch((err) => console.error('PDF_WARMUP_FAILED', err));
 }
 
+// PDF de reprogramación de una unidad (ver reprogramacionPdf.ts). Sin caché: se genera una vez por reprogramación.
+export function buildReprogramacionPdfBuffer(data: ReprogramacionPdfData): Promise<Buffer> {
+  return renderPdfBuffer(async () => buildReprogramacionHtml(data, LOGO_DATA_URI));
+}
+
 // Genera el buffer del PDF sin subirlo a R2 — usado por los endpoints que
 // responden con streaming binario o adjuntan el PDF directamente a Odoo en
 // memoria, sin almacenamiento persistente.
@@ -241,7 +239,16 @@ export async function buildConformidadPdfBuffer(
   // Dos pedidos iguales a la vez (doble toque, o "Ver PDF" justo mientras se envía a Odoo) comparten el render.
   const enCurso = pdfEnCurso.get(key);
   if (enCurso) return enCurso;
-  const p = renderPdfBuffer(record, opts)
+  const p = renderPdfBuffer(() =>
+    buildPrintHtml(record, {
+      soloPre: opts?.soloPre,
+      logoDataUri: LOGO_DATA_URI,
+      resolvePhotoSrc: async (foto) => {
+        if (!foto.url) return foto.dataUrl;
+        return (await resizePhotoForPdf(foto.url)) ?? foto.url;
+      },
+    }),
+  )
     .then((buf) => {
       guardarPdf(key, buf);
       return buf;

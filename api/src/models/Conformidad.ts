@@ -169,6 +169,8 @@ const VerificacionEquipoSchema = new Schema(
     estado: { type: String, enum: ['verificado', 'con_problemas', 'sin_verificar'], required: true },
     problemas: { type: [String], default: [] },
     avanzoBajoResponsabilidad: { type: Boolean, default: false },
+    // Veces que el técnico tocó "Verificar" en el paso de control (la PWA exige 3 antes de dejar avanzar sin confirmar).
+    intentos: { type: Number, default: null },
     at: { type: Date, default: null },
   },
   { _id: false },
@@ -223,6 +225,9 @@ const ConformidadSchema = new Schema(
     cambioEquipo: { type: CambioEquipoSchema, default: () => ({}) },
     // null = hoja anterior a este dato (o sin paso de control): no se puede afirmar nada.
     verificacionEquipo: { type: VerificacionEquipoSchema, default: null },
+    // Productos de la orden que no se pudieron instalar/retirar en el lugar: clave de la casilla -> motivo que escribió el
+    // técnico. Las claves son los nombres de casilla de la app (camelCase, sin puntos). Vacío = nada que informar.
+    noInstalados: { type: Schema.Types.Mixed, default: () => ({}) },
 
     deletedAt: { type: Date, default: null },
   },

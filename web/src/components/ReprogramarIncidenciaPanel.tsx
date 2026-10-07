@@ -9,9 +9,29 @@ import { IconX } from '@/components/ui/Icons';
 import { resolveSubtareaIncidencia, listTechnicians, ApiError } from '@/lib/api';
 import { useApiData } from '@/lib/useApiData';
 import { useAuth } from '@/auth/AuthContext';
-import { arWallClockDateTimeToOdooUtcString, parseOdooUtcString, formatOdooUtcString, DEFAULT_TASK_DURATION_HOURS } from '@/lib/calendarDates';
+import { AR_TIME_ZONE, arWallClockDateTimeToOdooUtcString, parseOdooUtcString, formatOdooUtcString, DEFAULT_TASK_DURATION_HOURS } from '@/lib/calendarDates';
 import type { SubtareaIncidencia } from '@/lib/types';
 import { useBodyScrollLock } from '@/lib/useBodyScrollLock';
+
+// Fecha ("YYYY-MM-DD") y hora ("HH:mm") en horario argentino de un instante ISO, para precargar los inputs.
+function arFechaHora(iso: string): { fecha: string; hora: string } | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: AR_TIME_ZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })
+      .formatToParts(d)
+      .map((x) => [x.type, x.value]),
+  );
+  return { fecha: `${p.year}-${p.month}-${p.day}`, hora: `${p.hour}:${p.minute}` };
+}
 
 // Reprograma de verdad la subtarea en Odoo (fecha nueva + la reabre de
 // "Visita fallida"/"En espera" a "Nuevo"/"En progreso", ver
@@ -30,8 +50,10 @@ export function ReprogramarIncidenciaPanel({
   useBodyScrollLock();
   const { getIdToken } = useAuth();
   const { data: technicians } = useApiData(listTechnicians, []);
-  const [fecha, setFecha] = useState('');
-  const [hora, setHora] = useState('');
+  // Con una propuesta del técnico, arranca con su fecha y hora (coordinación puede cambiarlas al aceptar).
+  const propuesta = incidencia.estado === 'propuesta_pendiente' && incidencia.propuestaInicio ? arFechaHora(incidencia.propuestaInicio) : null;
+  const [fecha, setFecha] = useState(propuesta?.fecha ?? '');
+  const [hora, setHora] = useState(propuesta?.hora ?? '');
   const [technicianId, setTechnicianId] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +69,12 @@ export function ReprogramarIncidenciaPanel({
       const [year, month, day] = fecha.split('-').map(Number);
       const [hour, minute] = hora.split(':').map(Number);
       const start = arWallClockDateTimeToOdooUtcString(year, month, day, hour, minute);
-      const end = formatOdooUtcString(new Date(parseOdooUtcString(start).getTime() + DEFAULT_TASK_DURATION_HOURS * 60 * 60 * 1000));
+      // Con propuesta se respeta la duración que pidió el técnico; si no, la duración por defecto.
+      const duracionMs =
+        incidencia.propuestaInicio && incidencia.propuestaFin
+          ? new Date(incidencia.propuestaFin).getTime() - new Date(incidencia.propuestaInicio).getTime()
+          : DEFAULT_TASK_DURATION_HOURS * 60 * 60 * 1000;
+      const end = formatOdooUtcString(new Date(parseOdooUtcString(start).getTime() + duracionMs));
 
       const token = await getIdToken();
       // El técnico ya va a ver esta unidad en su agenda el día correcto sin
@@ -73,7 +100,7 @@ export function ReprogramarIncidenciaPanel({
       <div className="absolute inset-0 animate-sheet-fade bg-black/45" onClick={onClose} />
       <Card className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col overflow-y-auto overscroll-contain rounded-b-none p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] animate-sheet-up lg:overflow-visible lg:rounded-b-lg lg:animate-none lg:inset-x-auto lg:bottom-6 lg:right-6 lg:top-6 lg:max-h-none lg:w-[440px] lg:pb-5">
         <div className="flex items-center justify-between">
-          <div className="text-lg font-extrabold">Reprogramar visita</div>
+          <div className="text-lg font-extrabold">{propuesta ? 'Aceptar con otra hora' : 'Reprogramar visita'}</div>
           <button
             type="button"
             onClick={onClose}

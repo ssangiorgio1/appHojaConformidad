@@ -211,6 +211,15 @@ export function resolveSubtareaIncidencia(
   });
 }
 
+// Coordinación rechaza la propuesta de reprogramación del técnico: no toca Odoo, deja el motivo y la unidad queda
+// para reprogramar a mano (pestaña Pendientes).
+export function rechazarPropuestaIncidencia(idToken: string, id: string, motivoRechazo: string) {
+  return apiFetch<SubtareaIncidencia>(`/api/subtareas/incidencias/${id}`, idToken, {
+    method: 'PATCH',
+    body: { estado: 'rechazada', motivoRechazo },
+  });
+}
+
 export function listIncidenciaDestinatarios(idToken: string) {
   return apiFetch<{ data: IncidenciaDestinatario[] }>('/api/incidencia-destinatarios', idToken).then((r) => r.data);
 }
@@ -244,6 +253,11 @@ export function refrescarFlota(idToken: string) {
 
 export function buscarEquipos(idToken: string, q: string) {
   return apiFetch<{ data: EquipoCoincidencia[] }>(`/api/equipos/buscar?q=${encodeURIComponent(q)}`, idToken).then((r) => r.data);
+}
+
+// El QR de algunas etiquetas trae solo el IMEI: la API consulta la herramienta de stock para sacar el número de equipo.
+export function getNumeroEquipoPorImei(idToken: string, imei: string) {
+  return apiFetch<{ numEquipo: string | null }>(`/api/equipos/numero-por-imei?imei=${encodeURIComponent(imei)}`, idToken).then((r) => r.numEquipo);
 }
 
 export function getEstadoEquipo(idToken: string, equipoId: number, forzar = false) {

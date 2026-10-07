@@ -20,6 +20,13 @@ const SubtareaIncidenciaSchema = new Schema(
     // panel web no tenga que volver a pedirle nada a Odoo solo para mostrar
     // la lista de incidencias.
     subtareaNombre: { type: String, default: '' },
+    // Ticket de Odoo al que se adjunta el PDF de reprogramación (lo manda la PWA, que ya lo tiene en la tarea) y
+    // nombre del cliente para imprimirlo. Opcionales: sin ticket no se genera el PDF.
+    ticketOdooId: { type: Number, default: null },
+    clienteNombre: { type: String, default: '' },
+    // Resultado del envío del PDF de reprogramación al ticket (best-effort: no bloquea la reprogramación).
+    pdfReprogramacionAt: { type: Date, default: null },
+    pdfReprogramacionError: { type: String, default: '' },
     tecnicoId: { type: Schema.Types.ObjectId, ref: 'Usuario', required: true, index: true },
     // Día del intento de visita (YYYY-MM-DD) — no createdAt: es el dato que
     // importa para reprogramar, y podría diferir si se reporta con demora.
@@ -27,13 +34,22 @@ const SubtareaIncidenciaSchema = new Schema(
     // Obligatorio: coordinación necesita saber por qué no estaba la unidad
     // para poder reprogramarla, no solo que faltó.
     motivo: { type: String, required: true, trim: true },
-    tipo: { type: String, enum: ['no_encontrada'], default: 'no_encontrada' },
+    // 'pre_cancelado': el técnico empezó el PRE y no puede quedarse ni volver el mismo día; cancela y puede
+    // proponer otra fecha y hora (ver propuestaInicio). Ver docs-cancelar-pre-reprogramar.md.
+    tipo: { type: String, enum: ['no_encontrada', 'pre_cancelado'], default: 'no_encontrada' },
+    // 'propuesta_pendiente': el técnico propuso fecha y hora y coordinación todavía no respondió.
+    // 'rechazada': coordinación no aceptó la propuesta; queda para reprogramar por el camino de siempre.
     estado: {
       type: String,
-      enum: ['pendiente_reprogramar', 'reprogramada'],
+      enum: ['pendiente_reprogramar', 'propuesta_pendiente', 'rechazada', 'reprogramada'],
       default: 'pendiente_reprogramar',
       index: true,
     },
+    // Propuesta del técnico para esta unidad (subtarea): la fecha y hora se escriben en la SUBTAREA, no en la
+    // tarea padre. Ambas van juntas o ninguna.
+    propuestaInicio: { type: Date, default: null },
+    propuestaFin: { type: Date, default: null },
+    motivoRechazo: { type: String, default: '' },
     resueltaPor: { type: Schema.Types.ObjectId, ref: 'Usuario', default: null },
     resueltaAt: { type: Date, default: null },
     // Nueva fecha y hora a la que se reprogramó la visita (la que se eligió al reprogramar desde el panel);

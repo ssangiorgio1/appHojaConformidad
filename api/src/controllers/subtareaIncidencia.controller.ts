@@ -5,7 +5,9 @@ import { SubtareaIncidenciaModel } from '../models/SubtareaIncidencia.js';
 import { UsuarioModel } from '../models/Usuario.js';
 import { IncidenciaDestinatarioModel } from '../models/IncidenciaDestinatario.js';
 import { decryptSecret } from '../utils/secretBox.js';
-import { postSubtareaNoEncontrada, scheduleSubtareaReprogramarActivity } from '../services/odoo.service.js';
+import { postSubtareaNoEncontrada, pushReprogramacionToTicket, scheduleSubtareaReprogramarActivity } from '../services/odoo.service.js';
+import { buildReprogramacionPdfBuffer } from '../services/pdf.service.js';
+import { formatoFechaHora } from '../services/reprogramacionPdf.js';
 import {
   odooTaskUrl,
   markTaskWaiting,
@@ -25,6 +27,15 @@ import type {
 
 function esc(s: unknown): string {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}
+
+function formatoArgentina(d: Date): string {
+  return new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', dateStyle: 'short', timeStyle: 'short' }).format(d);
+}
+
+// Formato de fecha de Odoo: "YYYY-MM-DD HH:mm:ss" en UTC.
+function aFechaOdoo(d: Date): string {
+  return d.toISOString().slice(0, 19).replace('T', ' ');
 }
 
 // El técnico marca, desde la agenda de la PWA, que una unidad del lote no
@@ -52,12 +63,18 @@ export const createSubtareaIncidencia = asyncHandler(async (req: Request, res: R
   const ahora = Date.now();
   const createdAt = ocurrio && ocurrio.getTime() <= ahora && ahora - ocurrio.getTime() < 72 * 3_600_000 ? ocurrio : undefined;
 
+  const propuesta = body.propuestaInicio && body.propuestaFin ? { inicio: new Date(body.propuestaInicio), fin: new Date(body.propuestaFin) } : null;
+
   const incidencia = await SubtareaIncidenciaModel.create({
     clientId: body.clientId,
+    tipo: body.tipo,
+    ...(propuesta ? { estado: 'propuesta_pendiente', propuestaInicio: propuesta.inicio, propuestaFin: propuesta.fin } : {}),
     ...(createdAt ? { createdAt } : {}),
     tareaOdooId: body.tareaOdooId,
     subtareaOdooId: body.subtareaOdooId,
     subtareaNombre: body.subtareaNombre ?? '',
+    ticketOdooId: body.ticketOdooId ?? null,
+    clienteNombre: body.clienteNombre ?? '',
     mergedTaskIds: body.mergedTaskIds,
     tecnicoId: req.user!.usuarioId,
     fecha: body.fecha,
@@ -65,9 +82,10 @@ export const createSubtareaIncidencia = asyncHandler(async (req: Request, res: R
   });
 
   const usuario = await UsuarioModel.findById(req.user!.usuarioId);
-  const bodyHtml = `<p><b>Unidad no encontrada en el lugar</b> — reportado por ${esc(usuario?.nombre || usuario?.email || 'un técnico')} el ${esc(body.fecha)}.</p>${
+  const titulo = body.tipo === 'pre_cancelado' ? 'PRE cancelado por el técnico' : 'Unidad no encontrada en el lugar';
+  const bodyHtml = `<p><b>${titulo}</b> — reportado por ${esc(usuario?.nombre || usuario?.email || 'un técnico')} el ${esc(body.fecha)}.</p>${
     body.motivo ? `<p>Motivo: ${esc(body.motivo)}</p>` : ''
-  }`;
+  }${propuesta ? `<p>Reprogramación propuesta: <b>${esc(formatoArgentina(propuesta.inicio))}</b> a ${esc(formatoArgentina(propuesta.fin))}. Pendiente de aceptación por coordinación.</p>` : ''}`;
 
   if (usuario?.odoo) {
     try {
@@ -91,7 +109,11 @@ export const createSubtareaIncidencia = asyncHandler(async (req: Request, res: R
     if (destinatarios.length) {
       await scheduleSubtareaReprogramarActivity({
         subtareaOdooId: body.subtareaOdooId,
-        summary: 'Reprogramar visita — unidad no encontrada',
+        summary: propuesta
+          ? 'Responder propuesta de reprogramación del técnico'
+          : body.tipo === 'pre_cancelado'
+            ? 'Reprogramar visita — PRE cancelado'
+            : 'Reprogramar visita — unidad no encontrada',
         note: bodyHtml,
         userIds: destinatarios.map((d) => d.odooUserId),
       });
@@ -135,7 +157,7 @@ export const createSubtareaIncidencia = asyncHandler(async (req: Request, res: R
 export const listSubtareaIncidencias = asyncHandler(async (req: Request, res: Response) => {
   const query = req.query as unknown as ListSubtareaIncidenciasQuery;
   const filter: Record<string, unknown> = {};
-  if (query.estado) filter.estado = query.estado;
+  if (query.estado) filter.estado = query.estado.length === 1 ? query.estado[0] : { $in: query.estado };
   if (query.fecha) filter.fecha = query.fecha;
   // Mismo criterio que el resto de los endpoints scopeados por rol: un
   // técnico solo ve lo suyo, coordinación/mesa_ayuda/admin ven todo.
@@ -184,6 +206,27 @@ export const resolveSubtareaIncidencia = asyncHandler(async (req: Request, res: 
   const incidencia = await SubtareaIncidenciaModel.findById(req.params.id);
   if (!incidencia) throw new HttpError(404, 'Incidencia not found');
 
+  // Rechazo de la propuesta del técnico: no toca Odoo (la unidad ya está "En espera"), solo deja el motivo y la
+  // incidencia queda para reprogramar por el camino de siempre. Lo decide coordinación, no mesa de ayuda.
+  if (body.estado === 'rechazada') {
+    if (!REPROGRAMAR_ROLES.has(req.user!.role)) throw new HttpError(403, 'Tu rol no puede responder propuestas de reprogramación.');
+    if (incidencia.estado !== 'propuesta_pendiente') throw new HttpError(409, 'La incidencia no tiene una propuesta pendiente.');
+    incidencia.estado = 'rechazada';
+    incidencia.motivoRechazo = body.motivoRechazo ?? '';
+    incidencia.resueltaPor = req.user!.usuarioId;
+    incidencia.resueltaAt = new Date();
+    await incidencia.save();
+    res.json(incidencia.toObject());
+    return;
+  }
+
+  // Aceptar la propuesta tal cual: sin start/end en el body se usa la hora que propuso el técnico; con
+  // start/end coordinación la cambia al aceptar.
+  if (!body.start && incidencia.estado === 'propuesta_pendiente' && incidencia.propuestaInicio && incidencia.propuestaFin) {
+    body.start = aFechaOdoo(incidencia.propuestaInicio);
+    body.end = aFechaOdoo(incidencia.propuestaFin);
+  }
+
   // Solo tiene sentido cuando se reprograma de verdad (body.start/body.end) —
   // undefined en la respuesta para el camino viejo ("marcar resuelta" nomás).
   let parentDateMoved: boolean | undefined;
@@ -221,6 +264,10 @@ export const resolveSubtareaIncidencia = asyncHandler(async (req: Request, res: 
     await reopenParentIfVisitaFallida(incidencia.tareaOdooId);
   }
 
+  const propuestaOriginal =
+    incidencia.estado === 'propuesta_pendiente' && incidencia.propuestaInicio && incidencia.propuestaFin
+      ? { inicio: incidencia.propuestaInicio, fin: incidencia.propuestaFin }
+      : null;
   incidencia.estado = body.estado;
   incidencia.resueltaPor = req.user!.usuarioId;
   incidencia.resueltaAt = new Date();
@@ -228,6 +275,40 @@ export const resolveSubtareaIncidencia = asyncHandler(async (req: Request, res: 
   if (body.start) {
     const para = new Date(`${body.start.replace(' ', 'T')}Z`);
     if (!Number.isNaN(para.getTime())) incidencia.reprogramadaPara = para;
+  }
+
+  // PDF de reprogramación al ticket, con el nombre de la subtarea. Best-effort: la reprogramación ya se hizo en
+  // Odoo, así que si esto falla se anota el error en la incidencia y no se corta la respuesta.
+  if (body.start && body.end && incidencia.ticketOdooId) {
+    try {
+      const tecnico = await UsuarioModel.findById(incidencia.tecnicoId);
+      const nuevaInicio = new Date(`${body.start.replace(' ', 'T')}Z`);
+      const nuevaFin = new Date(`${body.end.replace(' ', 'T')}Z`);
+      const pdfBuffer = await buildReprogramacionPdfBuffer({
+        subtareaNombre: incidencia.subtareaNombre,
+        clienteNombre: incidencia.clienteNombre,
+        ticketNumero: incidencia.ticketOdooId,
+        tecnicoNombre: tecnico?.nombre || tecnico?.email || '',
+        reportadaAt: (incidencia as unknown as { createdAt: Date }).createdAt,
+        nuevaInicio,
+        nuevaFin,
+        motivo: incidencia.motivo,
+        tipo: incidencia.tipo,
+        propuestaOriginal,
+      });
+      await pushReprogramacionToTicket({
+        ticketId: incidencia.ticketOdooId,
+        pdfBuffer,
+        fileName: `reprogramacion_${(incidencia.subtareaNombre || incidencia.subtareaOdooId).toString().replace(/[^\w.-]+/g, '_')}.pdf`,
+        resumenHtml: `<p><b>Visita reprogramada</b> — ${esc(incidencia.subtareaNombre)} (${esc(incidencia.clienteNombre)}).</p><p>Nueva fecha y hora: <b>${esc(formatoFechaHora(nuevaInicio))}</b>.</p>`,
+        as: tecnico?.odoo ? { login: tecnico.odoo.login, password: decryptSecret(tecnico.odoo.passwordEnc) } : undefined,
+      });
+      incidencia.pdfReprogramacionAt = new Date();
+      incidencia.pdfReprogramacionError = '';
+    } catch (err) {
+      console.error('SUBTAREA_INCIDENCIA_PDF_REPROGRAMACION_FAILED', incidencia.id, err);
+      incidencia.pdfReprogramacionError = err instanceof Error ? err.message.slice(0, 300) : 'Error al enviar el PDF';
+    }
   }
   await incidencia.save();
 

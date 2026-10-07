@@ -7,22 +7,37 @@ import { Pagination } from '@/components/ui/Pagination';
 import { IconAlertTriangle } from '@/components/ui/Icons';
 import { IncidenciaDestinatariosPanel } from '@/components/IncidenciaDestinatariosPanel';
 import { ReprogramarIncidenciaPanel } from '@/components/ReprogramarIncidenciaPanel';
-import { listSubtareaIncidencias } from '@/lib/api';
+import { RechazarPropuestaPanel } from '@/components/RechazarPropuestaPanel';
+import { ApiError, listSubtareaIncidencias, resolveSubtareaIncidencia } from '@/lib/api';
 import { useApiData } from '@/lib/useApiData';
 import { useAuth } from '@/auth/AuthContext';
 import { formatFechaConHoraReporte, formatIsoDateTime } from '@/lib/format';
-import type { EstadoSubtareaIncidencia, SubtareaIncidencia } from '@/lib/types';
+import type { SubtareaIncidencia } from '@/lib/types';
 
-const TABS: { value: EstadoSubtareaIncidencia; label: string }[] = [
-  { value: 'pendiente_reprogramar', label: 'Pendientes' },
+// `value` es el filtro de estado que se manda a la API (uno o varios separados por coma).
+// "Pendientes" incluye las propuestas que coordinación rechazó: siguen necesitando reprogramarse a mano.
+const TABS: { value: string; label: string }[] = [
+  { value: 'propuesta_pendiente', label: 'Propuestas' },
+  { value: 'pendiente_reprogramar,rechazada', label: 'Pendientes' },
   { value: 'reprogramada', label: 'Reprogramadas' },
 ];
+
+const VACIO: Record<string, string> = {
+  propuesta_pendiente: 'No hay propuestas de reprogramación esperando respuesta.',
+  'pendiente_reprogramar,rechazada': 'No hay unidades pendientes de reprogramar.',
+  reprogramada: 'Todavía no se reprogramó ninguna.',
+};
+
+function fechaHoraAr(iso?: string | null): string {
+  if (!iso) return '—';
+  return new Intl.DateTimeFormat('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso));
+}
 
 const PAGE_SIZE = 20;
 
 export default function IncidenciasPage() {
-  const { usuario } = useAuth();
-  const [estadoFiltro, setEstadoFiltro] = useState<EstadoSubtareaIncidencia>('pendiente_reprogramar');
+  const { usuario, getIdToken } = useAuth();
+  const [estadoFiltro, setEstadoFiltro] = useState<string>('pendiente_reprogramar,rechazada');
   const [page, setPage] = useState(1);
   const { data, loading, error, refetch } = useApiData(
     (token) => listSubtareaIncidencias(token, { estado: estadoFiltro, page, pageSize: PAGE_SIZE }),
@@ -30,9 +45,12 @@ export default function IncidenciasPage() {
   );
   const [configurando, setConfigurando] = useState(false);
   const [reprogramando, setReprogramando] = useState<SubtareaIncidencia | null>(null);
+  const [rechazando, setRechazando] = useState<SubtareaIncidencia | null>(null);
+  const [aceptandoId, setAceptandoId] = useState<string | null>(null);
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
   const puedeConfigurar = usuario?.role === 'admin' || usuario?.role === 'superadmin';
 
-  function cambiarTab(estado: EstadoSubtareaIncidencia) {
+  function cambiarTab(estado: string) {
     setPage(1);
     setEstadoFiltro(estado);
   }
@@ -41,14 +59,79 @@ export default function IncidenciasPage() {
     await refetch();
   }
 
+  // Acepta la propuesta tal cual: sin fecha en el pedido, la API usa la que propuso el técnico, mueve la subtarea
+  // en Odoo y adjunta el PDF de reprogramación al ticket.
+  async function aceptar(inc: SubtareaIncidencia) {
+    setAceptandoId(inc._id);
+    setErrorAccion(null);
+    try {
+      await resolveSubtareaIncidencia(await getIdToken(), inc._id);
+      await refetch();
+    } catch (err) {
+      setErrorAccion(err instanceof ApiError ? err.message : 'No se pudo aceptar la propuesta.');
+    } finally {
+      setAceptandoId(null);
+    }
+  }
+
+  // Qué reportó el técnico y, si hay, su propuesta o el rechazo.
+  function detalle(inc: SubtareaIncidencia) {
+    return (
+      <>
+        {inc.tipo === 'pre_cancelado' && <div className="text-[11.5px] font-bold text-warning-700">PRE cancelado por el técnico</div>}
+        {inc.estado === 'propuesta_pendiente' && inc.propuestaInicio && (
+          <div className="text-[12px] font-bold text-primary">
+            Propone: {fechaHoraAr(inc.propuestaInicio)} a {fechaHoraAr(inc.propuestaFin)}
+          </div>
+        )}
+        {inc.estado === 'rechazada' && (
+          <div className="text-[12px] font-bold text-bad">Propuesta rechazada{inc.motivoRechazo ? `: ${inc.motivoRechazo}` : ''}</div>
+        )}
+        {inc.estado === 'reprogramada' && inc.pdfReprogramacionError && (
+          <div className="text-[11.5px] font-semibold text-bad">El PDF no se adjuntó al ticket: {inc.pdfReprogramacionError}</div>
+        )}
+      </>
+    );
+  }
+
+  function acciones(inc: SubtareaIncidencia) {
+    if (inc.estado === 'propuesta_pendiente') {
+      return (
+        <div className="flex flex-wrap gap-2">
+          <Button className="text-xs" onClick={() => aceptar(inc)} disabled={aceptandoId === inc._id}>
+            {aceptandoId === inc._id ? 'Aceptando...' : 'Aceptar'}
+          </Button>
+          <Button variant="ghost" className="border border-neutral-300 text-xs" onClick={() => setReprogramando(inc)}>
+            Cambiar hora
+          </Button>
+          <Button variant="ghost" className="border border-neutral-300 text-xs" onClick={() => setRechazando(inc)}>
+            Rechazar
+          </Button>
+        </div>
+      );
+    }
+    if (inc.estado === 'reprogramada') {
+      return (
+        <span className="text-xs font-bold text-success-700">
+          Reprogramada{inc.reprogramadaPara ? ` para ${formatIsoDateTime(inc.reprogramadaPara)}` : ''}{inc.resueltaAt ? ` · el ${formatIsoDateTime(inc.resueltaAt)}` : ''}
+        </span>
+      );
+    }
+    return (
+      <Button variant="ghost" className="border border-neutral-300 text-xs" onClick={() => setReprogramando(inc)}>
+        Reprogramar
+      </Button>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
         <div>
           <div className="text-xl font-extrabold lg:text-2xl">Unidades no encontradas</div>
           <div className="mt-0.5 text-sm font-semibold text-muted">
-            Unidades de un lote que el técnico no encontró en el lugar al llegar — no tienen hoja de conformidad, hay que
-            reprogramarlas en el calendario de Odoo.
+            Unidades que el técnico no encontró en el lugar, o cuyo PRE canceló: hay que reprogramarlas. Si el técnico
+            propuso fecha y hora, acá se acepta, se cambia la hora o se rechaza.
           </div>
         </div>
         {puedeConfigurar && (
@@ -62,6 +145,7 @@ export default function IncidenciasPage() {
       {reprogramando && (
         <ReprogramarIncidenciaPanel incidencia={reprogramando} onClose={() => setReprogramando(null)} onUpdated={onReprogramada} />
       )}
+      {rechazando && <RechazarPropuestaPanel incidencia={rechazando} onClose={() => setRechazando(null)} onUpdated={onReprogramada} />}
 
       <Card small className="flex w-full gap-1 overflow-x-auto p-1 sm:w-fit">
         {TABS.map((tab) => (
@@ -79,13 +163,14 @@ export default function IncidenciasPage() {
       </Card>
 
       {error && <Card className="p-4 text-sm font-semibold text-bad">{error}</Card>}
+      {errorAccion && <Card className="p-4 text-sm font-semibold text-bad">{errorAccion}</Card>}
 
       {/* < lg: una tarjeta por unidad (la tabla de 5 columnas no entra en el celular). */}
       <div className={`flex flex-col gap-3 transition-opacity lg:hidden ${loading && data ? 'opacity-60' : ''}`}>
         {loading && !data && <Card className="p-4 text-sm font-semibold text-muted">Cargando...</Card>}
         {data && !data.data.length && (
           <Card className="p-4 text-sm font-semibold text-muted">
-            {estadoFiltro === 'pendiente_reprogramar' ? 'No hay unidades pendientes de reprogramar.' : 'Todavía no se reprogramó ninguna.'}
+            {VACIO[estadoFiltro]}
           </Card>
         )}
         {(data?.data ?? []).map((inc) => (
@@ -105,15 +190,8 @@ export default function IncidenciasPage() {
               {inc.tecnicoId?.nombre || inc.tecnicoId?.email || '—'} · <span className="text-muted">{formatFechaConHoraReporte(inc.fecha, inc.createdAt)}</span>
             </div>
             {inc.motivo && <div className="text-[12.5px] text-muted">{inc.motivo}</div>}
-            {inc.estado === 'pendiente_reprogramar' ? (
-              <Button variant="ghost" className="mt-1 w-full justify-center border border-neutral-300 text-xs" onClick={() => setReprogramando(inc)}>
-                Reprogramar
-              </Button>
-            ) : (
-              <span className="text-xs font-bold text-success-700">
-                Reprogramada{inc.reprogramadaPara ? ` para ${formatIsoDateTime(inc.reprogramadaPara)}` : ''}{inc.resueltaAt ? ` · el ${formatIsoDateTime(inc.resueltaAt)}` : ''}
-              </span>
-            )}
+            {detalle(inc)}
+            <div className="mt-1">{acciones(inc)}</div>
           </Card>
         ))}
         {data && (
@@ -125,8 +203,8 @@ export default function IncidenciasPage() {
 
       <Card className="hidden p-2.5 pb-4 lg:block">
         <div className="overflow-x-auto">
-          <div className="min-w-[760px]">
-            <div className="grid grid-cols-[1.2fr_1.4fr_1fr_1.8fr_150px] pb-2.5 pt-4">
+          <div className="min-w-[860px]">
+            <div className="grid grid-cols-[1.2fr_1.2fr_1fr_1.8fr_230px] pb-2.5 pt-4">
               {['Unidad', 'Técnico', 'Fecha', 'Motivo', ''].map((h) => (
                 <div key={h} className="px-3.5 text-[11px] font-extrabold uppercase tracking-wide text-muted">
                   {h}
@@ -138,15 +216,13 @@ export default function IncidenciasPage() {
 
             {data && !data.data.length && (
               <div className="px-3 py-6 text-sm font-semibold text-muted">
-                {estadoFiltro === 'pendiente_reprogramar'
-                  ? 'No hay unidades pendientes de reprogramar.'
-                  : 'Todavía no se reprogramó ninguna.'}
+                {VACIO[estadoFiltro]}
               </div>
             )}
 
             <div className={`transition-opacity ${loading && data ? 'opacity-60' : ''}`}>
               {(data?.data ?? []).map((inc) => (
-                <div key={inc._id} className="grid grid-cols-[1.2fr_1.4fr_1fr_1.8fr_150px] items-center border-t border-line">
+                <div key={inc._id} className="grid grid-cols-[1.2fr_1.2fr_1fr_1.8fr_230px] items-center border-t border-line">
                   <div className="flex items-center gap-2 p-3.5">
                     <IconAlertTriangle className="flex-none text-warning-600" />
                     <div className="flex flex-col">
@@ -165,18 +241,11 @@ export default function IncidenciasPage() {
                   </div>
                   <div className="p-3.5 text-[13px] font-semibold">{inc.tecnicoId?.nombre || inc.tecnicoId?.email || '—'}</div>
                   <div className="p-3.5 text-[13px] font-semibold text-muted">{formatFechaConHoraReporte(inc.fecha, inc.createdAt)}</div>
-                  <div className="p-3.5 text-[13px] text-muted">{inc.motivo || '—'}</div>
-                  <div className="p-3.5">
-                    {inc.estado === 'pendiente_reprogramar' ? (
-                      <Button variant="ghost" className="border border-neutral-300 text-xs" onClick={() => setReprogramando(inc)}>
-                        Reprogramar
-                      </Button>
-                    ) : (
-                      <span className="text-xs font-bold text-success-700">
-                        Reprogramada{inc.reprogramadaPara ? ` para ${formatIsoDateTime(inc.reprogramadaPara)}` : ''}{inc.resueltaAt ? ` · el ${formatIsoDateTime(inc.resueltaAt)}` : ''}
-                      </span>
-                    )}
+                  <div className="flex flex-col gap-0.5 p-3.5 text-[13px] text-muted">
+                    <span>{inc.motivo || '—'}</span>
+                    {detalle(inc)}
                   </div>
+                  <div className="p-3.5">{acciones(inc)}</div>
                 </div>
               ))}
             </div>
