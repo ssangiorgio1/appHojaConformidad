@@ -21,7 +21,8 @@ type Chequeo = { label: string; tone: BadgeTone; detalle: string };
 
 function chequeos(e: EstadoEquipo): Chequeo[] {
   const minReporte = e.ultimoReporte ? (Date.now() - new Date(e.ultimoReporte).getTime()) / 60_000 : null;
-  const minPos = e.posicion?.fecha ? (Date.now() - new Date(e.posicion.fecha).getTime()) / 60_000 : null;
+  const fechaPos = e.posicionFecha ?? e.posicion?.fecha ?? null;
+  const minPos = fechaPos ? (Date.now() - new Date(fechaPos).getTime()) / 60_000 : null;
   const v = e.voltajeCargador;
   return [
     {
@@ -42,11 +43,15 @@ function chequeos(e: EstadoEquipo): Chequeo[] {
     // Un vehículo detenido (ignición apagada) deja de mandar posiciones y sólo manda el latido
     // cada 10 min: una posición vieja es normal, no una falla.
     e.ignicion && !e.ignicion.encendida && minPos !== null
-      ? { label: 'GPS', tone: 'ok', detalle: `última posición ${haceCuanto(e.posicion!.fecha)} · detenido (ignición apagada)` }
+      ? {
+          label: 'GPS',
+          tone: 'ok',
+          detalle: `última posición ${haceCuanto(fechaPos!)}${e.gps?.satelites != null ? ` · ${e.gps.satelites} satélites` : ''} · detenido (ignición apagada)`,
+        }
       : {
           label: 'GPS',
           tone: minPos === null ? 'warn' : minPos <= 30 ? 'ok' : 'warn',
-          detalle: minPos === null ? 'sin posición' : `posición ${haceCuanto(e.posicion!.fecha)}`,
+          detalle: minPos === null ? 'sin posición' : `posición ${haceCuanto(fechaPos!)}${e.gps?.satelites != null ? ` · ${e.gps.satelites} satélites` : ''}`,
         },
   ];
 }
@@ -149,7 +154,22 @@ export function EstadoEquipoView({
             {estado.firmware.actualizacionDisponible ? ' · hay actualización' : ''}
           </Dato>
           <Dato label="Posición">
-            {estado.posicion ? `${estado.posicion.latitud.toFixed(5)}, ${estado.posicion.longitud.toFixed(5)}` : 'No disponible'}
+            {estado.posicion ? (
+              <a
+                href={`https://www.google.com/maps?q=${estado.posicion.latitud},${estado.posicion.longitud}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Abrir en Google Maps"
+                className="font-semibold text-primary-600 hover:underline"
+              >
+                {estado.posicion.latitud.toFixed(5)}, {estado.posicion.longitud.toFixed(5)} ↗
+              </a>
+            ) : (
+              'No disponible'
+            )}
+          </Dato>
+          <Dato label="Satélites GPS">
+            {estado.gps?.satelites != null ? `${estado.gps.satelites}${estado.gps.hdop != null ? ` (HDOP ${estado.gps.hdop})` : ''}` : '—'}
           </Dato>
           <Dato label="Último reporte">{formatIsoDateTime(estado.ultimoReporte ?? undefined)}</Dato>
           <Dato label="Consultado">{formatIsoDateTime(estado.consultadoAt)}</Dato>

@@ -57,8 +57,6 @@ export const SATISFACCION_LABELS: Record<SatisfaccionFirma, string> = {
 // text stays free-form so "Otro" can describe any case not listed here.
 export const MOTIVO_CLIENTE_AUSENTE_OPTIONS = [
   'No estaba en el domicilio/lugar',
-  'No atendió',
-  'Rechazó la visita',
   'Se retiró antes de firmar',
   'Otro',
 ] as const;

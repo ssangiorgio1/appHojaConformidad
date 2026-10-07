@@ -55,7 +55,8 @@ export function VerificacionEquipoAviso({ c }: { c: ConformidadDoc }) {
         {v.estado === 'sin_verificar' ? 'Cerrada sin verificar el equipo' : 'Cerrada con el equipo sin confirmar'}
       </div>
       <div className="mt-0.5 font-semibold">
-        El técnico avanzó igual y quedó bajo su responsabilidad{v.at ? ` (${formatIsoDateTime(v.at)})` : ''}.
+        El técnico avanzó igual y quedó bajo su responsabilidad{v.at ? ` (${formatIsoDateTime(v.at)})` : ''}
+        {v.intentos ? ` tras ${v.intentos} intento${v.intentos === 1 ? '' : 's'} de verificación` : ''}.
       </div>
       {v.problemas.length > 0 && (
         <ul className="mt-1 list-disc pl-4 font-medium">

@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/auth/AuthContext';
 import { EstadoEquipoView } from '@/components/equipo/EstadoEquipoView';
 import { GraficasEquipo } from '@/components/equipo/GraficasEquipo';
+import { QrScanButton } from '@/components/equipo/QrEquipoScanner';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -49,9 +50,13 @@ function AtilioContenido() {
     if (equipoInicial) void abrirEquipo(equipoInicial);
   }, [equipoInicial, abrirEquipo]);
 
-  async function buscar(e: FormEvent) {
+  function onSubmitBuscar(e: FormEvent) {
     e.preventDefault();
-    const q = texto.trim();
+    void buscar(texto);
+  }
+
+  async function buscar(consulta: string) {
+    const q = consulta.trim();
     if (q.length < 3) {
       setError('Escribí al menos 3 caracteres (serie, IMEI, patente o nombre de unidad).');
       return;
@@ -87,7 +92,7 @@ function AtilioContenido() {
       </div>
 
       <Card className="p-4">
-        <form onSubmit={buscar} className="flex flex-wrap items-center gap-3">
+        <form onSubmit={onSubmitBuscar} className="flex flex-wrap items-center gap-3">
           <Input
             className="max-w-md"
             placeholder="Serie, IMEI, patente o nombre de unidad…"
@@ -97,6 +102,14 @@ function AtilioContenido() {
           <Button type="submit" disabled={cargando}>
             <IconSearch /> {cargando ? 'Consultando…' : 'Consultar'}
           </Button>
+          <QrScanButton
+            onScan={({ numEquipo, imei }) => {
+              // Si el QR trajo solo el IMEI y no se resolvió el número, la búsqueda también resuelve por IMEI.
+              const consulta = numEquipo || imei;
+              setTexto(consulta);
+              void buscar(consulta);
+            }}
+          />
         </form>
       </Card>
 

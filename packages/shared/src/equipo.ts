@@ -14,9 +14,6 @@ export const EQUIP_GROUPS = [
       // retira. Ver la lógica condicional en la PWA's post/[id]/page.tsx.
       { key: 'modeloInstalado', label: 'Modelo (equipo instalado)' },
       { key: 'imeiInstalado', label: 'IMEI (equipo instalado)' },
-      { key: 'antenaGsmInt', label: 'Antena GSM (Int)', checkbox: true },
-      { key: 'antenaGsmExt', label: 'Antena GSM (Ext)', checkbox: true },
-      { key: 'antenaGpsInt', label: 'Antena GPS (Int)', checkbox: true },
       { key: 'antenaGpsExt', label: 'Antena GPS (Ext)', checkbox: true },
     ],
   },

@@ -3,6 +3,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { HttpError } from '../middleware/error.middleware.js';
 import { VisionbloError } from '../config/visionblo.js';
 import { getGraficasRango } from '../services/equipoGraficas.service.js';
+import { numeroEquipoPorImei } from '../services/stockEquipo.service.js';
 import { buscarEquipos, getEstadoEquipo, vistaTecnico } from '../services/equipoEstado.service.js';
 
 function traducirError(err: unknown): never {
@@ -19,7 +20,19 @@ export const buscar = asyncHandler(async (req: Request, res: Response) => {
   }
 });
 
-export const estado = asyncHandler(async (req: Request, res: Response) => {
+// Una falla de la herramienta de stock no es un error para el técnico: se devuelve null y la PWA
+// deja el número de equipo para cargar a mano.
+export const numeroPorImei = asyncHandler(async (req: Request, res: Response) => {
+  const { imei } = req.query as unknown as { imei: string };
+  try {
+    res.json({ numEquipo: await numeroEquipoPorImei(imei) });
+  } catch (err) {
+    console.error('STOCK_IMEI_LOOKUP_FAILED', err);
+    res.json({ numEquipo: null });
+  }
+});
+
+export const estado =asyncHandler(async (req: Request, res: Response) => {
   const { equipoId } = req.params as unknown as { equipoId: number };
   const { forzar } = req.query as unknown as { forzar: boolean };
   try {

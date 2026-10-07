@@ -4,6 +4,10 @@ export const buscarEquiposQuerySchema = z.object({
   q: z.string().trim().min(3, 'Escribí al menos 3 caracteres').max(60),
 });
 
+export const numeroPorImeiQuerySchema = z.object({
+  imei: z.string().trim().regex(/^\d{15}$/, 'El IMEI tiene 15 dígitos'),
+});
+
 export const equipoIdParamsSchema = z.object({
   equipoId: z.coerce.number().int().positive(),
 });

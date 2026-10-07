@@ -92,8 +92,8 @@ function checklistTable(record: PrintableConformidad, soloPre = false): string {
   </table>`;
 }
 
-function equipCard(title: string, rowsHtml: string): string {
-  return `<div class="equip-card">
+function equipCard(title: string, rowsHtml: string, extraClass = ""): string {
+  return `<div class="equip-card${extraClass ? " " + extraClass : ""}">
     <div class="equip-card-title">${esc(title)}</div>
     <table class="equip-card-table">${rowsHtml}</table>
   </div>`;
@@ -151,7 +151,7 @@ function equipoGrid(record: PrintableConformidad): string {
     : '';
 
   const cards = [
-    equipCard(datosEquipoTitle, fieldRows(equipo, datosEquipoFields, tipoServicio)),
+    equipCard(datosEquipoTitle, fieldRows(equipo, datosEquipoFields, tipoServicio), "equip-card-wide"),
     equipCard('Sensores', fieldRows(equipo, byTitle['Sensores'].fields, tipoServicio)),
     equipCard(
       'Módulos',
@@ -325,6 +325,10 @@ export async function buildPrintHtml(
   .equip-card-table .k { color: #6b6367; width: 58%; }
   .equip-card-table .v { font-weight: 600; color: var(--dark); text-align: right; overflow-wrap: anywhere; }
   .equip-card-table .mini-sub { background: var(--tint); color: var(--secondary); font-weight: 700; font-size: 9px; text-transform: uppercase; }
+  /* "Datos del equipo" lleva el IMEI (15 dígitos): más ancho y sin cortar el número. */
+  .equip-card-wide { flex: 1.7 1 0; }
+  .equip-card-wide .equip-card-table .k { width: 40%; }
+  .equip-card-wide .equip-card-table .v { overflow-wrap: normal; white-space: nowrap; }
 
   .obs-box { border: 1px solid var(--border); border-radius: 5px; padding: 8px 10px; font-size: 11px; min-height: 34px; margin-bottom: 8px; background: #fff; }
   .obs-label { font-weight: 700; color: var(--secondary); font-size: 11px; margin: 9px 0 4px; text-transform: uppercase; letter-spacing: 0.2px; page-break-after: avoid; break-after: avoid; }
@@ -337,8 +341,8 @@ export async function buildPrintHtml(
   .sig-caption { font-size: 10px; color: #6b6367; font-weight: 600; }
 
   .photo-grid { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
-  .photo-cell { width: 108px; text-align: center; page-break-inside: avoid; break-inside: avoid; }
-  .photo { width: 108px; height: 108px; object-fit: cover; border: 1px solid var(--border); border-radius: 3px; display: block; }
+  .photo-cell { max-width: 150px; text-align: center; page-break-inside: avoid; break-inside: avoid; }
+  .photo { max-width: 150px; max-height: 150px; width: auto; height: auto; object-fit: contain; border: 1px solid var(--border); border-radius: 3px; display: block; }
   .video-placeholder { width: 108px; height: 80px; border: 1px dashed #999; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #666; text-align: center; }
   .photo-caption { font-size: 9px; color: #6b6367; margin-top: 2px; }
 
