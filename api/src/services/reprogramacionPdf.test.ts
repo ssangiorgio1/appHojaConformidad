@@ -39,3 +39,22 @@ describe('buildReprogramacionHtml', () => {
     expect(buildReprogramacionHtml({ ...base, tipo: 'no_encontrada' })).toContain('la unidad no se encontraba');
   });
 });
+
+describe('llegada tarde', () => {
+  const tarde: ReprogramacionPdfData = {
+    ...base,
+    tipo: 'llegada_tarde',
+    horaAgendada: new Date('2026-10-08T17:30:00Z'),
+    llegadaAt: new Date('2026-10-08T18:00:00Z'),
+  };
+  it('explica la demora y aclara que es sin cargo', () => {
+    const html = buildReprogramacionHtml(tarde);
+    expect(html).toContain('demora del técnico');
+    expect(html).toContain('sin cargo');
+    expect(html).toContain('14:30');
+    expect(html).toContain('15:00');
+  });
+  it('las otras reprogramaciones no dicen sin cargo', () => {
+    expect(buildReprogramacionHtml(base)).not.toContain('sin cargo');
+  });
+});

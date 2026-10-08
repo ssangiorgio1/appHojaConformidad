@@ -3,6 +3,7 @@ import { cached } from '../config/odooSchemaCache.js';
 import { env } from '../config/env.js';
 import type { EsperadoUnidad } from '../config/productoMapeo.js';
 import { elegirContacto, limpiarTelefono, type ContactoCliente } from './contactoCliente.js';
+import { sugerirTipoServicio, type SugerenciaTipoServicio } from './tipoServicioSugerido.js';
 import { aplicarEsperado, idsDeLineas, type DetalleLinea, type ProductoUnidad } from './productosUnidad.js';
 import { classify, many2oneName, withTimeout } from './odooErrors.js';
 
@@ -77,6 +78,8 @@ export interface CalendarSubtask {
   // Qué se espera instalar/retirar en esta unidad según sus productos (mapeo en config/productoMapeo.ts). null =
   // no se pudo calcular (Odoo no respondió al leer las líneas): la PWA no restringe nada en ese caso.
   esperado: EsperadoUnidad | null;
+  // Tipo de servicio que la PWA precarga para esta unidad (por producto o por etiqueta de la tarea); null = sin dato.
+  tipoServicioSugerido: SugerenciaTipoServicio | null;
 }
 
 export interface CalendarTask {
@@ -116,6 +119,10 @@ export interface CalendarTask {
   // cada unidad trae los suyos en `subtasks`.
   productos: ProductoUnidad[];
   esperado: EsperadoUnidad | null;
+  // project.tags de la tarea (ids) y el tipo de servicio que la PWA precarga a partir de ellas y de los productos. En
+  // un lote cada unidad trae el suyo en `subtasks`; este vale para una tarea suelta.
+  etiquetaIds: number[];
+  tipoServicioSugerido: SugerenciaTipoServicio | null;
   // id del cliente (res.partner) de la tarea y su teléfono de contacto (del ticket o, si no hay, del cliente en Odoo):
   // para llamarlo si no está en el lugar. null = sin teléfono cargado en ninguno de los dos.
   partnerId: number | null;
@@ -264,6 +271,7 @@ const PARENT_FIELDS = [
   'subtask_count',
   'helpdesk_ticket_id',
   'sale_line_id',
+  'tag_ids',
   START_FIELD,
   END_FIELD,
 ];
@@ -424,6 +432,8 @@ export async function listCalendarTasks(params: { from: string; to: string; tech
           ticketOdoo: many2oneRef(parentRow.helpdesk_ticket_id),
           productos: parentHasChildren ? [] : productosDeLinea(many2oneRef(parentRow.sale_line_id)),
           esperado: null,
+          etiquetaIds: Array.isArray(parentRow.tag_ids) ? (parentRow.tag_ids as number[]) : [],
+          tipoServicioSugerido: null,
           partnerId: many2oneRef(parentRow.partner_id)?.id ?? null,
           contactoCliente: null,
         });
@@ -431,6 +441,7 @@ export async function listCalendarTasks(params: { from: string; to: string; tech
     }
 
     await completarProductos(result);
+    completarTipoServicio(result);
     await completarContacto(result);
 
     return result.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
@@ -499,6 +510,15 @@ async function completarProductos(tareas: CalendarTask[]): Promise<void> {
     aplicarEsperado(tareas, detalle);
   } catch (err) {
     console.error('CALENDAR_PRODUCTOS_FAILED', err);
+  }
+}
+
+// Tipo de servicio sugerido por unidad: primero por sus productos y, si no alcanza, por las etiquetas de la tarea.
+// En un lote las etiquetas están en la tarea padre y valen para todas sus unidades.
+function completarTipoServicio(tareas: CalendarTask[]): void {
+  for (const t of tareas) {
+    t.tipoServicioSugerido = sugerirTipoServicio(t.esperado, t.etiquetaIds);
+    for (const s of t.subtasks) s.tipoServicioSugerido = sugerirTipoServicio(s.esperado, t.etiquetaIds);
   }
 }
 
@@ -596,6 +616,7 @@ function toCalendarSubtask(g: GroupedSubtask): CalendarSubtask {
     mergedTaskIds: g.mergedTaskIds,
     productos: g.productos,
     esperado: g.esperado,
+    tipoServicioSugerido: g.tipoServicioSugerido,
   };
 }
 
@@ -661,6 +682,7 @@ function collapseDuplicateNames(subtasks: RawSubtask[], parentStart: string | nu
       mergedTaskIds: rest.map((s) => s.id),
       productos,
       esperado: null,
+      tipoServicioSugerido: null,
       start,
       end: computeTaskEnd(start, primary.end, primary.allocatedHours),
     });

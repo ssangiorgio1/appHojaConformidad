@@ -5,6 +5,9 @@ const fechaField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'fecha must be YYYY-M
 export const createSubtareaIncidenciaSchema = z
   .object({
   tipo: z.enum(['no_encontrada', 'pre_cancelado']).default('no_encontrada'),
+  // Hora agendada de la visita (ISO). Con ella la API compara la llegada del técnico y sugiere si fue visita
+  // fallida o llegada tarde (ver clasificarIncidencia.ts).
+  horaAgendada: z.string().datetime().optional(),
   // Propuesta de reprogramación para esta unidad (ISO). Opcional: sin ella la incidencia queda
   // pendiente_reprogramar como siempre; con ella queda propuesta_pendiente.
   propuestaInicio: z.string().datetime().optional(),
@@ -58,6 +61,8 @@ export const resolveSubtareaIncidenciaSchema = z
     // 'rechazada' solo vale para una propuesta del técnico (ver resolveSubtareaIncidencia) y exige motivo.
     // 'reprogramada' sobre una propuesta sin start/end acepta la hora propuesta; con start/end la cambia.
     estado: z.enum(['reprogramada', 'rechazada']),
+    // Coordinación corrige el tipo sugerido antes de que salga el PDF (visita fallida vs. llegada tarde).
+    tipo: z.enum(['no_encontrada', 'llegada_tarde']).optional(),
     start: z.string().min(1).optional(),
     end: z.string().min(1).optional(),
     technicianId: z.number().int().positive().optional(),

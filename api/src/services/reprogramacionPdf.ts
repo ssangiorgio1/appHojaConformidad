@@ -11,7 +11,10 @@ export interface ReprogramacionPdfData {
   nuevaInicio: Date;
   nuevaFin: Date;
   motivo: string;
-  tipo: 'no_encontrada' | 'pre_cancelado';
+  tipo: 'no_encontrada' | 'pre_cancelado' | 'llegada_tarde';
+  // Solo para 'llegada_tarde': la hora agendada y la de llegada, que justifican la reprogramación sin cargo.
+  horaAgendada?: Date | null;
+  llegadaAt?: Date | null;
   // Hora que había propuesto el técnico, si coordinación la cambió al aceptar.
   propuestaOriginal?: { inicio: Date; fin: Date } | null;
 }
@@ -23,18 +26,21 @@ function esc(s: unknown): string {
 const TZ = 'America/Argentina/Buenos_Aires';
 
 export function formatoFechaHora(d: Date): string {
-  return new Intl.DateTimeFormat('es-AR', { timeZone: TZ, dateStyle: 'full', timeStyle: 'short' }).format(d);
+  return new Intl.DateTimeFormat('es-AR', { timeZone: TZ, dateStyle: 'full', timeStyle: 'short', hourCycle: 'h23' }).format(d);
 }
 
-function formatoHora(d: Date): string {
-  return new Intl.DateTimeFormat('es-AR', { timeZone: TZ, timeStyle: 'short' }).format(d);
+export function formatoHora(d: Date): string {
+  return new Intl.DateTimeFormat('es-AR', { timeZone: TZ, timeStyle: 'short', hourCycle: 'h23' }).format(d);
 }
 
 export function buildReprogramacionHtml(data: ReprogramacionPdfData, logoDataUri?: string): string {
   const queOcurrio =
     data.tipo === 'pre_cancelado'
       ? 'El cliente pidió cambiar la fecha de la visita: el técnico comenzó la revisión inicial (PRE) de la unidad y no pudo completarla en esa visita.'
-      : 'El técnico se presentó en el lugar y la unidad no se encontraba.';
+      : data.tipo === 'llegada_tarde'
+        ? `La visita estaba agendada para las ${data.horaAgendada ? formatoHora(data.horaAgendada) : 'hora pactada'} y el técnico llegó ${data.llegadaAt ? `a las ${formatoHora(data.llegadaAt)}` : 'con demora'}, cuando la unidad ya no se encontraba en el lugar. La reprogramación se debe a la demora del técnico.`
+        : 'El técnico se presentó en el lugar y la unidad no se encontraba.';
+  const sinCargo = data.tipo === 'llegada_tarde' ? '<div class="sincargo">Reprogramación sin cargo para el cliente.</div>' : '';
   const cambio =
     data.propuestaOriginal &&
     (data.propuestaOriginal.inicio.getTime() !== data.nuevaInicio.getTime() || data.propuestaOriginal.fin.getTime() !== data.nuevaFin.getTime())
@@ -51,6 +57,7 @@ export function buildReprogramacionHtml(data: ReprogramacionPdfData, logoDataUri
   table { border-collapse: collapse; width: 100%; margin-top: 16px; }
   td { padding: 6px 0; vertical-align: top; }
   td:first-child { width: 160px; color: #555; }
+  .sincargo { border: 1px solid #0f766e; color: #0f766e; padding: 8px 12px; font-weight: bold; margin-bottom: 8px; }
   .nota { color: #555; font-size: 12px; }
 </style></head><body>
   <header><h1>Reprogramación de visita</h1>${logoDataUri ? `<img src="${logoDataUri}" alt="WARA">` : ''}</header>
@@ -59,9 +66,11 @@ export function buildReprogramacionHtml(data: ReprogramacionPdfData, logoDataUri
   <p>${esc(queOcurrio)}</p>
   <div class="fecha">La visita a esta unidad queda reprogramada para el <b>${esc(formatoFechaHora(data.nuevaInicio))}</b> (hasta las ${esc(formatoHora(data.nuevaFin))}).</div>
   ${cambio}
+  ${sinCargo}
   <table>
     <tr><td>Motivo</td><td>${esc(data.motivo)}</td></tr>
     <tr><td>Técnico</td><td>${esc(data.tecnicoNombre)}</td></tr>
+    ${data.tipo === 'llegada_tarde' && data.horaAgendada && data.llegadaAt ? `<tr><td>Agendada / llegada</td><td>${esc(formatoHora(data.horaAgendada))} / ${esc(formatoHora(data.llegadaAt))}</td></tr>` : ''}
     <tr><td>Reportado</td><td>${esc(formatoFechaHora(data.reportadaAt))}</td></tr>
   </table>
 </body></html>`;

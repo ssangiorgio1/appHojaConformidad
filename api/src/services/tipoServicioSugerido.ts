@@ -1,0 +1,56 @@
+// Tipo de servicio que la PWA precarga al abrir una tarea, para que el técnico no tenga que elegirlo de cero. Es solo
+// una sugerencia: el técnico siempre puede cambiarla. Ver docs-retiro-entrega-equipo.md.
+//
+// Se decide por el producto de la unidad (orden de venta) y, si no alcanza, por la etiqueta de la tarea en Odoo.
+// El producto manda: la etiqueta es una clasificación manual y a veces ambigua (ej. "RETIRAR EQUIPO GPS" se usa tanto
+// para desinstalar de la unidad como para retirar un equipo que ya está en manos del cliente).
+import type { EsperadoUnidad } from '../config/productoMapeo.js';
+
+export type TipoServicioSugerido = 'instalacion' | 'desinstalacion' | 'reparacion' | 'cambio_equipo' | 'retiro_entrega';
+
+export interface SugerenciaTipoServicio {
+  tipo: TipoServicioSugerido;
+  // De dónde sale: el producto es más confiable que la etiqueta.
+  fuente: 'producto' | 'etiqueta';
+}
+
+// project.tags de Odoo (ids de producción, al 2026-10-07). A confirmar con coordinación: son las etiquetas que hoy se
+// usan en la práctica, no una lista cerrada. Un id sin listar simplemente no sugiere nada.
+export const ETIQUETAS_TIPO_SERVICIO: Record<number, TipoServicioSugerido> = {
+  // Desinstalación
+  125: 'desinstalacion', // RETIRAR EQUIPO GPS (ambigua: ver arriba)
+  49: 'desinstalacion', // RETIRO DE EQUIPOS
+  41: 'desinstalacion', // DESINSTALACIONES
+  // Instalación
+  1: 'instalacion', // Instalaciones
+  56: 'instalacion', // INSTALA
+  59: 'instalacion', // ISNTA
+  52: 'instalacion', // Instalación gps+sensores
+  140: 'instalacion', // Instalación RFID
+  // Cambio de equipo
+  42: 'cambio_equipo', // cambio de equipo
+  102: 'cambio_equipo', // cambio de equipos
+  // Reparación
+  2: 'reparacion', // Reparación
+  35: 'reparacion', // REPARACIÓN
+  48: 'reparacion', // REPARA
+  116: 'reparacion', // REPARARA
+  // 'retiro_entrega' por etiqueta: pendiente de crear una etiqueta propia en Odoo (hoy "RETIRAR EQUIPO GPS" no
+  // distingue el retiro en mano de la desinstalación). Mientras tanto se sugiere por producto.
+};
+
+export function sugerirTipoServicio(esperado: EsperadoUnidad | null, etiquetaIds: number[]): SugerenciaTipoServicio | null {
+  if (esperado) {
+    if (esperado.recepcionEquipo) return { tipo: 'retiro_entrega', fuente: 'producto' };
+    const instala = esperado.instalar.equipo || Object.keys(esperado.instalar.casillas).length > 0;
+    const retira = esperado.retirar.equipo || Object.keys(esperado.retirar.casillas).length > 0;
+    if (instala && retira) return { tipo: 'cambio_equipo', fuente: 'producto' };
+    if (retira) return { tipo: 'desinstalacion', fuente: 'producto' };
+    if (instala) return { tipo: 'instalacion', fuente: 'producto' };
+  }
+  for (const id of etiquetaIds) {
+    const tipo = ETIQUETAS_TIPO_SERVICIO[id];
+    if (tipo) return { tipo, fuente: 'etiqueta' };
+  }
+  return null;
+}

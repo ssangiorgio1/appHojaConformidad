@@ -36,7 +36,15 @@ const SubtareaIncidenciaSchema = new Schema(
     motivo: { type: String, required: true, trim: true },
     // 'pre_cancelado': el técnico empezó el PRE y no puede quedarse ni volver el mismo día; cancela y puede
     // proponer otra fecha y hora (ver propuestaInicio). Ver docs-cancelar-pre-reprogramar.md.
-    tipo: { type: String, enum: ['no_encontrada', 'pre_cancelado'], default: 'no_encontrada' },
+    // 'llegada_tarde': el técnico llegó pasada la tolerancia de la hora agendada y la unidad ya no estaba — es una
+    // reprogramación por demora de WARA, no una visita fallida (no se cobra VIS.003). Ver clasificarIncidencia.ts.
+    tipo: { type: String, enum: ['no_encontrada', 'pre_cancelado', 'llegada_tarde'], default: 'no_encontrada' },
+    // Hora agendada de la visita y hora a la que el técnico marcó "llegué" (enSitioAt), y el tipo que sugirió el
+    // sistema al comparar ambas. Coordinación puede corregir `tipo` al resolver; tipoSugerido queda como registro.
+    horaAgendada: { type: Date, default: null },
+    llegadaAt: { type: Date, default: null },
+    tipoSugerido: { type: String, enum: ['no_encontrada', 'llegada_tarde'], default: null },
+    tipoCorregidoPor: { type: Schema.Types.ObjectId, ref: 'Usuario', default: null },
     // 'propuesta_pendiente': el técnico propuso fecha y hora y coordinación todavía no respondió.
     // 'rechazada': coordinación no aceptó la propuesta; queda para reprogramar por el camino de siempre.
     estado: {

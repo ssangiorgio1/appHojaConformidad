@@ -14,6 +14,7 @@
 export type TipoProducto =
   | 'instala' // se instala algo (equipo y/o casillas de la PWA)
   | 'retira' // se desinstala algo
+  | 'retiro_entrega' // el cliente entrega o deja el equipo (5º tipo de servicio): sin intervención de la unidad
   | 'accesorio' // parte de otro producto: sin casilla propia, no restringe
   | 'servicio' // mano de obra, visitas, reparaciones, entregas, cargos administrativos: no restringe
   | 'sin_casilla' // hardware instalable que la PWA todavía no tiene como casilla (brecha)
@@ -244,6 +245,8 @@ export interface EsperadoUnidad {
   sinCasilla: ProductoMapeo[];
   // Productos de la unidad que no están en el mapeo (producto nuevo en Odoo): no restringen, hay que mapearlos.
   sinMapear: number[];
+  // La unidad tiene un producto de retiro/entrega de equipo: no se interviene la unidad (ver tipoServicioSugerido.ts).
+  recepcionEquipo: boolean;
   // La unidad tiene al menos un producto de hardware (instala/retira/sin_casilla): ahí aplica la restricción.
   hayHardware: boolean;
 }
@@ -255,6 +258,7 @@ export function resolverEsperado(lineas: LineaVenta[]): EsperadoUnidad {
     retirar: { equipo: false, casillas: {} },
     sinCasilla: [],
     sinMapear: [],
+    recepcionEquipo: false,
     hayHardware: false,
   };
   for (const l of lineas) {
@@ -266,6 +270,10 @@ export function resolverEsperado(lineas: LineaVenta[]): EsperadoUnidad {
     if (p.tipo === 'sin_casilla') {
       res.hayHardware = true;
       res.sinCasilla.push(p);
+      continue;
+    }
+    if (p.tipo === 'retiro_entrega') {
+      res.recepcionEquipo = true;
       continue;
     }
     if (p.tipo !== 'instala' && p.tipo !== 'retira') continue;

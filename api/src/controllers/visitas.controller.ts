@@ -76,11 +76,45 @@ async function assertSinOtraVisitaAbierta(tareaOdooId: number, fecha: string, re
   }
 }
 
+// Tarea compartida por 2+ técnicos: el viaje lo gestiona uno solo (el titular, el primero que salió). Si un
+// compañero ya tiene el viaje abierto para esta (tarea, fecha), el otro no abre uno propio — con la ficha
+// desactualizada la PWA todavía le puede ofrecer "Salir hacia destino" — y trabaja con la llegada del titular
+// (ver getVisita.titular). Solo aplica a abrir un viaje nuevo ('en_camino'): un viaje propio ya abierto sigue su curso.
+async function assertSinViajeDeCompanero(tareaOdooId: number, fecha: string, req: Request): Promise<void> {
+  if (req.user!.role !== 'tecnico') return;
+  const tecnicoId = req.user!.usuarioId;
+
+  const yaAbierta = await VisitaNotificacionModel.exists({ tareaOdooId, tecnicoId, fecha, abierta: true });
+  if (yaAbierta) return;
+
+  const desde = new Date(Date.now() - VISITA_VENCE_HORAS * 3_600_000);
+  const companero = await VisitaNotificacionModel.findOne({
+    tareaOdooId,
+    fecha,
+    abierta: true,
+    tecnicoId: { $ne: tecnicoId },
+    estado: { $in: ['en_camino', 'en_sitio'] },
+    updatedAt: { $gte: desde },
+  })
+    .sort({ enCaminoAt: 1 })
+    .populate<{ tecnicoId: { nombre: string } | null }>('tecnicoId', 'nombre');
+  if (companero) {
+    const nombre = companero.tecnicoId?.nombre || 'Tu compañero';
+    throw new HttpError(
+      409,
+      companero.estado === 'en_sitio'
+        ? `${nombre} ya llegó al lugar: actualizá la ficha y trabajá desde ahí, sin registrar un viaje propio.`
+        : `${nombre} ya salió hacia destino con esta tarea: actualizá la ficha, el viaje lo gestiona él.`,
+    );
+  }
+}
+
 export const setEstadoVisita = asyncHandler(async (req: Request, res: Response) => {
   const { tareaOdooId } = req.params as unknown as TareaIdParam;
   const { estado, fecha, ocurrioAt } = req.body as EstadoVisitaInput;
 
   await assertTecnicoOwnership(tareaOdooId, req);
+  if (estado === 'en_camino') await assertSinViajeDeCompanero(tareaOdooId, fecha, req);
   await assertSinOtraVisitaAbierta(tareaOdooId, fecha, req);
   const visita = await notificarEstadoVisita(tareaOdooId, estado, req.user!.usuarioId, fecha, ocurrioAt);
   res.json(visita);

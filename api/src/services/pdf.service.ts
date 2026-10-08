@@ -6,6 +6,8 @@ import sharp from 'sharp';
 import { buildPrintHtml, type PrintableConformidad } from '@wara/shared';
 import { buildObjectKey, uploadBuffer } from './r2.service.js';
 import { buildReprogramacionHtml, type ReprogramacionPdfData } from './reprogramacionPdf.js';
+import { buildConstanciaVisitaFallidaHtml, type ConstanciaVisitaFallidaData } from './constanciaVisitaFallidaPdf.js';
+import { buildRetiroEquipoHtml, type RetiroEquipoPdfData } from './retiroEquipoPdf.js';
 
 // Se embebe como data URI (no una URL de R2/Odoo) para que el PDF no dependa
 // de que Chromium resuelva una request de red aparte al renderizar — el
@@ -219,6 +221,16 @@ export function warmUpPdf(): void {
 // PDF de reprogramación de una unidad (ver reprogramacionPdf.ts). Sin caché: se genera una vez por reprogramación.
 export function buildReprogramacionPdfBuffer(data: ReprogramacionPdfData): Promise<Buffer> {
   return renderPdfBuffer(async () => buildReprogramacionHtml(data, LOGO_DATA_URI));
+}
+
+// Constancia de visita fallida (ver constanciaVisitaFallidaPdf.ts). Sin caché, igual que la de reprogramación.
+export function buildConstanciaVisitaFallidaPdfBuffer(data: ConstanciaVisitaFallidaData): Promise<Buffer> {
+  return renderPdfBuffer(async () => buildConstanciaVisitaFallidaHtml(data, LOGO_DATA_URI));
+}
+
+// Acta de retiro / entrega de equipo (ver retiroEquipoPdf.ts). Sin caché: se genera una vez por acta.
+export function buildRetiroEquipoPdfBuffer(data: RetiroEquipoPdfData): Promise<Buffer> {
+  return renderPdfBuffer(async () => buildRetiroEquipoHtml(data, LOGO_DATA_URI));
 }
 
 // Genera el buffer del PDF sin subirlo a R2 — usado por los endpoints que
