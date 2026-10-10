@@ -12,7 +12,10 @@ export type ServiceMode = 'instalacion' | 'retiro' | 'reparacion' | 'cambio_equi
 export function getServiceMode(record: {
   tipoServicio: TipoServicio | null;
   cambioEquipo?: { rol?: 'retiro' | 'instalacion' | null } | null;
+  cambioUnidad?: { rol?: 'origen' | 'destino' | null } | null;
 }): ServiceMode {
+  // Cambio de unidad: cada hoja es una desinstalación (origen) o una instalación (destino) plana.
+  if (record.tipoServicio === 'cambio_unidad') return record.cambioUnidad?.rol === 'origen' ? 'retiro' : 'instalacion';
   if (record.tipoServicio === 'cambio_equipo') {
     if (record.cambioEquipo?.rol === 'retiro') return 'retiro';
     if (record.cambioEquipo?.rol === 'instalacion') return 'instalacion';

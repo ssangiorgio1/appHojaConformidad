@@ -19,6 +19,7 @@ import type {
   RetiroPendiente,
   SubtareaIncidencia,
   Usuario,
+  VisitaAbierta,
   UsuarioRole,
 } from './types';
 
@@ -182,6 +183,15 @@ export function getReporteTecnicos(idToken: string, query: ReporteVisitasQuery =
   return apiFetch<{ data: ReporteTecnico[] }>(`/api/reportes/tecnicos${reporteVisitasQueryString(query)}`, idToken).then(
     (r) => r.data,
   );
+}
+
+export function listVisitasAbiertas(idToken: string) {
+  return apiFetch<{ data: VisitaAbierta[] }>('/api/visitas-abiertas', idToken);
+}
+
+// Cierra el viaje sin avisar al cliente ni tocar Odoo (ver visitasAbiertas.controller.ts en la API).
+export function cerrarVisitaAbierta(idToken: string, id: string) {
+  return apiFetch<{ ok: true }>(`/api/visitas-abiertas/${id}/cerrar`, idToken, { method: 'POST' });
 }
 
 export function listSubtareaIncidencias(idToken: string, query: ListSubtareaIncidenciasQuery = {}) {

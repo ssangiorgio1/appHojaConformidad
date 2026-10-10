@@ -1,8 +1,8 @@
 import { CHECKLIST_ITEMS, DETAIL_FIELD_BY_KEY, type ChecklistValue } from './checklist.js';
 import { EQUIP_GROUPS, EQUIP_CHECK_FIELDS, EQUIP_ITEM_PHOTO_LABEL, isEquipoFieldVisible } from './equipo.js';
-import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY, type PhotoSlotDef } from './photoSlots.js';
+import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY, EXTRA_RETIRO_PHOTOS_KEY, type PhotoSlotDef } from './photoSlots.js';
 import { getServiceMode } from './serviceMode.js';
-import { SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
+import { SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, isEquipoSwap, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
 
 // The fields buildPrintHtml actually reads — deliberately narrower than the
 // full ConformidadRecord so both the mobile app's local record and the
@@ -22,7 +22,9 @@ export type PrintableConformidad = Pick<
   | 'post'
   | 'equipo'
   | 'tipoServicio'
+  | 'motivoIntervencion'
   | 'cambioEquipo'
+  | 'cambioUnidad'
   | 'ticketOdoo'
 >;
 
@@ -132,7 +134,10 @@ function checkRows(equipo: Record<string, unknown>, fields: readonly { key: stri
 
 function equipoGrid(record: PrintableConformidad): string {
   const equipo = record.equipo as Record<string, unknown>;
-  const tipoServicio = record.tipoServicio ?? null;
+  // Una reparación que terminó en cambio de equipo (motivoIntervencion) se
+  // imprime igual que un cambio de equipo: modelo/imei = retirado, *Instalado = entrante.
+  const swap = isEquipoSwap(record.tipoServicio, record.motivoIntervencion);
+  const tipoServicio: TipoServicio | null = swap ? 'cambio_equipo' : (record.tipoServicio ?? null);
   const byTitle = Object.fromEntries(EQUIP_GROUPS.map((g) => [g.title, g])) as Record<string, (typeof EQUIP_GROUPS)[number]>;
 
   // modeloInstalado/imeiInstalado solo aplican (y solo se muestran) cuando
@@ -187,6 +192,7 @@ const GALLERY_LABELS: Record<string, string> = {
   ...EQUIP_ITEM_PHOTO_LABEL,
   [INTERVENCION_GROUP_KEY]: 'Intervención realizada',
   [EXTRA_POST_PHOTOS_KEY]: 'Otras fotos',
+  [EXTRA_RETIRO_PHOTOS_KEY]: 'Otras fotos de lo desinstalado',
 };
 
 async function photosBlock(slots: PhotoSlotDef[], fotos: Foto[], titulo: string, resolvePhotoSrc: PhotoSrcResolver): Promise<string> {
@@ -194,8 +200,8 @@ async function photosBlock(slots: PhotoSlotDef[], fotos: Foto[], titulo: string,
 
   const matched: { foto: Foto; label: string }[] = [];
   for (const slot of slots) {
-    const foto = fotos.find((f) => f.slotKey === slot.key);
-    if (foto) matched.push({ foto, label: slot.label });
+    const delSlot = fotos.filter((f) => f.slotKey === slot.key);
+    for (const foto of slot.multi ? delSlot : delSlot.slice(0, 1)) matched.push({ foto, label: slot.label });
   }
   // Fotos sin slotKey reconocido (registros sincronizados antes de que el
   // servidor empezara a persistirlo, o cualquier otro desfasaje) igual se
@@ -253,6 +259,12 @@ export async function buildPrintHtml(
   const statusLabel =
     soloPre ? 'Revisión inicial (PRE)' : record.status === 'completo' ? 'Completo' : record.status === 'pendiente_post' ? 'Pendiente POST' : 'PRE en progreso';
   const tipoServicioLabel = record.tipoServicio ? TIPO_SERVICIO_LABELS[record.tipoServicio] : null;
+  const cambioUnidadLabel =
+    record.tipoServicio === 'cambio_unidad' && record.cambioUnidad
+      ? record.cambioUnidad.rol === 'origen'
+        ? 'Unidad de origen (desinstalación)'
+        : 'Unidad de destino (instalación)'
+      : null;
   const mode = getServiceMode(record);
 
   const [prePhotos, postPhotos] = await Promise.all([
@@ -317,16 +329,16 @@ export async function buildPrintHtml(
   .opt.sel.no { background: var(--badBg); color: var(--bad); border-color: var(--bad); }
   .sep { color: #ccc; margin: 0 3px; font-size: 9px; }
 
-  .equip-grid { display: flex; gap: 7px; align-items: flex-start; page-break-inside: avoid; break-inside: avoid; }
-  .equip-card { flex: 1 1 0; min-width: 0; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; page-break-inside: avoid; break-inside: avoid; }
+  /* Hasta 3 tarjetas por fila: con 5 en una sola fila los rótulos se partían en 3 y 4 renglones. */
+  .equip-grid { display: flex; flex-wrap: wrap; gap: 7px; align-items: flex-start; }
+  .equip-card { flex: 1 1 calc(33.333% - 5px); min-width: 0; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; page-break-inside: avoid; break-inside: avoid; }
   .equip-card-title { background: var(--dark); color: #fff; font-weight: 700; font-size: 10.5px; padding: 5px 8px; text-transform: uppercase; letter-spacing: 0.2px; }
   .equip-card-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 9.3px; }
   .equip-card-table td { border-bottom: 1px solid var(--border); padding: 3px 6px; vertical-align: top; }
-  .equip-card-table .k { color: #6b6367; width: 58%; }
+  .equip-card-table .k { color: #6b6367; width: 62%; }
   .equip-card-table .v { font-weight: 600; color: var(--dark); text-align: right; overflow-wrap: anywhere; }
   .equip-card-table .mini-sub { background: var(--tint); color: var(--secondary); font-weight: 700; font-size: 9px; text-transform: uppercase; }
   /* "Datos del equipo" lleva el IMEI (15 dígitos): más ancho y sin cortar el número. */
-  .equip-card-wide { flex: 1.7 1 0; }
   .equip-card-wide .equip-card-table .k { width: 40%; }
   .equip-card-wide .equip-card-table .v { overflow-wrap: normal; white-space: nowrap; }
 
@@ -365,6 +377,7 @@ export async function buildPrintHtml(
     <div class="banner-pills">
       ${record.ticketOdoo?.numero ? `<span class="status-pill">Ticket #${esc(record.ticketOdoo.numero)}</span>` : ''}
       ${tipoServicioLabel ? `<span class="status-pill">${esc(tipoServicioLabel)}</span>` : ''}
+      ${cambioUnidadLabel ? `<span class="status-pill">${esc(cambioUnidadLabel)}</span>` : ''}
       <span class="status-pill">${esc(statusLabel)}</span>
     </div>
   </div>

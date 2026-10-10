@@ -51,10 +51,12 @@ export const createRetiroEquipo = asyncHandler(async (req: Request, res: Respons
     fecha: body.fecha,
     modalidad: body.modalidad,
     equipo: body.equipo ?? {},
+    equiposExtra: body.equiposExtra ?? [],
     adicionales: body.adicionales ?? [],
     entrega: body.entrega ?? {},
     observaciones: body.observaciones ?? '',
     firma: body.firma ?? null,
+    fotos: body.fotos ?? [],
   });
 
   const tecnico = await UsuarioModel.findById(tecnicoId);
@@ -71,17 +73,19 @@ export const createRetiroEquipo = asyncHandler(async (req: Request, res: Respons
         modalidad: acta.modalidad,
         fechaHora,
         equipo: acta.equipo ?? {},
+        equiposExtra: acta.equiposExtra,
         adicionales: acta.adicionales,
         entrega: acta.entrega ?? {},
         observaciones: acta.observaciones,
         firma: acta.firma,
+        fotos: acta.fotos,
       });
       const nombre = (acta.subtareaNombre || acta.tareaOdooId).toString().replace(/[^\w.-]+/g, '_');
       await pushReprogramacionToTicket({
         ticketId: acta.ticketOdooId,
         pdfBuffer,
         fileName: `retiro_equipo_${nombre}.pdf`,
-        resumenHtml: `<p><b>${acta.modalidad === 'entrega' ? 'Equipo entregado por el cliente' : 'Equipo dejado para retirar'}</b> — ${esc(acta.subtareaNombre)} (${esc(acta.clienteNombre)}).</p><p>${esc(formatoFechaHora(fechaHora))}. Se adjunta el acta.</p>`,
+        resumenHtml: `<p><b>${acta.modalidad === 'entrega' ? 'Retiro de equipo (lo entregó el cliente)' : 'Entrega de equipo (lo dejó el técnico)'}</b> — ${esc(acta.subtareaNombre)} (${esc(acta.clienteNombre)}).</p><p>${esc(formatoFechaHora(fechaHora))}. Se adjunta el acta.</p>`,
         as: tecnico?.odoo ? { login: tecnico.odoo.login, password: decryptSecret(tecnico.odoo.passwordEnc) } : undefined,
       });
       acta.pdfAt = new Date();
@@ -147,10 +151,12 @@ export const getRetiroEquipoPdf = asyncHandler(async (req: Request, res: Respons
     modalidad: acta.modalidad,
     fechaHora: (acta as unknown as { createdAt: Date }).createdAt,
     equipo: acta.equipo ?? {},
+    equiposExtra: acta.equiposExtra,
     adicionales: acta.adicionales,
     entrega: acta.entrega ?? {},
     observaciones: acta.observaciones,
     firma: acta.firma,
+    fotos: acta.fotos,
   });
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="retiro_equipo_${acta.id}.pdf"`);

@@ -3,7 +3,7 @@ import { cached } from '../config/odooSchemaCache.js';
 import { env } from '../config/env.js';
 import type { EsperadoUnidad } from '../config/productoMapeo.js';
 import { elegirContacto, limpiarTelefono, type ContactoCliente } from './contactoCliente.js';
-import { sugerirTipoServicio, type SugerenciaTipoServicio } from './tipoServicioSugerido.js';
+import { sugerirTipoServicio, marcarCambioUnidad, type SugerenciaTipoServicio } from './tipoServicioSugerido.js';
 import { aplicarEsperado, idsDeLineas, type DetalleLinea, type ProductoUnidad } from './productosUnidad.js';
 import { classify, many2oneName, withTimeout } from './odooErrors.js';
 
@@ -519,6 +519,7 @@ function completarTipoServicio(tareas: CalendarTask[]): void {
   for (const t of tareas) {
     t.tipoServicioSugerido = sugerirTipoServicio(t.esperado, t.etiquetaIds);
     for (const s of t.subtasks) s.tipoServicioSugerido = sugerirTipoServicio(s.esperado, t.etiquetaIds);
+    marcarCambioUnidad(t.subtasks);
   }
 }
 
@@ -775,6 +776,26 @@ export async function getOwnSubtaskIds(parentTaskId: number, technicianOdooId: n
     ownPrimaryIds.push(primaryId);
   }
   return ownPrimaryIds;
+}
+
+// Todas las unidades (subtareas) de un lote, sin importar a quién estén asignadas — mismo colapso por `name` que
+// getOwnSubtaskIds (el id primario, menor id del grupo, es el que queda guardado en Conformidad.subtareaOdoo.id).
+// [] si la tarea no tiene subtareas (tarea suelta); null si Odoo no encuentra la tarea (no se puede saber).
+export async function getAllSubtaskIds(parentTaskId: number): Promise<number[] | null> {
+  const parentRows = (await withTimeout(
+    executeKw('project.task', 'read', [[parentTaskId]], { fields: ['id', 'child_ids'] }),
+    'getAllSubtaskIds:parent',
+  )) as Array<{ child_ids?: number[] }>;
+  if (!parentRows.length) return null;
+  const childIds = parentRows[0]?.child_ids ?? [];
+  if (!childIds.length) return [];
+  const childRows = (await withTimeout(
+    executeKw('project.task', 'read', [childIds], { fields: ['id', 'name'] }),
+    'getAllSubtaskIds:children',
+  )) as Array<{ id: number; name: string }>;
+  const primarios = new Map<string, number>();
+  for (const ch of childRows) primarios.set(ch.name, Math.min(ch.id, primarios.get(ch.name) ?? ch.id));
+  return [...primarios.values()];
 }
 
 // Para el chequeo de pertenencia de visitas.controller.ts: ¿esta tarea (o

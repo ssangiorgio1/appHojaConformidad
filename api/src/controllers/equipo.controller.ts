@@ -4,6 +4,7 @@ import { HttpError } from '../middleware/error.middleware.js';
 import { VisionbloError } from '../config/visionblo.js';
 import { getGraficasRango } from '../services/equipoGraficas.service.js';
 import { numeroEquipoPorImei } from '../services/stockEquipo.service.js';
+import { getHistorialUnidad } from '../services/historialUnidad.service.js';
 import { buscarEquipos, getEstadoEquipo, vistaTecnico } from '../services/equipoEstado.service.js';
 
 function traducirError(err: unknown): never {
@@ -30,6 +31,13 @@ export const numeroPorImei = asyncHandler(async (req: Request, res: Response) =>
     console.error('STOCK_IMEI_LOOKUP_FAILED', err);
     res.json({ numEquipo: null });
   }
+});
+
+// Historial de servicios de una unidad (Atilio de la PWA). Cross-técnico a propósito, como el resto de /equipos: solo
+// devuelve conteos y el último servicio, no las hojas.
+export const historialUnidad = asyncHandler(async (req: Request, res: Response) => {
+  const { matricula } = req.query as unknown as { matricula: string };
+  res.json(await getHistorialUnidad(matricula));
 });
 
 export const estado =asyncHandler(async (req: Request, res: Response) => {

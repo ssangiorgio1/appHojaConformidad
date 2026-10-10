@@ -113,7 +113,11 @@ const equipoSchema = z.object(equipoShape).partial();
 
 const fechaField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'fecha must be YYYY-MM-DD');
 
-const tipoServicioSchema = z.enum(['instalacion', 'desinstalacion', 'reparacion', 'cambio_equipo']).nullable();
+const tipoServicioSchema = z.enum(['instalacion', 'desinstalacion', 'reparacion', 'cambio_equipo', 'cambio_unidad']).nullable();
+
+// Ver nota en models/Conformidad.ts — solo aplican a tipoServicio 'reparacion'.
+const motivoIntervencionSchema = z.enum(['cambio_equipo', 'reinicio_manual', 'revisar_ramales', 'otro']).nullable();
+const cambioEquipoRazonSchema = z.enum(['pantalla_danada', 'otro']).nullable();
 
 // Ver nota en models/Conformidad.ts — solo aplica al esquema nuevo de 2 hojas
 // vinculadas para cambio_equipo. `parejaId` es opcional: si el técnico de
@@ -127,6 +131,15 @@ const cambioEquipoSchema = z
     // instalación que no pudo vincular en el momento manda cambioEquipo con
     // parejaId: null, no lo omite. Sin `.nullable()` acá, ese caso (legítimo
     // y esperado) tiraba 400 "expected string, received null".
+    parejaId: z.string().min(1).nullable().optional(),
+  })
+  .nullable();
+
+// Ver nota en models/Conformidad.ts — solo aplica a tipoServicio 'cambio_unidad'. `parejaId` null = todavía sin
+// emparejar; lo resuelve el API solo (misma tarea padre de Odoo) o a mano después.
+const cambioUnidadSchema = z
+  .object({
+    rol: z.enum(['origen', 'destino']),
     parejaId: z.string().min(1).nullable().optional(),
   })
   .nullable();
@@ -157,7 +170,12 @@ export const createConformidadSchema = topLevelSchema
     tareaOdoo: tareaOdooSchema.optional(),
     subtareaOdoo: subtareaOdooSchema.optional(),
     tipoServicio: tipoServicioSchema.optional(),
+    motivoIntervencion: motivoIntervencionSchema.optional(),
+    motivoIntervencionDetalle: z.string().optional(),
+    cambioEquipoRazon: cambioEquipoRazonSchema.optional(),
+    cambioEquipoRazonDetalle: z.string().optional(),
     cambioEquipo: cambioEquipoSchema.optional(),
+    cambioUnidad: cambioUnidadSchema.optional(),
   });
 
 const verificacionEquipoSchema = z.object({
@@ -181,6 +199,10 @@ export const patchConformidadSchema = topLevelSchema.partial().extend({
   equipo: equipoSchema.optional(),
   ticketOdoo: ticketOdooSchema.optional(),
   tipoServicio: tipoServicioSchema.optional(),
+  motivoIntervencion: motivoIntervencionSchema.optional(),
+  motivoIntervencionDetalle: z.string().optional(),
+  cambioEquipoRazon: cambioEquipoRazonSchema.optional(),
+  cambioEquipoRazonDetalle: z.string().optional(),
   // Hora real de la firma del POST en el dispositivo (ver resolverMomento en telegram.service.ts).
   completadoAt: z.string().datetime().optional(),
   // odooSync is intentionally NOT accepted here — it's written only by the
@@ -201,7 +223,7 @@ export const listConformidadesQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
   status: z.enum(['borrador_pre', 'pendiente_post', 'completo']).optional(),
-  tipoServicio: z.enum(['instalacion', 'desinstalacion', 'reparacion', 'cambio_equipo']).optional(),
+  tipoServicio: z.enum(['instalacion', 'desinstalacion', 'reparacion', 'cambio_equipo', 'cambio_unidad']).optional(),
   tecnicoId: z.string().optional(),
   matricula: z.string().max(100).optional(),
   imei: z.string().max(100).optional(),
@@ -226,6 +248,13 @@ export const listConformidadesQuerySchema = z.object({
 // quiere vincular): la PWA siempre busca 'retiro' (el técnico de instalación
 // busca el retiro que hizo otro compañero), pero el panel web necesita poder
 // buscar en los dos sentidos para la vinculación manual de respaldo.
+// Patas de cambio_unidad sin emparejar, para vincular a mano cuando no compartieron tarea padre en Odoo. Se busca por
+// cliente (no por matrícula: origen y destino son unidades distintas). `rol` es el de la hoja que busca pareja.
+export const cambioUnidadPendientesQuerySchema = z.object({
+  cliente: z.string().min(1).max(200),
+  rol: z.enum(['origen', 'destino']),
+});
+
 export const retirosPendientesQuerySchema = z.object({
   matricula: z.string().min(1).max(100),
   rol: z.enum(['retiro', 'instalacion']).default('retiro'),
@@ -264,6 +293,7 @@ export type PatchConformidadInput = z.infer<typeof patchConformidadSchema>;
 export type ListConformidadesQuery = z.infer<typeof listConformidadesQuerySchema>;
 export type AltaConformidadInput = z.infer<typeof altaConformidadSchema>;
 export type CambioEquipoParejaInput = z.infer<typeof cambioEquipoParejaSchema>;
+export type CambioUnidadPendientesQuery = z.infer<typeof cambioUnidadPendientesQuerySchema>;
 export type RetirosPendientesQuery = z.infer<typeof retirosPendientesQuerySchema>;
 export type EquipoActualQuery = z.infer<typeof equipoActualQuerySchema>;
 export type CambioEquipoPorSubtareaQuery = z.infer<typeof cambioEquipoPorSubtareaQuerySchema>;

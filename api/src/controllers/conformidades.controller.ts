@@ -27,6 +27,7 @@ import type {
   AltaConformidadInput,
   CambioEquipoParejaInput,
   RetirosPendientesQuery,
+  CambioUnidadPendientesQuery,
   EquipoActualQuery,
   CambioEquipoPorSubtareaQuery,
 } from '../schemas/conformidad.schema.js';
@@ -96,6 +97,62 @@ async function linkCambioEquipoPareja(id: string, parejaId: string) {
   ]);
 }
 
+// Mismo criterio que linkCambioEquipoPareja pero para las 2 patas de un cambio_unidad (origen + destino): las
+// matrículas son distintas (cada pata es una unidad), así que no se empareja por patente sino por la tarea padre de
+// Odoo (autoEmparejarCambioUnidad) o, de respaldo, a mano. Cada pata la puede hacer un técnico o día distinto.
+async function linkCambioUnidadPareja(id: string, parejaId: string) {
+  if (id === parejaId) throw new HttpError(400, 'Una hoja no puede vincularse consigo misma.');
+
+  const [a, b] = await Promise.all([
+    ConformidadModel.findOne({ _id: id, deletedAt: null }),
+    ConformidadModel.findOne({ _id: parejaId, deletedAt: null }),
+  ]);
+  if (!a || !b) throw new HttpError(404, 'Alguna de las 2 hojas no existe.');
+  if (a.tipoServicio !== 'cambio_unidad' || b.tipoServicio !== 'cambio_unidad') {
+    throw new HttpError(400, 'Las 2 hojas tienen que ser de tipo cambio_unidad.');
+  }
+  if (!a.cambioUnidad?.rol || !b.cambioUnidad?.rol || a.cambioUnidad.rol === b.cambioUnidad.rol) {
+    throw new HttpError(400, 'Las 2 hojas tienen que tener roles opuestos (origen + destino).');
+  }
+  if (a.cambioUnidad.parejaId || b.cambioUnidad.parejaId) {
+    throw new HttpError(409, 'Alguna de las 2 hojas ya está vinculada a otra.');
+  }
+
+  await Promise.all([
+    ConformidadModel.updateOne({ _id: a._id }, { $set: { 'cambioUnidad.parejaId': b._id } }),
+    ConformidadModel.updateOne({ _id: b._id }, { $set: { 'cambioUnidad.parejaId': a._id } }),
+  ]);
+}
+
+// Busca la pata opuesta bajo la misma tarea padre de Odoo y las vincula. Solo si hay UNA candidata sin pareja: con
+// 2 o más (varios cambios de unidad en la misma tarea) no se adivina, queda para vincular a mano. Best effort, igual
+// que el emparejado de cambio_equipo: nunca debe impedir que la hoja se guarde.
+async function autoEmparejarCambioUnidad(record: {
+  _id: unknown;
+  tareaOdoo?: { id: number } | null;
+  cambioUnidad?: { rol?: string | null; parejaId?: unknown } | null;
+}): Promise<string | null> {
+  const rol = record.cambioUnidad?.rol;
+  if (!rol || !record.tareaOdoo?.id) return null;
+
+  const candidatas = await ConformidadModel.find(
+    {
+      _id: { $ne: record._id },
+      deletedAt: null,
+      tipoServicio: 'cambio_unidad',
+      'tareaOdoo.id': record.tareaOdoo.id,
+      'cambioUnidad.rol': rol === 'origen' ? 'destino' : 'origen',
+      'cambioUnidad.parejaId': null,
+    },
+    { _id: 1 },
+  ).limit(2);
+  if (candidatas.length !== 1) return null;
+
+  const parejaId = String(candidatas[0]._id);
+  await linkCambioUnidadPareja(String(record._id), parejaId);
+  return parejaId;
+}
+
 export const createConformidad = asyncHandler(async (req: Request, res: Response) => {
   const body = req.body as CreateConformidadInput;
 
@@ -111,6 +168,10 @@ export const createConformidad = asyncHandler(async (req: Request, res: Response
     clientId: body.clientId,
     codigoActa,
     tipoServicio: body.tipoServicio ?? null,
+    motivoIntervencion: body.motivoIntervencion ?? null,
+    motivoIntervencionDetalle: body.motivoIntervencionDetalle ?? '',
+    cambioEquipoRazon: body.cambioEquipoRazon ?? null,
+    cambioEquipoRazonDetalle: body.cambioEquipoRazonDetalle ?? '',
     numero: body.numero,
     cliente: body.cliente,
     fecha: body.fecha,
@@ -125,6 +186,7 @@ export const createConformidad = asyncHandler(async (req: Request, res: Response
     tareaOdoo: body.tareaOdoo,
     subtareaOdoo: body.subtareaOdoo,
     cambioEquipo: body.cambioEquipo ? { rol: body.cambioEquipo.rol } : undefined,
+    cambioUnidad: body.cambioUnidad ? { rol: body.cambioUnidad.rol } : undefined,
   });
 
   // El emparejamiento en el momento de creación es "best effort": si la
@@ -140,6 +202,17 @@ export const createConformidad = asyncHandler(async (req: Request, res: Response
     }
   }
 
+  if (body.tipoServicio === 'cambio_unidad' && body.cambioUnidad) {
+    try {
+      const parejaId = body.cambioUnidad.parejaId
+        ? (await linkCambioUnidadPareja(String(record._id), body.cambioUnidad.parejaId), body.cambioUnidad.parejaId)
+        : await autoEmparejarCambioUnidad(record);
+      if (parejaId) record.cambioUnidad!.parejaId = new Types.ObjectId(parejaId);
+    } catch (err) {
+      console.error('CAMBIO_UNIDAD_LINK_AT_CREATE_FAILED', record._id, err);
+    }
+  }
+
   res.status(201).json(record);
 });
 
@@ -147,7 +220,9 @@ export const createConformidad = asyncHandler(async (req: Request, res: Response
 // hoja) entre las 2 hojas de un cambio_equipo — ver linkCambioEquipoPareja.
 export const linkCambioEquipoParejaHandler = asyncHandler(async (req: Request, res: Response) => {
   const { parejaId } = req.body as CambioEquipoParejaInput;
-  await linkCambioEquipoPareja(String(req.params.id), parejaId);
+  const hoja = await ConformidadModel.findOne({ _id: req.params.id, deletedAt: null }, { tipoServicio: 1 });
+  if (hoja?.tipoServicio === 'cambio_unidad') await linkCambioUnidadPareja(String(req.params.id), parejaId);
+  else await linkCambioEquipoPareja(String(req.params.id), parejaId);
   const record = await ConformidadModel.findById(req.params.id);
   res.json(record);
 });
@@ -170,6 +245,28 @@ export const getRetirosPendientes = asyncHandler(async (req: Request, res: Respo
       matricula: new RegExp(escapeRegExp(matricula), 'i'),
     },
     { numero: 1, codigoActa: 1, cliente: 1, matricula: 1, fecha: 1 },
+  )
+    .sort({ fechaHora: -1 })
+    .limit(20);
+
+  res.json({ data });
+});
+
+// Fallback del emparejado automático de cambio_unidad (ver autoEmparejarCambioUnidad): lista las patas del rol
+// OPUESTO sin pareja, de ese cliente, para elegir a cuál vincular. Mismo criterio que getRetirosPendientes: sin el
+// filtro por tecnicoId (la otra pata la suele hacer otro técnico) y solo con lo mínimo para elegir la hoja correcta.
+export const getCambioUnidadPendientes = asyncHandler(async (req: Request, res: Response) => {
+  const { cliente, rol } = req.query as unknown as CambioUnidadPendientesQuery;
+
+  const data = await ConformidadModel.find(
+    {
+      deletedAt: null,
+      tipoServicio: 'cambio_unidad',
+      'cambioUnidad.rol': rol === 'origen' ? 'destino' : 'origen',
+      'cambioUnidad.parejaId': null,
+      cliente: new RegExp(escapeRegExp(cliente), 'i'),
+    },
+    { numero: 1, codigoActa: 1, cliente: 1, matricula: 1, fecha: 1, 'cambioUnidad.rol': 1 },
   )
     .sort({ fechaHora: -1 })
     .limit(20);
@@ -224,7 +321,7 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
     throw new HttpError(400, 'PRE must be finished before submitting POST data');
   }
 
-  const topLevel = ['numero', 'cliente', 'fecha', 'hora', 'matricula', 'instalador', 'responsableEmpresa', 'tipoServicio'] as const;
+  const topLevel = ['numero', 'cliente', 'fecha', 'hora', 'matricula', 'instalador', 'responsableEmpresa', 'tipoServicio', 'motivoIntervencion', 'motivoIntervencionDetalle', 'cambioEquipoRazon', 'cambioEquipoRazonDetalle'] as const;
   for (const key of topLevel) {
     if (body[key] !== undefined) (record as unknown as Record<string, unknown>)[key] = body[key];
   }
@@ -484,7 +581,38 @@ const SATISFACCION_LABELS: Record<string, string> = {
 // Decoupled from patchConformidad on purpose — Odoo being slow or down must
 // never block the técnico's normal save. Mobile calls this right after a
 // successful patch (and retries it independently if it fails).
+//
+// Envíos en curso por registro+fase. El cliente corta a los 90s (o pierde la señal) y reintenta mientras ESTA
+// request sigue renderizando el PDF / subiendo a Odoo: el guard de SYNCED de abajo todavía no ve el éxito y el
+// reintento adjuntaba el PDF por segunda vez al ticket. Una request que llega con otra en vuelo para lo mismo
+// espera a que termine y devuelve su resultado, sin reenviar.
+const odooSyncInFlight = new Map<string, Promise<unknown>>();
+
 export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Response) => {
+  const fase: 'pre' | 'completo' = req.query.fase === 'pre' ? 'pre' : 'completo';
+  const syncKey = fase === 'pre' ? 'preOdooSync' : 'odooSync';
+  const lockKey = `${req.params.id}:${fase}`;
+
+  const inFlight = odooSyncInFlight.get(lockKey);
+  if (inFlight) {
+    await inFlight.catch(() => undefined);
+    const settled = await ConformidadModel.findOne({ _id: req.params.id, deletedAt: null });
+    if (!settled) throw new HttpError(404, 'Conformidad not found');
+    await assertOwnedByRequester(req, settled);
+    res.json({ [syncKey]: settled[syncKey] });
+    return;
+  }
+
+  const run = runSyncConformidadToOdoo(req, res, fase, syncKey);
+  odooSyncInFlight.set(lockKey, run);
+  try {
+    await run;
+  } finally {
+    if (odooSyncInFlight.get(lockKey) === run) odooSyncInFlight.delete(lockKey);
+  }
+});
+
+async function runSyncConformidadToOdoo(req: Request, res: Response, fase: 'pre' | 'completo', syncKey: 'preOdooSync' | 'odooSync'): Promise<void> {
   const record = await ConformidadModel.findOne({ _id: req.params.id, deletedAt: null });
   if (!record) throw new HttpError(404, 'Conformidad not found');
   await assertOwnedByRequester(req, record);
@@ -492,8 +620,6 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
   // ?fase=pre: adjunta al ticket el PDF solo-PRE (estado en que se encontró la
   // unidad) apenas termina el PRE, con su propio estado (preOdooSync) — el
   // odooSync de siempre sigue siendo el del PDF completo al cerrar el POST.
-  const fase: 'pre' | 'completo' = req.query.fase === 'pre' ? 'pre' : 'completo';
-  const syncKey = fase === 'pre' ? 'preOdooSync' : 'odooSync';
   if (fase === 'pre' && record.status === 'borrador_pre') throw new HttpError(400, 'El PRE todavía no se finalizó');
 
   if (!record.ticketOdoo?.numero) throw new HttpError(400, 'This record has no ticket de Odoo linked');
@@ -503,10 +629,8 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
   const usuario = await UsuarioModel.findById(req.user!.usuarioId);
   if (!usuario?.odoo) throw new HttpError(400, 'Vinculá tu cuenta de Odoo en tu perfil antes de enviar.');
 
-  // TEMP — QA only: `?force=1` bypasses the idempotency guard below so a
-  // record that already synced can be resent while testing the printHtml
-  // PDF layout fix. Remove this query check once QA is done.
-  if (record[syncKey]?.status === 'SYNCED' && req.query.force !== '1') {
+  // Envío único: un registro ya SYNCED nunca se reenvía (no hay force). El correo al cliente sale con cada post.
+  if (record[syncKey]?.status === 'SYNCED') {
     res.json({ [syncKey]: record[syncKey] });
     return;
   }
@@ -623,7 +747,7 @@ export const syncConformidadToOdoo = asyncHandler(async (req: Request, res: Resp
 
   await record.save();
   res.json({ [syncKey]: record[syncKey] });
-});
+}
 
 export const deleteConformidad = asyncHandler(async (req: Request, res: Response) => {
   const record = await ConformidadModel.findOneAndUpdate(

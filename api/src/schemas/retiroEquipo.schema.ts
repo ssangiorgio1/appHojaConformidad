@@ -37,6 +37,10 @@ export const createRetiroEquipoSchema = z
         estado: z.enum(['completo', 'danado', 'incompleto']).optional(),
       })
       .optional(),
+    equiposExtra: z
+      .array(z.object({ numero: z.string().trim().max(60).optional(), imei: z.string().trim().max(30).optional() }))
+      .max(10)
+      .optional(),
     adicionales: z.array(z.object({ nombre: z.string().trim().min(1).max(100), recibido: z.boolean() })).max(30).optional(),
     entrega: z
       .object({
@@ -47,6 +51,11 @@ export const createRetiroEquipoSchema = z
       .optional(),
     observaciones: z.string().trim().max(1000).optional(),
     firma: firmaSchema.nullable().optional(),
+    // Fotos del equipo / sensor (mismo criterio que la firma: solo URLs del bucket público de R2).
+    fotos: z
+      .array(z.object({ url: z.string().min(1).refine(isR2Url, 'url must point to the R2 public bucket'), key: z.string().min(1).optional() }))
+      .max(8)
+      .optional(),
     // Momento real del toque cuando se envía sin señal (ISO).
     ocurrioAt: z.string().datetime().optional(),
   })

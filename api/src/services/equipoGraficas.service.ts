@@ -14,6 +14,7 @@ interface EventoGrafica {
   hdop?: number;
   presente?: boolean;
   conectado?: boolean;
+  sensors?: number[];
 }
 
 interface RespuestaGraficas {
@@ -40,6 +41,10 @@ export interface GraficasEquipo {
     hdop: Punto[];
     ignicion: Punto[];
     presenciaCargador: Punto[];
+    // Varillas de combustible (evento `fuel` de bo3: un valor por varilla en `sensors`; hasta 3).
+    combustible1: Punto[];
+    combustible2: Punto[];
+    combustible3: Punto[];
   };
 }
 
@@ -60,6 +65,9 @@ async function consultar(equipoId: number, fecha: string): Promise<GraficasEquip
     hdop: [],
     ignicion: [],
     presenciaCargador: [],
+    combustible1: [],
+    combustible2: [],
+    combustible3: [],
   };
   // bo3 devuelve, cuando no hay datos ese día, el último evento conocido aunque sea de años atrás:
   // fuera de [desde, hasta] se descarta, o rompe la escala de tiempo de los gráficos.
@@ -80,6 +88,11 @@ async function consultar(equipoId: number, fecha: string): Promise<GraficasEquip
       series.ignicion.push([t, e.presente ? 1 : 0]);
     } else if (e.evento === 'cargador') {
       series.presenciaCargador.push([t, e.conectado ? 1 : 0]);
+    } else if (e.evento === 'fuel') {
+      const v = e.sensors ?? [];
+      if (v.length > 0) series.combustible1.push([t, v[0] ?? null]);
+      if (v.length > 1) series.combustible2.push([t, v[1] ?? null]);
+      if (v.length > 2) series.combustible3.push([t, v[2] ?? null]);
     }
   }
   return { equipoId, fecha, desde: r.desde, hasta: r.hasta, consultadoAt: new Date().toISOString(), series };

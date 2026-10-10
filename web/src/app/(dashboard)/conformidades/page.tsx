@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { TIPO_SERVICIO_LABELS } from '@wara/shared';
 import { Card } from '@/components/ui/Card';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
@@ -328,7 +329,7 @@ export default function ConformidadesPage() {
 
       {error && <Card className="p-4 text-sm font-semibold text-bad">{error}</Card>}
 
-      {/* < lg: una tarjeta por conformidad (la tabla de 11 columnas no entra en el celular). */}
+      {/* < lg: una tarjeta por conformidad (la tabla de 12 columnas no entra en el celular). */}
       <div className={`flex flex-col gap-3 transition-opacity lg:hidden ${loading && data ? 'opacity-60' : ''}`}>
         {loading && !data && <Card className="p-4 text-sm font-semibold text-muted">Cargando...</Card>}
         {!loading && data?.data.length === 0 && <Card className="p-4 text-sm font-semibold text-muted">No se encontraron conformidades.</Card>}
@@ -352,6 +353,7 @@ export default function ConformidadesPage() {
                 <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[12px] font-semibold">
                   <div className="truncate text-muted">Unidad: <span className="text-text">{c.matricula || '—'}</span></div>
                   <div className="truncate text-muted">Ticket: <span className="text-text">{c.ticketOdoo?.numero || '—'}</span></div>
+                  <div className="truncate text-muted">Servicio: <span className="text-text">{TIPO_SERVICIO_LABELS[c.tipoServicio ?? 'instalacion']}</span></div>
                   <div className="truncate text-muted">Téc.: <span className="text-text">{tecnicoNombre(c.tecnicoId)}</span></div>
                   <div className="truncate text-muted">{formatFechaHora(c.fecha, c.hora)}</div>
                 </div>
@@ -415,9 +417,9 @@ export default function ConformidadesPage() {
 
       <Card className="hidden p-2.5 pb-4 lg:block">
         <div className="overflow-x-auto">
-          <div className="min-w-[1110px]">
-            <div className="grid grid-cols-[32px_1.2fr_1.4fr_1.1fr_0.9fr_0.9fr_1fr_0.9fr_1fr_1fr_60px] pb-2.5 pt-4">
-              {['', 'Código acta', 'Cliente', 'Técnico', 'Unidad', 'Ticket', 'Fecha', 'Estado', 'Alta MA', 'Alta Coord', ''].map(
+          <div className="min-w-[1260px]">
+            <div className="grid grid-cols-[32px_1.2fr_1.4fr_1.1fr_0.9fr_0.9fr_1.1fr_1fr_0.9fr_1fr_1fr_60px] pb-2.5 pt-4">
+              {['', 'Código acta', 'Cliente', 'Técnico', 'Unidad', 'Ticket', 'Servicio', 'Fecha', 'Estado', 'Alta MA', 'Alta Coord', ''].map(
                 (h, i) => (
                   <div key={i} className="px-3.5 text-[11px] font-extrabold uppercase tracking-wide text-muted">
                     {h}
@@ -447,7 +449,7 @@ export default function ConformidadesPage() {
                         if (target?.closest('button, a, input, [role="button"], label')) return;
                         toggleExpanded(c._id);
                       }}
-                      className="grid grid-cols-[32px_1.2fr_1.4fr_1.1fr_0.9fr_0.9fr_1fr_0.9fr_1fr_1fr_60px] items-center cursor-pointer hover:bg-neutral-50/70">
+                      className="grid grid-cols-[32px_1.2fr_1.4fr_1.1fr_0.9fr_0.9fr_1.1fr_1fr_0.9fr_1fr_1fr_60px] items-center cursor-pointer hover:bg-neutral-50/70">
                       <div className="flex justify-center">
                         <button
                           type="button"
@@ -463,6 +465,7 @@ export default function ConformidadesPage() {
                       <div className="p-3.5 text-[13px] font-semibold text-muted">{tecnicoNombre(c.tecnicoId)}</div>
                       <div className="p-3.5 text-[13px] font-semibold">{c.matricula || '—'}</div>
                       <div className="p-3.5 text-[13px] font-semibold text-muted">{c.ticketOdoo?.numero || '—'}</div>
+                      <div className="p-3.5 text-[13px] font-semibold">{TIPO_SERVICIO_LABELS[c.tipoServicio ?? 'instalacion']}</div>
                       <div className="p-3.5 text-[13px] font-semibold text-muted">{formatFechaHora(c.fecha, c.hora)}</div>
                       <div className="p-3.5">
                         <Badge tone={ESTADO_TONE[c.status]}>{ESTADO_LABEL[c.status]}</Badge>

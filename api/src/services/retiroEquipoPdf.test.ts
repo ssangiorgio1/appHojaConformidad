@@ -32,7 +32,15 @@ describe('buildRetiroEquipoHtml', () => {
   });
   it('el texto cambia según la modalidad', () => {
     expect(buildRetiroEquipoHtml(base)).toContain('en mano');
-    expect(buildRetiroEquipoHtml({ ...base, modalidad: 'deja_para_retirar', entrega: { lugar: 'Portería' } })).toContain('para su retiro');
+    expect(buildRetiroEquipoHtml({ ...base, modalidad: 'deja_para_retirar', entrega: { lugar: 'Portería' } })).toContain('dejó el equipo entregado');
+  });
+  it('el título dice retiro o entrega según la modalidad, sin barra intermedia', () => {
+    const retiro = buildRetiroEquipoHtml(base);
+    expect(retiro).toContain('Acta de retiro de equipo');
+    expect(retiro).not.toContain('retiro / entrega');
+    const entrega = buildRetiroEquipoHtml({ ...base, modalidad: 'deja_para_retirar', entrega: { lugar: 'Portería' } });
+    expect(entrega).toContain('Acta de entrega de equipo');
+    expect(entrega).not.toContain('retiro / entrega');
   });
   it('sin firma muestra el motivo', () => {
     const html = buildRetiroEquipoHtml({ ...base, firma: { motivo: 'No había nadie' } });
@@ -41,5 +49,16 @@ describe('buildRetiroEquipoHtml', () => {
   });
   it('con firma muestra la imagen', () => {
     expect(buildRetiroEquipoHtml({ ...base, firma: { url: 'https://r2.test/f.png', nombreFirmante: 'Juan' } })).toContain('class="firma"');
+  });
+  it('incluye las fotos del equipo si hay', () => {
+    const html = buildRetiroEquipoHtml({ ...base, fotos: [{ url: 'https://r2.example/a.jpg' }] });
+    expect(html).toContain('<h2>Fotos</h2>');
+    expect(html).toContain('https://r2.example/a.jpg');
+    expect(buildRetiroEquipoHtml(base)).not.toContain('<h2>Fotos</h2>');
+  });
+  it('lista los equipos extra', () => {
+    const html = buildRetiroEquipoHtml({ ...base, equiposExtra: [{ numero: '999', imei: '123456' }] });
+    expect(html).toContain('Equipo 2 N°');
+    expect(html).toContain('123456');
   });
 });

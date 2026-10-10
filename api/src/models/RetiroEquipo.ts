@@ -23,6 +23,15 @@ const AdicionalSchema = new Schema(
   { _id: false },
 );
 
+// Fotos del equipo / sensor que se retira (ya subidas al bucket público de R2).
+const FotoRetiroSchema = new Schema(
+  {
+    url: { type: String, required: true },
+    key: { type: String },
+  },
+  { _id: false },
+);
+
 const RetiroEquipoSchema = new Schema(
   {
     // uuid generado en el dispositivo: el envío sin señal es idempotente (mismo criterio que SubtareaIncidencia).
@@ -44,6 +53,8 @@ const RetiroEquipoSchema = new Schema(
       imei: { type: String, default: '' },
       estado: { type: String, enum: ['', 'completo', 'danado', 'incompleto'], default: '' },
     },
+    // Otros equipos entregados en la misma acta (el primero va en `equipo`, con el estado de todos).
+    equiposExtra: { type: [{ _id: false, numero: { type: String, default: '' }, imei: { type: String, default: '' } }], default: [] },
     adicionales: { type: [AdicionalSchema], default: [] },
     // Quién entrega el equipo o con quién/dónde queda.
     entrega: {
@@ -53,6 +64,7 @@ const RetiroEquipoSchema = new Schema(
     },
     observaciones: { type: String, default: '' },
     firma: { type: FirmaRetiroSchema, default: null },
+    fotos: { type: [FotoRetiroSchema], default: [] },
     // Resultado del envío del PDF al ticket (best-effort: no bloquea el guardado).
     pdfAt: { type: Date, default: null },
     pdfError: { type: String, default: '' },

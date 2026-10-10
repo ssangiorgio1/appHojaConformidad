@@ -1,0 +1,50 @@
+{
+  "_ayuda": [
+    "Copiar este archivo, cambiar los datos y correr: tsx scripts/cargarConformidad.ts <config.json> (menu paso a paso).",
+    "Pasos: 1 resumen, 2 subir fotos, 3 crear conformidad, 4 generar PDF, 5 editar fotos. Tambien: --pasos 2,3 o --pasos todo.",
+    "Slots PRE: matricula, lateral_izq, lateral_der, frente, interior, torpedo, odometro, extra.",
+    "Slots POST instalacion: equipo_serie, precintos, ubicacion_equipo, ramales, torpedo, odometro, boton_panico, extra_post (otras fotos).",
+    "Slots POST retiro: equipo_a_retirar, torpedo, odometro, lugar_vacio, cableado_retirado. Un slot puede repetirse (varias fotos).",
+    "equipo.modelo = N de equipo (ej. 2408081), equipo.imei = IMEI de 15 digitos. Casillas tildadas: 'Si' con tilde. Controles: SI o NO.",
+    "tipoServicio: instalacion | desinstalacion | reparacion | cambio_equipo. No toca Odoo; el PDF queda junto a este archivo."
+  ],
+  "tecnicoEmail": "fcorrea@waragps.com",
+  "fecha": "2026-10-08",
+  "hora": "13:00",
+  "cliente": "Adma Sociedad Anonima",
+  "matricula": "X082717",
+  "tipoServicio": "instalacion",
+  "ticket": { "numero": "39750" },
+  "tarea": { "id": 21704, "nombre": "COLOCACION DE GPS Y BP EN 3 UNIDADES ADMA ESTACION" },
+  "observacionesPre": "Instalación de equipo GPS.",
+  "observacionesPost": "Instalación de equipo GPS. Precintos colocados: 4647 y 4697.",
+  "equipo": {
+    "modelo": "2408081",
+    "imei": "869131070319911",
+    "modBPanico": "Sí",
+    "controlSenalModem": "-83 dBm",
+    "controlCantidadSatGps": "8",
+    "controlBateriaInterna": "4 V",
+    "controlAlimentacionExterna": "23.5 V",
+    "controlOdometro": "21",
+    "controlRevisionIgnicion": "SI",
+    "controlRevisionPanico": "SI",
+    "controlConexionRed": "SI"
+  },
+  "carpetaFotos": "C:/Users/frost/Desktop/39750",
+  "fotosPre": [
+    { "slot": "matricula", "archivo": "WhatsApp Image 2026-10-08 at 13.01.49.jpeg" },
+    { "slot": "frente", "archivo": "WhatsApp Image 2026-10-08 at 13.01.49 (1).jpeg" },
+    { "slot": "interior", "archivo": "WhatsApp Image 2026-10-08 at 13.01.48 (2).jpeg" },
+    { "slot": "torpedo", "archivo": "WhatsApp Image 2026-10-08 at 13.01.48 (1).jpeg" },
+    { "slot": "odometro", "archivo": "WhatsApp Image 2026-10-08 at 13.01.48 (1).jpeg" }
+  ],
+  "fotosPost": [
+    { "slot": "precintos", "archivo": "WhatsApp Image 2026-10-08 at 13.01.46.jpeg" },
+    { "slot": "precintos", "archivo": "WhatsApp Image 2026-10-08 at 13.01.47.jpeg" },
+    { "slot": "boton_panico", "archivo": "WhatsApp Image 2026-10-08 at 13.01.44.jpeg" },
+    { "slot": "torpedo", "archivo": "WhatsApp Image 2026-10-08 at 13.01.48 (1).jpeg" },
+    { "slot": "odometro", "archivo": "WhatsApp Image 2026-10-08 at 13.01.48 (1).jpeg" },
+    { "slot": "extra_post", "archivo": "WhatsApp Image 2026-10-08 at 13.01.43.jpeg" }
+  ]
+}

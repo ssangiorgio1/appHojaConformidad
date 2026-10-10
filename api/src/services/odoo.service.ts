@@ -1,5 +1,5 @@
 import { executeKw, executeKwAsCredentials, authenticateOdooCredentials } from '../config/odoo.js';
-import { OdooError, classify, withTimeout, many2oneName } from './odooErrors.js';
+import { OdooError, classify, withTimeout, many2oneName, UPLOAD_TIMEOUT_MS } from './odooErrors.js';
 
 // Re-exportado para no romper los imports existentes (odoo.controller.ts
 // importa OdooError desde acá) — la clase en sí vive en odooErrors.ts,
@@ -132,6 +132,7 @@ export async function pushReprogramacionToTicket(params: {
         { name: params.fileName, datas: params.pdfBuffer.toString('base64'), res_model: 'helpdesk.ticket', res_id: params.ticketId, mimetype: 'application/pdf' },
       ]),
       'pushReprogramacionToTicket:attachment',
+      UPLOAD_TIMEOUT_MS,
     );
     await withTimeout(
       call('helpdesk.ticket', 'message_post', [[params.ticketId]], {
@@ -142,6 +143,7 @@ export async function pushReprogramacionToTicket(params: {
         attachment_ids: [attachmentId],
       }),
       'pushReprogramacionToTicket:message',
+      UPLOAD_TIMEOUT_MS,
     );
   } catch (err) {
     throw classify(err);
@@ -208,14 +210,47 @@ export async function pushConformidadToTicket(params: {
   as: { login: string; password: string };
 }): Promise<void> {
   try {
+    // Garantía de envío único: el correo al cliente sale con message_post, así que un segundo post ensucia el
+    // ticket y le llega duplicado. El nombre del archivo lleva el codigoActa (único por hoja/fase), por eso
+    // sirve de huella: si ya hay un adjunto con ese nombre en el ticket y colgado de un mensaje, ya se envió y
+    // no se vuelve a postear. Si el chequeo falla, tira error (queda FAILED) en vez de arriesgar un duplicado.
+    const existingIds = (await withTimeout(
+      executeKwAsCredentials(params.as.login, params.as.password, 'ir.attachment', 'search', [
+        [
+          ['res_model', '=', 'helpdesk.ticket'],
+          ['res_id', '=', params.ticketId],
+          ['name', '=', params.fileName],
+        ],
+      ]),
+      'pushConformidadToTicket:check-attachment',
+      UPLOAD_TIMEOUT_MS,
+    )) as number[];
+    if (existingIds.length) {
+      const posted = (await withTimeout(
+        executeKwAsCredentials(params.as.login, params.as.password, 'mail.message', 'search_count', [
+          [
+            ['model', '=', 'helpdesk.ticket'],
+            ['res_id', '=', params.ticketId],
+            ['attachment_ids', 'in', existingIds],
+          ],
+        ]),
+        'pushConformidadToTicket:check-message',
+        UPLOAD_TIMEOUT_MS,
+      )) as number;
+      if (posted > 0) return;
+    }
+
     const base64 = params.pdfBuffer.toString('base64');
+    // Adjunto huérfano de un intento anterior que murió entre el create y el message_post: se reutiliza en vez
+    // de crear otro.
+    const reuseAttachmentId = existingIds[0];
 
     // message_post's `attachments` kwarg expects raw content and
     // base64-encodes it itself — feeding it an already-base64 string double
     // encodes the PDF into a file that no reader can open. `datas` on
     // ir.attachment, by contrast, IS the base64 payload directly, so we
     // create the attachment ourselves and only hand message_post its id.
-    const attachmentId = await withTimeout(
+    const attachmentId = reuseAttachmentId ?? await withTimeout(
       executeKwAsCredentials(params.as.login, params.as.password, 'ir.attachment', 'create', [
         {
           name: params.fileName,
@@ -226,6 +261,7 @@ export async function pushConformidadToTicket(params: {
         },
       ]),
       'pushConformidadToTicket:attachment',
+      UPLOAD_TIMEOUT_MS,
     );
 
     await withTimeout(
@@ -240,6 +276,7 @@ export async function pushConformidadToTicket(params: {
         attachment_ids: [attachmentId],
       }),
       'pushConformidadToTicket:message',
+      UPLOAD_TIMEOUT_MS,
     );
   } catch (err) {
     const classified = classify(err);

@@ -6,14 +6,45 @@ export type EstadoServicio = 'borrador_pre' | 'pendiente_post' | 'completo';
 // Chosen by the técnico when creating the service — drives what "Datos del
 // equipo" asks for in POST (see equipo.ts's modeloInstalado/imeiInstalado,
 // only used when it's 'cambio_equipo').
-export type TipoServicio = 'instalacion' | 'desinstalacion' | 'reparacion' | 'cambio_equipo';
+export type TipoServicio = 'instalacion' | 'desinstalacion' | 'reparacion' | 'cambio_equipo' | 'cambio_unidad';
 
 export const TIPO_SERVICIO_LABELS: Record<TipoServicio, string> = {
   instalacion: 'Instalación',
   desinstalacion: 'Desinstalación',
   reparacion: 'Reparación',
   cambio_equipo: 'Cambio de equipo',
+  cambio_unidad: 'Cambio de unidad',
 };
+
+// Qué encontró/resolvió el técnico al revisar el equipo — solo aplica cuando
+// tipoServicio es 'reparacion'. Si es 'cambio_equipo' la reparación terminó en
+// reemplazar el equipo: modelo/imei describen el que sale y
+// modeloInstalado/imeiInstalado el que entra (ver isEquipoSwap).
+export type MotivoIntervencion = 'cambio_equipo' | 'reinicio_manual' | 'revisar_ramales' | 'otro';
+
+export const MOTIVO_INTERVENCION_LABELS: Record<MotivoIntervencion, string> = {
+  cambio_equipo: 'Cambio de equipo',
+  reinicio_manual: 'Reinicio manual del equipo',
+  revisar_ramales: 'Revisar ramales, módulos, etc',
+  otro: 'Otro',
+};
+
+// Por qué se cambia el equipo — solo aplica cuando motivoIntervencion es 'cambio_equipo'.
+export type CambioEquipoRazon = 'pantalla_danada' | 'otro';
+
+export const CAMBIO_EQUIPO_RAZON_LABELS: Record<CambioEquipoRazon, string> = {
+  pantalla_danada: 'Pantalla dañada (táctil / trizada)',
+  otro: 'Otro',
+};
+
+// Cambio de equipo "de hecho": ya sea porque tipoServicio es 'cambio_equipo'
+// desde el alta, o porque una reparación derivó en reemplazar el equipo.
+export function isEquipoSwap(
+  tipoServicio: TipoServicio | null | undefined,
+  motivoIntervencion?: MotivoIntervencion | null,
+): boolean {
+  return tipoServicio === 'cambio_equipo' || (tipoServicio === 'reparacion' && motivoIntervencion === 'cambio_equipo');
+}
 
 export interface Foto {
   id: string;
@@ -141,6 +172,18 @@ export interface CambioEquipoRef {
   parejaId?: string | null;
 }
 
+// Cambio de unidad: el cliente quiere el equipo en otra unidad, pero por norma
+// el equipo retirado vuelve al laboratorio y en la unidad nueva se instala uno
+// NUEVO. Son 2 hojas (una por unidad, cada una con su matrícula/checklist/firma):
+// 'origen' = desinstalación en la unidad que deja el equipo, 'destino' =
+// instalación del equipo nuevo en la unidad a la que se cambia. Pueden hacerlas
+// técnicos o días distintos y en cualquier orden; se vinculan por parejaId
+// (Mongo _id de la otra), normalmente solas por compartir la tarea padre de Odoo.
+export interface CambioUnidadRef {
+  rol: 'origen' | 'destino';
+  parejaId?: string | null;
+}
+
 export interface TicketOdooRef {
   numero: string;
   odooId?: number;
@@ -175,6 +218,13 @@ export interface ConformidadRecord {
   codigoActa?: string;
 
   tipoServicio: TipoServicio | null;
+  motivoIntervencion?: MotivoIntervencion | null;
+  // Obligatorio solo cuando motivoIntervencion es 'otro'.
+  motivoIntervencionDetalle?: string;
+  // Los 2 campos siguientes solo aplican cuando motivoIntervencion es 'cambio_equipo'.
+  cambioEquipoRazon?: CambioEquipoRazon | null;
+  // Obligatorio solo cuando cambioEquipoRazon es 'otro'.
+  cambioEquipoRazonDetalle?: string;
 
   numero: string;
   cliente: string;
@@ -201,6 +251,7 @@ export interface ConformidadRecord {
   post: Phase;
   equipo: Equipo;
   cambioEquipo?: CambioEquipoRef | null;
+  cambioUnidad?: CambioUnidadRef | null;
 
   ticketOdoo: TicketOdooRef | null;
   odooSync: OdooSync;

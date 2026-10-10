@@ -5,6 +5,7 @@ import { VisitaNotificacionModel } from '../models/VisitaNotificacion.js';
 import { UsuarioModel } from '../models/Usuario.js';
 import { notificarEstadoVisita, buildOptInLink } from '../services/telegram.service.js';
 import { isTaskAssignedToTechnician } from '../services/calendarTask.service.js';
+import { cerrarVisitasAjenasSiTodoResuelto } from '../services/loteVisita.service.js';
 import type { TareaIdParam, EstadoVisitaInput, FechaQuery, FinalizarVisitaInput } from '../schemas/visita.schema.js';
 
 // Cierra el hueco de autorización de setEstadoVisita/finalizarVisitaLote: sin
@@ -109,6 +110,69 @@ async function assertSinViajeDeCompanero(tareaOdooId: number, fecha: string, req
   }
 }
 
+// Compañero que NO inició el viaje: el titular salió y marcó "llegué" para una tarea compartida (los dos viajan
+// juntos), así que el otro técnico ya está en el lugar sin haber tocado nada. Para que le aparezca el banner de
+// "trabajo en progreso" y su ficha no dependa de que el titular siga abierto (si el titular cierra primero, antes
+// le volvía "Salir hacia destino"), se le registra su propia visita en sitio, sin traslado (enCaminoAt vacío: no
+// cuenta en los promedios) y sin chat (no manda otro aviso al cliente). Solo si no tiene visita propia para esa
+// (tarea, fecha) y la tarea le está asignada en Odoo.
+const ASIGNADA_TTL_MS = 5 * 60_000;
+const asignadaCache = new Map<string, { ok: boolean; at: number }>();
+
+async function tareaAsignada(tareaOdooId: number, odooUserId: number): Promise<boolean> {
+  const key = `${tareaOdooId}|${odooUserId}`;
+  const hit = asignadaCache.get(key);
+  if (hit && Date.now() - hit.at < ASIGNADA_TTL_MS) return hit.ok;
+  const ok = await isTaskAssignedToTechnician(tareaOdooId, odooUserId);
+  asignadaCache.set(key, { ok, at: Date.now() });
+  return ok;
+}
+
+async function adoptarViajeDeCompanero(
+  usuarioId: string,
+  acotar?: { tareaOdooId: number; fecha: string },
+): Promise<InstanceType<typeof VisitaNotificacionModel> | null> {
+  try {
+    const usuario = await UsuarioModel.findById(usuarioId).select('odooUserId');
+    if (!usuario?.odooUserId) return null;
+    const desde = new Date(Date.now() - VISITA_VENCE_HORAS * 3_600_000);
+    const candidatas = await VisitaNotificacionModel.find({
+      ...(acotar ?? {}),
+      tecnicoId: { $ne: usuarioId },
+      abierta: true,
+      estado: 'en_sitio',
+      updatedAt: { $gte: desde },
+    })
+      .sort({ enSitioAt: 1 })
+      .limit(10);
+    for (const c of candidatas) {
+      // Ya tiene visita propia (abierta, cerrada o cancelada) para esa tarea y fecha: no se le inventa otra.
+      if (await VisitaNotificacionModel.exists({ tareaOdooId: c.tareaOdooId, fecha: c.fecha, tecnicoId: usuarioId })) continue;
+      if (!(await tareaAsignada(c.tareaOdooId, usuario.odooUserId))) continue;
+      try {
+        return await VisitaNotificacionModel.create({
+          tareaOdooId: c.tareaOdooId,
+          fecha: c.fecha,
+          tecnicoId: usuarioId,
+          estado: 'en_sitio',
+          abierta: true,
+          enSitioAt: c.enSitioAt ?? new Date(),
+        });
+      } catch (err) {
+        // Carrera con otra consulta del mismo técnico: el doc ya existe.
+        if (err && typeof err === 'object' && 'code' in err && (err as { code: number }).code === 11000) {
+          return await VisitaNotificacionModel.findOne({ tareaOdooId: c.tareaOdooId, fecha: c.fecha, tecnicoId: usuarioId, abierta: true });
+        }
+        throw err;
+      }
+    }
+  } catch (err) {
+    // Best-effort (Odoo caído, etc.): el técnico sigue pudiendo marcar su propia llegada a mano.
+    console.error('VISITA_ADOPTAR_COMPANERO_FAILED', err);
+  }
+  return null;
+}
+
 export const setEstadoVisita = asyncHandler(async (req: Request, res: Response) => {
   const { tareaOdooId } = req.params as unknown as TareaIdParam;
   const { estado, fecha, ocurrioAt } = req.body as EstadoVisitaInput;
@@ -142,7 +206,9 @@ export const getVisita = asyncHandler(async (req: Request, res: Response) => {
   // para restringirlo de más.
   const filter: Record<string, unknown> = { tareaOdooId, fecha };
   if (req.user!.role === 'tecnico') filter.tecnicoId = req.user!.usuarioId;
-  const visita = await VisitaNotificacionModel.findOne(filter).sort({ createdAt: -1 });
+  let visita = await VisitaNotificacionModel.findOne(filter).sort({ createdAt: -1 });
+  // El titular ya llegó y yo (que viajo con él) todavía no tengo visita propia: se me registra en sitio.
+  if (!visita && req.user!.role === 'tecnico') visita = await adoptarViajeDeCompanero(String(req.user!.usuarioId), { tareaOdooId, fecha });
 
   // "Titular" = el técnico que primero marcó salida hacia destino para este
   // (tarea, fecha), sin importar de quién es `visita` de arriba (que sigue
@@ -208,11 +274,13 @@ export const getVisita = asyncHandler(async (req: Request, res: Response) => {
 // pegado a un trabajo que ya no importa. Se ordena por la transición más
 // reciente para siempre mostrar la visita vigente.
 export const getVisitaActiva = asyncHandler(async (req: Request, res: Response) => {
-  const visita = await VisitaNotificacionModel.findOne({
+  let visita = await VisitaNotificacionModel.findOne({
     tecnicoId: req.user!.usuarioId,
     abierta: true,
     estado: { $in: ['en_camino', 'en_sitio'] },
   }).sort({ updatedAt: -1 });
+  // Sin visita propia pero viajando con un titular que ya llegó: banner de trabajo en progreso para él también.
+  if (!visita && req.user!.role === 'tecnico') visita = await adoptarViajeDeCompanero(String(req.user!.usuarioId));
 
   if (!visita) {
     res.json({ visita: null });
@@ -246,6 +314,8 @@ export const finalizarVisitaLote = asyncHandler(async (req: Request, res: Respon
   const { fecha, ocurrioAt } = req.body as FinalizarVisitaInput;
   await assertTecnicoOwnership(tareaOdooId, req);
   const visita = await notificarEstadoVisita(tareaOdooId, 'completo', req.user!.usuarioId, fecha, ocurrioAt);
+  // Si con esto no queda ninguna unidad sin resolver, las visitas que otros técnicos dejaron abiertas en la tarea se cierran.
+  await cerrarVisitasAjenasSiTodoResuelto(tareaOdooId, req.user!.usuarioId);
   res.json(visita);
 });
 

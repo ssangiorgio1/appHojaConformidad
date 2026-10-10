@@ -1,7 +1,23 @@
-import type { Checklist, Equipo, SatisfaccionFirma, TipoServicio } from '@wara/shared';
+import type { Checklist, Equipo, SatisfaccionFirma, TipoServicio, MotivoIntervencion, CambioEquipoRazon } from '@wara/shared';
 
 // Mirrors api/src/models/Usuario.ts
 export type UsuarioRole = 'tecnico' | 'admin' | 'superadmin' | 'coordinacion' | 'mesa_ayuda';
+
+// Viaje abierto (en camino / en sitio) que nadie cerró — ver api/src/controllers/visitasAbiertas.controller.ts.
+export interface VisitaAbierta {
+  _id: string;
+  tareaOdooId: number;
+  fecha: string;
+  estado: 'en_camino' | 'en_sitio';
+  tecnico: { nombre: string; email: string } | null;
+  cliente: string;
+  enCaminoAt: string | null;
+  enSitioAt: string | null;
+  horasAbierta: number;
+  hojasCompletas: number;
+  otroTecnicoTermino: boolean;
+  sospechosa: boolean;
+}
 
 export interface Usuario {
   _id: string;
@@ -122,6 +138,10 @@ export interface ConformidadDoc {
   clientId: string;
   codigoActa: string;
   tipoServicio: TipoServicio | null;
+  motivoIntervencion?: MotivoIntervencion | null;
+  motivoIntervencionDetalle?: string;
+  cambioEquipoRazon?: CambioEquipoRazon | null;
+  cambioEquipoRazonDetalle?: string;
   numero: string;
   cliente: string;
   fecha: string;
@@ -429,7 +449,7 @@ export interface EstadoEquipo {
   posicionFecha?: string | null;
   firmware: { version: string | null; fecha: string | null; actualizacionDisponible: boolean; detalleActualizacion: string | null };
   senalesVistas: { pantalla: boolean; rfid: boolean; fuel: boolean; sim: boolean; corteMotor: boolean; panico: string | null };
-  movil: { cliente: string; movil: string; baja: boolean; bajaCliente: boolean; corteDeServicio: boolean } | null;
+  movil: { cliente: string; movil: string; matricula: string | null; baja: boolean; bajaCliente: boolean; corteDeServicio: boolean } | null;
   modulos: { fecha: string | null; detectados: ModuloDetectado[] };
   eventosRecientes: EventoEquipo[];
 }
@@ -457,5 +477,8 @@ export interface GraficasEquipo {
     hdop: PuntoGrafica[];
     ignicion: PuntoGrafica[];
     presenciaCargador: PuntoGrafica[];
+    combustible1: PuntoGrafica[];
+    combustible2: PuntoGrafica[];
+    combustible3: PuntoGrafica[];
   };
 }

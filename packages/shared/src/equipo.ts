@@ -82,7 +82,8 @@ export const EQUIP_GROUPS = [
       { key: 'controlCantidadSatGps', label: 'Cantidad de Sat. GPS' },
       { key: 'controlBateriaInterna', label: 'Batería interna' },
       { key: 'controlAlimentacionExterna', label: 'Alimentación externa' },
-      { key: 'controlOdometro', label: 'Odómetro / Horómetro (km o hs)' },
+      { key: 'controlOdometro', label: 'Odómetro (km)' },
+      { key: 'controlHorometro', label: 'Horómetro (hs)' },
     ],
   },
 ] as const;

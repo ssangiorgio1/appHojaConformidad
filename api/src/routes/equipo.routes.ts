@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
-import { buscarEquiposQuerySchema, equipoIdParamsSchema, estadoEquipoQuerySchema, graficasEquipoQuerySchema, numeroPorImeiQuerySchema } from '../schemas/equipo.schema.js';
-import { buscar, estado, graficas, numeroPorImei } from '../controllers/equipo.controller.js';
+import { buscarEquiposQuerySchema, historialUnidadQuerySchema, equipoIdParamsSchema, estadoEquipoQuerySchema, graficasEquipoQuerySchema, numeroPorImeiQuerySchema } from '../schemas/equipo.schema.js';
+import { buscar, historialUnidad, estado, graficas, numeroPorImei } from '../controllers/equipo.controller.js';
 
 export const equipoRouter = Router();
 
@@ -13,6 +13,7 @@ export const equipoRouter = Router();
 equipoRouter.use(requireAuth);
 equipoRouter.get('/buscar', validate(buscarEquiposQuerySchema, 'query'), buscar);
 equipoRouter.get('/numero-por-imei', validate(numeroPorImeiQuerySchema, 'query'), numeroPorImei);
+equipoRouter.get('/historial-unidad', validate(historialUnidadQuerySchema, 'query'), historialUnidad);
 equipoRouter.get(
   '/:equipoId/estado',
   validate(equipoIdParamsSchema, 'params'),

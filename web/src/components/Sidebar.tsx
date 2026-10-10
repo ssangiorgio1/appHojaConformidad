@@ -30,6 +30,18 @@ export const NAV_ITEMS = [
     roles: ['coordinacion', 'mesa_ayuda', 'admin', 'superadmin'] as const,
   },
   {
+    href: '/visitas-abiertas',
+    label: 'Visitas abiertas',
+    icon: IconClock,
+    roles: ['coordinacion', 'mesa_ayuda', 'admin', 'superadmin'] as const,
+  },
+  {
+    href: '/deposito',
+    label: 'Depósito',
+    icon: IconGrid,
+    roles: ['coordinacion', 'admin', 'superadmin'] as const,
+  },
+  {
     href: '/flota',
     label: 'Mapa de flota',
     icon: IconMap,

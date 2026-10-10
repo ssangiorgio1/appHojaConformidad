@@ -160,6 +160,18 @@ const CambioEquipoSchema = new Schema(
   { _id: false },
 );
 
+// Solo se completa cuando tipoServicio === 'cambio_unidad': cada hoja es una
+// pata (origen = desinstalación, destino = instalación del equipo nuevo en
+// otra unidad) y se vinculan por parejaId cruzado en ambos documentos, igual
+// que CambioEquipoSchema — ver linkCambioUnidadPareja en el controller.
+const CambioUnidadSchema = new Schema(
+  {
+    rol: { type: String, enum: ['origen', 'destino'], default: null },
+    parejaId: { type: Schema.Types.ObjectId, ref: 'Conformidad', default: null },
+  },
+  { _id: false },
+);
+
 // Resultado de la verificación en vivo del equipo (paso "Control" de la PWA, ver VerificacionEquipo): lo que
 // reporta bo3 vs lo tildado en la hoja. `avanzoBajoResponsabilidad` es true cuando el técnico vio el aviso
 // "Equipo sin confirmar" y eligió avanzar igual (sin señal, sin datos o con discrepancias) — queda registro
@@ -183,9 +195,19 @@ const ConformidadSchema = new Schema(
 
     tipoServicio: {
       type: String,
-      enum: ['instalacion', 'desinstalacion', 'reparacion', 'cambio_equipo'],
+      enum: ['instalacion', 'desinstalacion', 'reparacion', 'cambio_equipo', 'cambio_unidad'],
       default: null,
     },
+    // Solo aplica con tipoServicio 'reparacion'; 'cambio_equipo' = la reparación
+    // terminó reemplazando el equipo (modelo/imei salen, *Instalado entran).
+    motivoIntervencion: {
+      type: String,
+      enum: ['cambio_equipo', 'reinicio_manual', 'revisar_ramales', 'otro'],
+      default: null,
+    },
+    motivoIntervencionDetalle: { type: String, default: '' },
+    cambioEquipoRazon: { type: String, enum: ['pantalla_danada', 'otro'], default: null },
+    cambioEquipoRazonDetalle: { type: String, default: '' },
 
     numero: { type: String, default: '', index: true },
     cliente: { type: String, default: '' },
@@ -223,6 +245,7 @@ const ConformidadSchema = new Schema(
     preOdooSync: { type: OdooSyncSchema, default: () => ({}) },
     pdfReporte: { type: PdfReporteSchema, default: null },
     cambioEquipo: { type: CambioEquipoSchema, default: () => ({}) },
+    cambioUnidad: { type: CambioUnidadSchema, default: () => ({}) },
     // null = hoja anterior a este dato (o sin paso de control): no se puede afirmar nada.
     verificacionEquipo: { type: VerificacionEquipoSchema, default: null },
     // Productos de la orden que no se pudieron instalar/retirar en el lugar: clave de la casilla -> motivo que escribió el
@@ -240,6 +263,8 @@ ConformidadSchema.index({ 'equipo.imei': 1 }, { sparse: true });
 // GET /conformidades/cambio-equipo/retiros-pendientes) — sirve para buscar
 // tanto retiros como instalaciones pendientes (rol es parte del filtro real).
 ConformidadSchema.index({ matricula: 1, 'cambioEquipo.rol': 1, 'cambioEquipo.parejaId': 1 });
+// Emparejado automático de las 2 patas de un cambio de unidad por tarea padre de Odoo.
+ConformidadSchema.index({ 'tareaOdoo.id': 1, 'cambioUnidad.rol': 1, 'cambioUnidad.parejaId': 1 });
 
 ConformidadSchema.pre('save', function () {
   if (this.fecha) {

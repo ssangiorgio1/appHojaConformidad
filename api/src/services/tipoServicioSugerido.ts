@@ -6,12 +6,14 @@
 // para desinstalar de la unidad como para retirar un equipo que ya está en manos del cliente).
 import type { EsperadoUnidad } from '../config/productoMapeo.js';
 
-export type TipoServicioSugerido = 'instalacion' | 'desinstalacion' | 'reparacion' | 'cambio_equipo' | 'retiro_entrega';
+export type TipoServicioSugerido = 'instalacion' | 'desinstalacion' | 'reparacion' | 'cambio_equipo' | 'cambio_unidad' | 'retiro_entrega';
 
 export interface SugerenciaTipoServicio {
   tipo: TipoServicioSugerido;
   // De dónde sale: el producto es más confiable que la etiqueta.
   fuente: 'producto' | 'etiqueta';
+  // Solo con tipo 'cambio_unidad' (ver marcarCambioUnidad): qué pata es esta unidad.
+  rolCambioUnidad?: 'origen' | 'destino';
 }
 
 // project.tags de Odoo (ids de producción, al 2026-10-07). A confirmar con coordinación: son las etiquetas que hoy se
@@ -44,7 +46,9 @@ export function sugerirTipoServicio(esperado: EsperadoUnidad | null, etiquetaIds
     if (esperado.recepcionEquipo) return { tipo: 'retiro_entrega', fuente: 'producto' };
     const instala = esperado.instalar.equipo || Object.keys(esperado.instalar.casillas).length > 0;
     const retira = esperado.retirar.equipo || Object.keys(esperado.retirar.casillas).length > 0;
-    if (instala && retira) return { tipo: 'cambio_equipo', fuente: 'producto' };
+    // Retirar e instalar en la MISMA unidad es una intervención (equipo nuevo en la misma unidad); un cambio de unidad
+    // son dos unidades distintas, una que solo retira y otra que solo instala — ver marcarCambioUnidad.
+    if (instala && retira) return { tipo: 'reparacion', fuente: 'producto' };
     if (retira) return { tipo: 'desinstalacion', fuente: 'producto' };
     if (instala) return { tipo: 'instalacion', fuente: 'producto' };
   }
@@ -53,4 +57,17 @@ export function sugerirTipoServicio(esperado: EsperadoUnidad | null, etiquetaIds
     if (tipo) return { tipo, fuente: 'etiqueta' };
   }
   return null;
+}
+
+// Un cambio de unidad llega a Odoo como una subtarea por unidad bajo la misma tarea: una que solo desinstala el equipo
+// (origen) y otra que solo instala uno nuevo (destino). Solo se marca cuando hay EXACTAMENTE una de cada una (por
+// producto) — con varios pares en la misma tarea no se adivina cuál va con cuál y queda el tipo suelto de cada unidad.
+export function marcarCambioUnidad(unidades: Array<{ tipoServicioSugerido: SugerenciaTipoServicio | null }>): void {
+  const porProducto = (tipo: TipoServicioSugerido) =>
+    unidades.filter((u) => u.tipoServicioSugerido?.fuente === 'producto' && u.tipoServicioSugerido.tipo === tipo);
+  const origenes = porProducto('desinstalacion');
+  const destinos = porProducto('instalacion');
+  if (origenes.length !== 1 || destinos.length !== 1) return;
+  origenes[0].tipoServicioSugerido = { tipo: 'cambio_unidad', fuente: 'producto', rolCambioUnidad: 'origen' };
+  destinos[0].tipoServicioSugerido = { tipo: 'cambio_unidad', fuente: 'producto', rolCambioUnidad: 'destino' };
 }

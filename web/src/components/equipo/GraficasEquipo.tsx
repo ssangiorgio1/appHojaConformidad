@@ -391,19 +391,31 @@ function sumarDias(fecha: string, n: number): string {
 type SerieId = keyof Graficas['series'];
 
 // El orden es el de apilado.
-const SERIES: { id: SerieId; titulo: string; unidad: string; escalon?: boolean }[] = [
+// `opcional`: sólo se ofrece/muestra si el equipo trae datos de esa serie (p. ej. las varillas de combustible).
+const SERIES: { id: SerieId; titulo: string; unidad: string; escalon?: boolean; opcional?: boolean }[] = [
+  { id: 'ignicion', titulo: 'Ignición (1 = encendida)', unidad: '', escalon: true },
+  { id: 'velocidad', titulo: 'Velocidad', unidad: 'km/h' },
   { id: 'bateriaInterna', titulo: 'Batería interna', unidad: 'V' },
   { id: 'cargador', titulo: 'Batería externa / cargador', unidad: 'V' },
   { id: 'senalDbm', titulo: 'Señal del módem', unidad: 'dBm' },
-  { id: 'velocidad', titulo: 'Velocidad', unidad: 'km/h' },
   { id: 'satelites', titulo: 'Satélites', unidad: '' },
   { id: 'hdop', titulo: 'Dilución de la precisión horizontal', unidad: '' },
-  { id: 'ignicion', titulo: 'Ignición (1 = encendida)', unidad: '', escalon: true },
   { id: 'presenciaCargador', titulo: 'Cargador conectado (1 = sí)', unidad: '', escalon: true },
+  { id: 'combustible1', titulo: 'Combustible · varilla 1', unidad: '', opcional: true },
+  { id: 'combustible2', titulo: 'Combustible · varilla 2', unidad: '', opcional: true },
+  { id: 'combustible3', titulo: 'Combustible · varilla 3', unidad: '', opcional: true },
 ];
 const TODAS = SERIES.map((x) => x.id);
 const LS_VISIBLES = 'wara:graficas:visibles';
 const LS_DISPOSICION = 'wara:graficas:disposicion';
+const LS_ORDEN = 'wara:graficas:orden';
+const LS_ORDEN_PERSONAL = 'wara:graficas:orden-personal';
+
+// Orden propio guardado; las series que no estén en lo guardado (nuevas) van al final.
+function ordenCompleto(guardado: unknown): SerieId[] {
+  const g = Array.isArray(guardado) ? (guardado as string[]).filter((id): id is SerieId => (TODAS as string[]).includes(id)) : [];
+  return [...new Set([...g, ...TODAS])];
+}
 
 type Disposicion = 'apiladas' | 'columnas';
 
@@ -424,6 +436,10 @@ export function GraficasEquipo({ equipoId, compacto = false }: { equipoId: numbe
   const [error, setError] = useState<string | null>(null);
   const [visibles, setVisibles] = useState<SerieId[]>(TODAS);
   const [disposicion, setDisposicion] = useState<Disposicion>('apiladas');
+  // Orden de las gráficas: el estándar (el de SERIES) o uno propio que se arma moviéndolas.
+  const [ordenPersonal, setOrdenPersonal] = useState(false);
+  const [orden, setOrden] = useState<SerieId[]>(TODAS);
+  const [arrastrando, setArrastrando] = useState<SerieId | null>(null);
   // Una sola ventana de zoom/desplazamiento para todos los gráficos: así siempre muestran el mismo tramo.
   const [ventana, setVentana] = useState<Ventana>(null);
   // La rueda sólo hace zoom si el usuario lo activó con un click en un gráfico (otro click lo apaga).
@@ -438,6 +454,8 @@ export function GraficasEquipo({ equipoId, compacto = false }: { equipoId: numbe
       if (Array.isArray(v)) setVisibles(TODAS.filter((id) => v.includes(id)));
       const d = localStorage.getItem(LS_DISPOSICION);
       if (d === 'apiladas' || d === 'columnas') setDisposicion(d);
+      setOrden(ordenCompleto(JSON.parse(localStorage.getItem(LS_ORDEN) ?? 'null')));
+      setOrdenPersonal(localStorage.getItem(LS_ORDEN_PERSONAL) === '1');
     } catch {
       /* sin storage: valores por defecto */
     }
@@ -460,7 +478,37 @@ export function GraficasEquipo({ equipoId, compacto = false }: { equipoId: numbe
     }
   };
 
-  const cambiarDesde = (v: string) => {
+  const elegirOrdenPersonal = (v: boolean) => {
+    setOrdenPersonal(v);
+    try {
+      localStorage.setItem(LS_ORDEN_PERSONAL, v ? '1' : '0');
+    } catch {
+      /* ignorar */
+    }
+  };
+  const guardarOrden = (o: SerieId[]) => {
+    setOrden(o);
+    try {
+      localStorage.setItem(LS_ORDEN, JSON.stringify(o));
+    } catch {
+      /* ignorar */
+    }
+  };
+  // Pone `id` en el lugar de `destino` dentro del orden completo (incluye las ocultas, que no se ven).
+  const moverA = (id: SerieId, destino: SerieId) => {
+    if (id === destino) return;
+    const baja = orden.indexOf(id) < orden.indexOf(destino);
+    const sin = orden.filter((x) => x !== id);
+    sin.splice(sin.indexOf(destino) + (baja ? 1 : 0), 0, id);
+    guardarOrden(sin);
+  };
+  // Un lugar arriba/abajo entre las gráficas que se están viendo.
+  const moverUno = (id: SerieId, delta: -1 | 1, vistas: SerieId[]) => {
+    const vecino = vistas[vistas.indexOf(id) + delta];
+    if (vecino) moverA(id, vecino);
+  };
+
+  const cambiarDesde =(v: string) => {
     if (!v || v < minFecha) return;
     setDesde(v);
     if (hasta < v) setHasta(v);
@@ -506,7 +554,10 @@ export function GraficasEquipo({ equipoId, compacto = false }: { equipoId: numbe
   }, [s]);
 
   const apiladas = compacto || disposicion === 'apiladas';
-  const mostrar = SERIES.filter((x) => visibles.includes(x.id));
+  const conDatos = (id: SerieId) => (s?.[id]?.length ?? 0) > 0;
+  const disponibles = SERIES.filter((x) => !x.opcional || conDatos(x.id));
+  const ordenadas = ordenPersonal ? orden.map((id) => SERIES.find((x) => x.id === id)!) : SERIES;
+  const mostrar = ordenadas.filter((x) => visibles.includes(x.id) && (!x.opcional || conDatos(x.id)));
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -544,6 +595,19 @@ export function GraficasEquipo({ equipoId, compacto = false }: { equipoId: numbe
                 </button>
               ))}
             </div>
+            <div role="group" aria-label="Orden de las gráficas" className="inline-flex overflow-hidden rounded-md border border-neutral-200">
+              {([false, true] as const).map((p) => (
+                <button
+                  key={String(p)}
+                  type="button"
+                  aria-pressed={ordenPersonal === p}
+                  onClick={() => elegirOrdenPersonal(p)}
+                  className={`px-2.5 py-1 text-xs font-bold transition ${ordenPersonal === p ? 'bg-primary-600 text-white' : 'bg-white text-muted hover:bg-neutral-50'}`}
+                >
+                  {p ? 'Orden propio' : 'Orden estándar'}
+                </button>
+              ))}
+            </div>
             <span className="text-xs font-bold text-muted">Tamaño</span>
             <SelectorTamano valor={tamano} onChange={setTamano} />
           </div>
@@ -552,7 +616,7 @@ export function GraficasEquipo({ equipoId, compacto = false }: { equipoId: numbe
 
       <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-md border border-neutral-200 px-3 py-2">
         <legend className="px-1 text-xs font-bold text-muted">Gráficas a ver</legend>
-        {SERIES.map((x) => (
+        {disponibles.map((x) => (
           <label key={x.id} className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-text">
             <input
               type="checkbox"
@@ -580,11 +644,63 @@ export function GraficasEquipo({ equipoId, compacto = false }: { equipoId: numbe
           <ControlesVentana dominio={dominio} ventana={ventana} onVentana={setVentana} zoomActivo={zoomActivo} />
         </div>
       )}
+      {s && dominio && ordenPersonal && mostrar.length > 1 && (
+        <div className="text-xs text-muted">Arrastrá las gráficas por el asa ⠿ (o usá ▲ ▼) para ordenarlas a tu gusto; el orden se recuerda.</div>
+      )}
       {s && dominio && (
         <div key={data?.consultadoAt} className={`grid ${apiladas ? 'gap-2' : 'gap-4 md:grid-cols-2'}`}>
           {mostrar.map((x, i) => (
-            <Linea
+            <div
               key={x.id}
+              className={`min-w-0 ${arrastrando === x.id ? 'opacity-40' : ''}`}
+              onDragOver={ordenPersonal && arrastrando ? (e) => e.preventDefault() : undefined}
+              onDrop={
+                ordenPersonal && arrastrando
+                  ? (e) => {
+                      e.preventDefault();
+                      moverA(arrastrando, x.id);
+                      setArrastrando(null);
+                    }
+                  : undefined
+              }
+            >
+              {ordenPersonal && (
+                <div className="mb-1 flex items-center gap-1 text-xs font-bold text-muted">
+                  <span
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', x.id);
+                      setArrastrando(x.id);
+                    }}
+                    onDragEnd={() => setArrastrando(null)}
+                    title="Arrastrar para mover"
+                    aria-label={`Mover ${x.titulo}`}
+                    className="cursor-grab select-none rounded border border-neutral-200 bg-white px-2 py-0.5 active:cursor-grabbing"
+                  >
+                    ⠿
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Subir ${x.titulo}`}
+                    disabled={i === 0}
+                    onClick={() => moverUno(x.id, -1, mostrar.map((m) => m.id))}
+                    className="rounded border border-neutral-200 bg-white px-2 py-0.5 hover:bg-neutral-50 disabled:opacity-30"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Bajar ${x.titulo}`}
+                    disabled={i === mostrar.length - 1}
+                    onClick={() => moverUno(x.id, 1, mostrar.map((m) => m.id))}
+                    className="rounded border border-neutral-200 bg-white px-2 py-0.5 hover:bg-neutral-50 disabled:opacity-30"
+                  >
+                    ▼
+                  </button>
+                </div>
+              )}
+            <Linea
               tamano={tamano}
               orden={i}
               titulo={x.titulo}
@@ -600,6 +716,7 @@ export function GraficasEquipo({ equipoId, compacto = false }: { equipoId: numbe
               altura={compacto || !apiladas ? undefined : ALTURA_APILADA[tamano]}
               syncBus={syncBus}
             />
+            </div>
           ))}
         </div>
       )}

@@ -4,6 +4,8 @@ export interface PhotoSlotDef {
   key: string;
   label: string;
   required: boolean;
+  // Permite más de una foto en el mismo slot (todas comparten slotKey).
+  multi?: boolean;
 }
 
 // Fixed, ordered capture guide for PRE — common to the 3 service modes.
@@ -43,10 +45,10 @@ export function prePhotoSlotsFor(mode: ServiceMode): PhotoSlotDef[] {
 // SENSORES_ACCESORIOS_GROUP_KEY) — sometimes there's 1 sensor/accesorio,
 // sometimes 5, a fixed slot per unit didn't scale.
 const POST_PHOTO_SLOTS_INSTALACION: PhotoSlotDef[] = [
-  { key: 'equipo_serie', label: 'Equipo a colocar (N° de serie)', required: true },
-  { key: 'precintos', label: 'N° de precintos a usar', required: false },
-  { key: 'ubicacion_equipo', label: 'Ubicación y colocación del equipo', required: true },
-  { key: 'ramales', label: 'Ramales', required: false },
+  { key: 'equipo_serie', label: 'Equipo a colocar (N° de serie)', required: true, multi: true },
+  { key: 'precintos', label: 'N° de precintos a usar', required: false, multi: true },
+  { key: 'ubicacion_equipo', label: 'Ubicación y colocación del equipo', required: true, multi: true },
+  { key: 'ramales', label: 'Ramales', required: false, multi: true },
   { key: 'torpedo', label: 'Torpedo (tablero encendido, luces de check y estado general)', required: true },
   { key: 'odometro', label: 'Odómetro', required: true },
   // Optional for now — not every service has a panic button. Once the
@@ -67,11 +69,11 @@ const POST_PHOTO_SLOTS_INSTALACION: PhotoSlotDef[] = [
 // photographing there) — placed last, after the required ones, same
 // criterion as the PRE's "Extra" slot.
 const POST_PHOTO_SLOTS_RETIRO: PhotoSlotDef[] = [
-  { key: 'equipo_a_retirar', label: 'Equipo/elemento retirado', required: true },
+  { key: 'equipo_a_retirar', label: 'Equipo/elemento retirado', required: true, multi: true },
   { key: 'torpedo', label: 'Torpedo (tablero encendido, luces de check y estado general)', required: true },
   { key: 'odometro', label: 'Odómetro', required: true },
-  { key: 'lugar_vacio', label: 'Lugar donde estaba el equipo', required: true },
-  { key: 'cableado_retirado', label: 'Cableado retirado / puntas aisladas', required: false },
+  { key: 'lugar_vacio', label: 'Lugar donde estaba el equipo', required: true, multi: true },
+  { key: 'cableado_retirado', label: 'Cableado retirado / puntas aisladas', required: false, multi: true },
 ];
 
 // POST de un cambio_equipo (esquema nuevo, hoja única): en el mismo paso hay
@@ -85,17 +87,17 @@ const POST_PHOTO_SLOTS_RETIRO: PhotoSlotDef[] = [
 // estaba" y "cableado retirado" son opcionales acá también, mismo criterio —
 // van al final.
 const POST_PHOTO_SLOTS_CAMBIO_EQUIPO: PhotoSlotDef[] = [
-  { key: 'equipo_a_retirar', label: 'Equipo a retirar (N° de serie)', required: true },
-  { key: 'equipo_serie', label: 'Equipo a colocar (N° de serie)', required: true },
-  { key: 'precintos', label: 'N° de precintos a usar', required: false },
-  { key: 'ubicacion_equipo', label: 'Ubicación y colocación del equipo', required: true },
-  { key: 'ramales', label: 'Ramales', required: false },
+  { key: 'equipo_a_retirar', label: 'Equipo a retirar (N° de serie)', required: true, multi: true },
+  { key: 'equipo_serie', label: 'Equipo a colocar (N° de serie)', required: true, multi: true },
+  { key: 'precintos', label: 'N° de precintos a usar', required: false, multi: true },
+  { key: 'ubicacion_equipo', label: 'Ubicación y colocación del equipo', required: true, multi: true },
+  { key: 'ramales', label: 'Ramales', required: false, multi: true },
   { key: 'torpedo', label: 'Torpedo (tablero encendido, luces de check y estado general)', required: true },
   { key: 'odometro', label: 'Odómetro', required: true },
   // Optional for now — see comment in POST_PHOTO_SLOTS_INSTALACION.
   { key: 'boton_panico', label: 'Botón de pánico (que se note la ubicación)', required: false },
-  { key: 'lugar_vacio', label: 'Lugar donde estaba el equipo', required: false },
-  { key: 'cableado_retirado', label: 'Cableado retirado / puntas aisladas', required: false },
+  { key: 'lugar_vacio', label: 'Lugar donde estaba el equipo', required: false, multi: true },
+  { key: 'cableado_retirado', label: 'Cableado retirado / puntas aisladas', required: false, multi: true },
 ];
 
 export function postPhotoSlotsFor(mode: ServiceMode): PhotoSlotDef[] {
@@ -121,3 +123,7 @@ export const INTERVENCION_GROUP_KEY = 'intervencion';
 // fit a fixed slot above — same mechanism as INTERVENCION_GROUP_KEY, own
 // label in the PDF ("Otras fotos", see GALLERY_LABELS in printHtml.ts).
 export const EXTRA_POST_PHOTOS_KEY = 'extra_post';
+
+// Galería libre y opcional en los pasos de desinstalación donde se tilda lo
+// retirado (sensores/módulos): fotos adicionales a las de cada ítem.
+export const EXTRA_RETIRO_PHOTOS_KEY = 'extra_retiro';

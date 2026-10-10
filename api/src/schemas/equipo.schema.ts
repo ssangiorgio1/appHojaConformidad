@@ -8,6 +8,10 @@ export const numeroPorImeiQuerySchema = z.object({
   imei: z.string().trim().regex(/^\d{15}$/, 'El IMEI tiene 15 dígitos'),
 });
 
+export const historialUnidadQuerySchema = z.object({
+  matricula: z.string().trim().min(2).max(40),
+});
+
 export const equipoIdParamsSchema = z.object({
   equipoId: z.coerce.number().int().positive(),
 });

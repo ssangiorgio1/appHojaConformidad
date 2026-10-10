@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { EQUIP_CHECK_FIELDS, EQUIP_GROUPS, EQUIP_ITEM_PHOTO_LABEL, isEquipoFieldVisible } from '@wara/shared/src/equipo';
 import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY } from '@wara/shared/src/photoSlots';
 import type { ServiceMode } from '@wara/shared/src/serviceMode';
-import { TIPO_SERVICIO_LABELS } from '@wara/shared';
+import { TIPO_SERVICIO_LABELS, isEquipoSwap } from '@wara/shared';
 import { Badge } from '@/components/ui/Badge';
 import { IconAlertTriangle } from '@/components/ui/Icons';
 import { formatIsoDateTime } from '@/lib/format';
@@ -123,8 +123,8 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
 
   // modelo/imei del equipo describen el que se retira cuando el servicio es
   // una desinstalación o un cambio de equipo (ver equipo.ts en @wara/shared).
-  const equipoLabelSuffix =
-    c.tipoServicio === 'desinstalacion' ? ' (desinstalado)' : c.tipoServicio === 'cambio_equipo' ? ' (retirado)' : '';
+  const esSwap = isEquipoSwap(c.tipoServicio, c.motivoIntervencion);
+  const equipoLabelSuffix = c.tipoServicio === 'desinstalacion' ? ' (desinstalado)' : esSwap ? ' (retirado)' : '';
   const tipoServicioLabel = TIPO_SERVICIO_LABELS[c.tipoServicio ?? 'instalacion'];
 
   const instaladosResumen = useMemo(() => {
@@ -177,7 +177,7 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
           <InfoField label="Tipo de servicio">{tipoServicioLabel}</InfoField>
           <InfoField label={`Modelo${equipoLabelSuffix}`}>{c.equipo.modelo || '—'}</InfoField>
           <InfoField label={`IMEI${equipoLabelSuffix}`}>{c.equipo.imei || '—'}</InfoField>
-          {c.tipoServicio === 'cambio_equipo' && (
+          {esSwap && (
             <>
               <InfoField label="Modelo (instalado)">{c.equipo.modeloInstalado || '—'}</InfoField>
               <InfoField label="IMEI (instalado)">{c.equipo.imeiInstalado || '—'}</InfoField>

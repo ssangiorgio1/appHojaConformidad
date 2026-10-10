@@ -41,7 +41,7 @@ for (const u of candidatos) {
     const ref = estado.ultimoReporte ? new Date(estado.ultimoReporte) : null;
     const graficas = ref
       ? await getGraficasRango(u.equipoId!, dia(new Date(ref.getTime() - 86_400_000)), dia(ref))
-      : { equipoId: u.equipoId!, fecha: '', desde: '', hasta: '', consultadoAt: '', series: { bateriaInterna: [], cargador: [], senalDbm: [], velocidad: [], satelites: [], hdop: [], ignicion: [], presenciaCargador: [] } };
+      : { equipoId: u.equipoId!, fecha: '', desde: '', hasta: '', consultadoAt: '', series: { bateriaInterna: [], cargador: [], senalDbm: [], velocidad: [], satelites: [], hdop: [], ignicion: [], presenciaCargador: [], combustible1: [], combustible2: [], combustible3: [] } };
     const hallazgos: Hallazgo[] = analizarEquipo(estado, graficas);
     const tipo = ref ? 'dejo_de_reportar' : 'nunca_reporto';
     const principal = hallazgos.filter((h) => h.severidad !== 'info').slice(0, 3);

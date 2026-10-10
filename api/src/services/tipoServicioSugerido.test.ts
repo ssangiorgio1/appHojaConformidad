@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolverEsperado } from '../config/productoMapeo.js';
-import { sugerirTipoServicio } from './tipoServicioSugerido.js';
+import { sugerirTipoServicio, marcarCambioUnidad, type SugerenciaTipoServicio } from './tipoServicioSugerido.js';
 
 // Ids reales del catálogo (ver productoMapeo.ts): 503 = INS.001 (instala), 544 = DES.103 (retira).
 const INS001 = { productId: 503, cantidad: 1 };
@@ -13,8 +13,8 @@ describe('sugerirTipoServicio', () => {
   it('por producto: desinstalación', () => {
     expect(sugerirTipoServicio(resolverEsperado([DES103]), [])).toEqual({ tipo: 'desinstalacion', fuente: 'producto' });
   });
-  it('instala y retira a la vez: cambio de equipo', () => {
-    expect(sugerirTipoServicio(resolverEsperado([INS001, DES103]), [])?.tipo).toBe('cambio_equipo');
+  it('instala y retira en la misma unidad: intervención', () => {
+    expect(sugerirTipoServicio(resolverEsperado([INS001, DES103]), [])?.tipo).toBe('reparacion');
   });
   it('sin productos: usa la etiqueta', () => {
     expect(sugerirTipoServicio(null, [125])).toEqual({ tipo: 'desinstalacion', fuente: 'etiqueta' });
@@ -31,5 +31,33 @@ describe('sugerirTipoServicio', () => {
   it('sin datos no sugiere nada', () => {
     expect(sugerirTipoServicio(null, [])).toBeNull();
     expect(sugerirTipoServicio(resolverEsperado([]), [9999])).toBeNull();
+  });
+
+  describe('marcarCambioUnidad', () => {
+    const u = (tipo: 'instalacion' | 'desinstalacion', fuente: 'producto' | 'etiqueta' = 'producto') => ({
+      tipoServicioSugerido: { tipo, fuente } as SugerenciaTipoServicio | null,
+    });
+
+    it('una subtarea que desinstala y otra que instala: las marca como origen y destino', () => {
+      const unidades = [u('desinstalacion'), u('instalacion')];
+      marcarCambioUnidad(unidades);
+      expect(unidades[0].tipoServicioSugerido).toMatchObject({ tipo: 'cambio_unidad', rolCambioUnidad: 'origen' });
+      expect(unidades[1].tipoServicioSugerido).toMatchObject({ tipo: 'cambio_unidad', rolCambioUnidad: 'destino' });
+    });
+    it('con varias instalaciones (un lote) no marca nada', () => {
+      const unidades = [u('desinstalacion'), u('instalacion'), u('instalacion')];
+      marcarCambioUnidad(unidades);
+      expect(unidades.map((x) => x.tipoServicioSugerido?.tipo)).toEqual(['desinstalacion', 'instalacion', 'instalacion']);
+    });
+    it('si el tipo sale de la etiqueta y no del producto, no marca nada', () => {
+      const unidades = [u('desinstalacion', 'etiqueta'), u('instalacion')];
+      marcarCambioUnidad(unidades);
+      expect(unidades[0].tipoServicioSugerido?.tipo).toBe('desinstalacion');
+    });
+    it('sin una de las dos patas no marca nada', () => {
+      const unidades = [u('desinstalacion')];
+      marcarCambioUnidad(unidades);
+      expect(unidades[0].tipoServicioSugerido?.tipo).toBe('desinstalacion');
+    });
   });
 });

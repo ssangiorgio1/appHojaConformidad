@@ -1,4 +1,6 @@
 import { visionbloPostJson } from '../config/visionblo.js';
+import { FlotaUnidadModel } from '../models/FlotaUnidad.js';
+import { matriculaRegex } from './historialUnidad.service.js';
 
 // Consulta en vivo, por equipo, del estado de reporte y módulos detectados. Usa los mismos
 // endpoints que las pantallas de bo3 (equipo/buscar, equipo/diagnostico, equipo/modulos,
@@ -57,8 +59,52 @@ export interface EquipoCoincidencia {
 
 const MAX_COINCIDENCIAS = 15;
 
+// Patente completa dentro de un texto ("217 - AB 054 AQ" → "AB054AQ"): vieja (ABC123) o Mercosur (AB123CD).
+export function patenteDeTexto(texto: string): string | null {
+  const compacta = texto.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return compacta.match(/[A-Z]{2}\d{3}[A-Z]{2}|[A-Z]{3}\d{3}/)?.[0] ?? null;
+}
+
+// Una patente se cruza SOLO con el campo `matricula` de la unidad (movil/mapa, el mismo que muestra
+// cliente/moviles_activos). El `nombre` de la unidad es texto libre del cliente: puede ser otra patente,
+// un interno o cualquier cosa, y equipo/buscar lo mezcla con la matrícula.
+async function buscarPorMatricula(patente: string): Promise<EquipoCoincidencia[]> {
+  const unidades = await FlotaUnidadModel.find(
+    { matricula: matriculaRegex(patente), equipoId: { $ne: null } },
+    { equipoId: 1, nombre: 1, matricula: 1, clienteNombre: 1, movilBaja: 1, clienteBaja: 1 },
+  ).lean();
+  // Si la patente quedó también en unidades dadas de baja, manda la que está activa.
+  const activas = unidades.filter((u) => !u.movilBaja && !u.clienteBaja);
+  const elegidas = activas.length > 0 ? activas : unidades;
+  const porEquipo = new Map<number, EquipoCoincidencia>();
+  for (const u of elegidas) {
+    porEquipo.set(u.equipoId as number, {
+      equipoId: u.equipoId as number,
+      descripcion: [u.clienteNombre, u.nombre, u.matricula].filter(Boolean).join(' - '),
+    });
+  }
+  return [...porEquipo.values()];
+}
+
+// Matrícula de la unidad a la que pertenece un equipo (la unidad de bo3, no su nombre).
+async function matriculaDeEquipo(equipoId: number): Promise<string | null> {
+  const u = await FlotaUnidadModel.findOne({ equipoId, movilBaja: false }, { matricula: 1 }).lean();
+  return u?.matricula || null;
+}
+
 // equipo/buscar resuelve serie, IMEI, patente y nombre de unidad; devuelve { "<equipoId>": "<texto>" }.
+// Cuando lo buscado trae una patente, primero se resuelve por matrícula; equipo/buscar queda para IMEI, serie, número
+// de equipo y para las patentes que la flota todavía no conoce.
 export async function buscarEquipos(texto: string): Promise<EquipoCoincidencia[]> {
+  const patente = patenteDeTexto(texto);
+  if (patente) {
+    try {
+      const porMatricula = await buscarPorMatricula(patente);
+      if (porMatricula.length > 0) return porMatricula.slice(0, MAX_COINCIDENCIAS);
+    } catch (err) {
+      console.error('BUSCAR_POR_MATRICULA_FAILED', err);
+    }
+  }
   const res = await visionbloPostJson<Record<string, string>>('equipo/buscar', { texto });
   return Object.entries(res)
     .filter(([, descripcion]) => !esOtraPatente(texto, descripcion))
@@ -191,7 +237,8 @@ export interface EstadoEquipo {
   // Banderas del diagnóstico de bo3: "algún evento de ese tipo se recibió alguna vez" — no
   // equivalen a "hay hardware conectado ahora" (para eso están los módulos detectados).
   senalesVistas: { pantalla: boolean; rfid: boolean; fuel: boolean; sim: boolean; corteMotor: boolean; panico: string | null };
-  movil: { cliente: string; movil: string; baja: boolean; bajaCliente: boolean; corteDeServicio: boolean } | null;
+  // `movil` es el NOMBRE de la unidad en bo3 (texto libre, a veces otra patente): para cruzar con una patente usar `matricula`.
+  movil: { cliente: string; movil: string; matricula: string | null; baja: boolean; bajaCliente: boolean; corteDeServicio: boolean } | null;
   modulos: { fecha: string | null; detectados: ModuloDetectado[] };
   // Última posición del historial (el diagnóstico solo trae lat/lng): trae la cantidad de satélites,
   // que el técnico necesita en el control de instalación.
@@ -207,7 +254,7 @@ async function consultarEstado(equipoId: number): Promise<EstadoEquipo> {
   const ayer = new Date(hoy.getTime() - 86_400_000);
   const dia = (d: Date) => d.toISOString().slice(0, 10);
 
-  const [dg, modulos, historial] = await Promise.all([
+  const [dg, modulos, historial, matricula] = await Promise.all([
     visionbloPostJson<DiagnosticoCrudo>('equipo/diagnostico', { equipo_id: String(equipoId) }),
     visionbloPostJson<{ modulos: string[]; fecha: string | null } | null>('equipo/modulos', { equipo_id: String(equipoId) }),
     visionbloPostJson<EventoCrudo[]>('equipo/historial', {
@@ -219,6 +266,7 @@ async function consultarEstado(equipoId: number): Promise<EstadoEquipo> {
       utc: true,
       fecha_recepcion: false,
     }),
+    matriculaDeEquipo(equipoId).catch(() => null),
   ]);
 
   const desde = hoy.getTime() - EVENTOS_RECIENTES_HORAS * 3_600_000;
@@ -264,7 +312,7 @@ async function consultarEstado(equipoId: number): Promise<EstadoEquipo> {
       panico: dg.panico ? (dg.panico.fecha ?? null) : null,
     },
     movil: dg.movil
-      ? { cliente: dg.movil.cliente, movil: dg.movil.movil, baja: dg.movil.baja, bajaCliente: dg.movil.baja_cliente, corteDeServicio: dg.movil.corte_de_servicio }
+      ? { cliente: dg.movil.cliente, movil: dg.movil.movil, matricula, baja: dg.movil.baja, bajaCliente: dg.movil.baja_cliente, corteDeServicio: dg.movil.corte_de_servicio }
       : null,
     modulos: { fecha: modulos?.fecha ?? null, detectados: (modulos?.modulos ?? []).map(decodificarModulo) },
     gps: ultimaPosicion

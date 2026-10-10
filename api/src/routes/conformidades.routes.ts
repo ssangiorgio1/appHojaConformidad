@@ -10,6 +10,7 @@ import {
   retirosPendientesQuerySchema,
   equipoActualQuerySchema,
   cambioEquipoPorSubtareaQuerySchema,
+  cambioUnidadPendientesQuerySchema,
 } from '../schemas/conformidad.schema.js';
 import {
   createConformidad,
@@ -24,6 +25,7 @@ import {
   getRetirosPendientes,
   getEquipoActual,
   getCambioEquipoPorSubtarea,
+  getCambioUnidadPendientes,
 } from '../controllers/conformidades.controller.js';
 
 export const conformidadesRouter = Router();
@@ -46,6 +48,12 @@ conformidadesRouter.get(
   '/cambio-equipo/por-subtarea',
   validate(cambioEquipoPorSubtareaQuerySchema, 'query'),
   getCambioEquipoPorSubtarea,
+);
+// Antes de '/:id' por el mismo motivo que retiros-pendientes de arriba.
+conformidadesRouter.get(
+  '/cambio-unidad/pendientes',
+  validate(cambioUnidadPendientesQuerySchema, 'query'),
+  getCambioUnidadPendientes,
 );
 conformidadesRouter.get('/:id', getConformidadById);
 // coordinacion/mesa_ayuda solo deberían poder tocar el check de /alta más
