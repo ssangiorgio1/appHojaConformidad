@@ -10,6 +10,7 @@ import { escapeRegExp } from '../utils/regex.js';
 import { pushConformidadToTicket, verifyTicketExists, OdooError } from '../services/odoo.service.js';
 import { notificarEstadoVisita } from '../services/telegram.service.js';
 import { cerrarVisitaLoteSiTodoResuelto } from '../services/loteVisita.service.js';
+import { procesarDerivacion } from '../services/derivacion.service.js';
 import { buildConformidadPdfBuffer as renderConformidadPdf } from '../services/pdf.service.js';
 import { decryptSecret } from '../utils/secretBox.js';
 import { EQUIP_ITEM_PHOTO_LABEL } from '@wara/shared';
@@ -331,6 +332,7 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
   if (body.pre) {
     if (body.pre.checklist) Object.assign(record.pre.checklist, body.pre.checklist);
     if (body.pre.observaciones !== undefined) record.pre.observaciones = body.pre.observaciones;
+    if (body.pre.observacionesInternas !== undefined) record.pre.observacionesInternas = body.pre.observacionesInternas;
     if (body.pre.fotos !== undefined) record.pre.fotos = body.pre.fotos as typeof record.pre.fotos;
     if (body.pre.firma !== undefined) record.pre.firma = body.pre.firma as typeof record.pre.firma;
   }
@@ -354,6 +356,14 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
   if (body.noInstalados !== undefined) {
     record.noInstalados = body.noInstalados;
     record.markModified('noInstalados');
+  }
+  if (body.derivacion !== undefined) {
+    // Lo ya procesado (subtarea creada, aviso enviado) no se pisa: solo se actualiza lo que carga el técnico.
+    const previa = record.derivacion ? { ...(record.derivacion as unknown as Record<string, unknown>) } : {};
+    record.derivacion = body.derivacion
+      ? ({ ...previa, requerida: body.derivacion.requerida, motivo: body.derivacion.motivo } as unknown as typeof record.derivacion)
+      : null;
+    record.markModified('derivacion');
   }
   if (body.verificacionEquipo) {
     record.verificacionEquipo = { ...body.verificacionEquipo, at: new Date(body.verificacionEquipo.at) } as typeof record.verificacionEquipo;
@@ -387,6 +397,10 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
     // "instalacion" — si se marcara acá, quedaría "Hecho"/"Hecha" con el
     // equipo nuevo todavía sin instalar. La mitad "instalacion" (o una hoja
     // sin cambioEquipo.rol, que es el caso normal) sí dispara el marcado.
+    // Intervención que requiere otro técnico: la subtarea nueva se crea ANTES de marcar esta como Hecha, así la tarea padre
+    // (lote) ve una unidad sin resolver y no pasa a Hecho. Nunca tira (ver procesarDerivacion).
+    await procesarDerivacion(record);
+
     if (record.cambioEquipo?.rol !== 'retiro') {
       const taskId = record.subtareaOdoo?.id ?? record.tareaOdoo.id;
       await markTaskStageHecho(taskId);
@@ -693,6 +707,10 @@ async function runSyncConformidadToOdoo(req: Request, res: Response, fase: 'pre'
           .map(([k, motivo]) => `<li>${esc(EQUIP_ITEM_PHOTO_LABEL[k] ?? k)} — ${esc(motivo)}</li>`)
           .join('')}</ul>`
       : '';
+  const derivacionHtml =
+    fase !== 'pre' && record.derivacion?.requerida
+      ? `<p><b>Requiere otra intervención de otro técnico:</b> ${esc(record.derivacion.motivo)}. Coordinación reprograma una nueva visita a la unidad (el ticket sigue abierto).</p>`
+      : '';
   const titulo = fase === 'pre' ? 'Revisión inicial (PRE) de la unidad' : 'Hoja de conformidad completada';
   const resumenHtml = `<p><b>${titulo}</b> — ${esc(record.cliente)} (${esc(record.matricula)})</p>
     <p>Fecha: ${esc(formatFechaArg(record.fecha))} ${esc(record.hora)}<br>Técnico: ${esc(record.instalador)}</p>
@@ -715,7 +733,8 @@ async function runSyncConformidadToOdoo(req: Request, res: Response, fase: 'pre'
     ${fase === 'pre' ? '' : postItem7}
     ${preItem8}
     ${fase === 'pre' ? '' : postItem8}
-    ${noInstaladosHtml}`;
+    ${noInstaladosHtml}
+    ${derivacionHtml}`;
 
   try {
     // Generar el PDF en memoria para adjuntarlo a Odoo — no se guarda en R2.

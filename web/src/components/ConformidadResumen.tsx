@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { EQUIP_CHECK_FIELDS, EQUIP_GROUPS, EQUIP_ITEM_PHOTO_LABEL, isEquipoFieldVisible } from '@wara/shared/src/equipo';
-import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY } from '@wara/shared/src/photoSlots';
+import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY, VIDEO_SERVICIO_KEY } from '@wara/shared/src/photoSlots';
 import type { ServiceMode } from '@wara/shared/src/serviceMode';
-import { TIPO_SERVICIO_LABELS, isEquipoSwap } from '@wara/shared';
+import { TIPO_SERVICIO_LABELS, formatSeries, isEquipoSwap } from '@wara/shared';
 import { Badge } from '@/components/ui/Badge';
 import { IconAlertTriangle } from '@/components/ui/Icons';
 import { formatIsoDateTime } from '@/lib/format';
@@ -24,6 +24,7 @@ const GALLERY_LABELS: Record<string, string> = {
   ...EQUIP_ITEM_PHOTO_LABEL,
   [INTERVENCION_GROUP_KEY]: 'Intervención realizada',
   [EXTRA_POST_PHOTOS_KEY]: 'Otras fotos',
+  [VIDEO_SERVICIO_KEY]: 'Video del servicio',
 };
 
 // Fotos sincronizadas antes de que el servidor empezara a persistir slotKey
@@ -129,7 +130,7 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
 
   const instaladosResumen = useMemo(() => {
     const equipo = c.equipo as Record<string, string | null | undefined>;
-    const fields: { key: string; label: string; dependsOn?: string }[] = [];
+    const fields: { key: string; label: string; dependsOn?: string; series?: boolean; canales?: boolean }[] = [];
     for (const group of EQUIP_GROUPS.slice(1)) {
       // skip "Datos del equipo" (modelo/imei se muestran aparte) y "Control
       // de instalación" (son campos de texto, no checkboxes)
@@ -138,17 +139,26 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
     }
     // Los campos de detalle (dependsOn, ej. el textfield de IO1) no son
     // checkboxes — su texto se anexa al badge del checkbox del que dependen
-    // en vez de listarse aparte con la etiqueta genérica del campo.
-    const detailByCheckboxKey = new Map(fields.filter((f) => f.dependsOn).map((f) => [f.dependsOn as string, f]));
+    // en vez de listarse aparte con la etiqueta genérica del campo. Un checkbox puede tener
+    // más de un detalle (MDVR: canales y serie).
+    const detailsByCheckboxKey = new Map<string, typeof fields>();
+    for (const f of fields.filter((x) => x.dependsOn)) {
+      detailsByCheckboxKey.set(f.dependsOn as string, [...(detailsByCheckboxKey.get(f.dependsOn as string) ?? []), f]);
+    }
     // Los checkbox de EQUIP_GROUPS guardan 'Sí' (truthy) / '' al desmarcar —
     // nunca 'SI' (mayúsculas, sin tilde), que es la convención de
     // EQUIP_CHECK_FIELDS nada más. Comparar contra 'SI' acá nunca matcheaba.
     return fields
       .filter((f) => !f.dependsOn && Boolean(equipo[f.key]))
       .map((f) => {
-        const detail = detailByCheckboxKey.get(f.key);
-        const detailValue = detail && equipo[detail.key]?.trim();
-        return detailValue ? `${f.label}: ${detailValue}` : f.label;
+        const detalles = (detailsByCheckboxKey.get(f.key) ?? [])
+          .map((d) => {
+            // Cámaras ADAS / DSM guardan varios N° de serie, uno por línea (ver seriesDe en @wara/shared).
+            const v = d.series ? formatSeries(equipo[d.key]) : equipo[d.key]?.trim();
+            return v ? (d.canales ? `${v} canales` : v) : '';
+          })
+          .filter(Boolean);
+        return detalles.length ? `${f.label}: ${detalles.join(' · ')}` : f.label;
       });
   }, [c]);
 
@@ -284,7 +294,7 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
                         {foto.fase}
                       </span>
                     </span>
-                    <span className="truncate text-[10px] font-semibold text-muted">{label ?? 'Foto'}</span>
+                    <span className="truncate text-[10px] font-semibold text-muted">{label ?? (isVideo ? 'Video' : 'Foto')}</span>
                     {foto.descripcion && (
                       <span className="line-clamp-3 text-[10px] font-medium leading-tight text-text">{foto.descripcion}</span>
                     )}

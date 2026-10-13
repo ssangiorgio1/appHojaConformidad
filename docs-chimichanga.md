@@ -2,7 +2,7 @@
 
 Este archivo lo lee la skill `chimichanga` (`~/.claude/skills/chimichanga/SKILL.md`). Para anotar algo nuevo, agregarlo en "Temas abiertos" con una línea de estado y el enlace a su documento. Cuando un tema se cierra, pasarlo a "Cerrado".
 
-Última actualización: 2026-10-09.
+Última actualización: 2026-10-14 (tema 16, envío único y reintentos).
 
 ## Temas abiertos
 
@@ -69,6 +69,7 @@ Este archivo lo lee la skill `chimichanga` (`~/.claude/skills/chimichanga/SKILL.
 - **Odoo:** el 2026-10-06 la API de Render pasa a Odoo real. El staging se borra el 2026-10-25. Antes de escribir en Odoo, mirar qué bloque del `.env` está activo.
 - **Despliegue:** la API se pushea y despliega antes que la PWA.
 - **Commits:** hay trabajo ajeno mezclado en varios archivos (PWA y API). Commitear de forma selectiva, sin subir lo que no se revisó.
+- **IP de la API en la PWA (`.env.local`):** `NEXT_PUBLIC_API_URL` apunta a la IP local del trabajo (`http://192.168.100.232:4000`). Desde otra red (casa) la API no responde y la app se ve "sin conexión", con banner o "En curso" pegado, agenda guardada y envíos que no salen (2026-10-10, parecía un bug de la tarea 21044 y era esto). Antes de depurar comportamientos raros de la PWA, mirar primero esa IP y reiniciar el dev server al cambiarla (se compila en el build). Para probar contra producción, usar la URL de Render.
 
 ## Cerrado
 - Tiempos de viaje offline, agenda sin carreras, cola de incidencias, banner que abre la unidad correcta.
@@ -92,4 +93,29 @@ Este archivo lo lee la skill `chimichanga` (`~/.claude/skills/chimichanga/SKILL.
 - **Decidido:** BO4 es el dueño del stock (Odoo solo productos y facturación); un solo depósito por ahora, modelo preparado para más; el técnico no puede instalar sin tener el producto (sin saldo negativo); muchos equipos vuelven al stock (pasan por revisión); ramales por cantidad y cables no se modelan.
 - **Dos capas:** el comprobante (remito, recibo, acta) genera el movimiento de stock. El remito/recibo de BO3 hoy no toca stock, así que los saldos iniciales salen de un conteo físico.
 - **Pendiente de decidir:** cómo es el remito/recibo de BO3 (falta captura o endpoint), quién aprueba ajustes, quién revisa los equipos devueltos, si se carga lo ya instalado en campo, y revisar `ALCANCE_BACKOFFICE.md` §8 para no duplicar `MovimientoStock`. Se relaciona con el pasaje a stock del acta de retiro (`docs-retiro-entrega-equipo.md`) y con la confirmación de `PRE` del tema 5.
+
+### 14. Varios elementos en una intervención, p. ej. 10 cámaras ADAS (evaluado, 2026-10-13)
+- **Estado:** solo evaluado, sin tocar código. **Falta saber el caso:** ¿las 10 cámaras van en una misma unidad, o una por vehículo en 10 vehículos?
+- **Hoy:** una conformidad = una unidad (patente). "Cámaras ADAS" es una casilla con un solo campo de serie (`camarasAdasSerie`); no tiene cantidad. Otros elementos (temperatura, puertas, varilla) tienen cantidad pero sin series. Los lotes de Odoo ya dan una conformidad por unidad.
+- **Caso A (10 en una unidad):** cantidad más lista de series con "+ Agregar cámara", foto por cámara, la comparación con VisionBLO pasa a esperar la cantidad, y PDF, panel y comentario de Odoo muestran "Cámaras ADAS: 10" con las series (se guarda como texto, sin migrar). Opción más amplia: en intervención, una lista "Elementos intervenidos" (tipo, serie, qué se hizo).
+- **Caso B (1 por vehículo, 10 vehículos):** ya funciona como lote. Mejoras: "Repetir con los mismos elementos" (copia de la unidad anterior) y una sola firma para todo el lote si el cliente es el mismo.
+- **Una conformidad para varias unidades:** no recomendado (rompe historial por matrícula, ticket y subtarea de Odoo). Solo tendría sentido para trabajos masivos idénticos.
+- **Recomendación:** empezar por el caso A (cantidad y lista de series, útil también para pantallas y Starlink); después firma única de lote y copia entre unidades.
+
+### 15. Video opcional, varias cámaras ADAS / DSM / MDVR y "requiere otra intervención" (hecho sin probar en pantalla, 2026-10-14)
+- **Video opcional:** tarjeta "Video del servicio (opcional)" en el primer paso del POST de los 4 tipos (hasta 5 s, sin audio, se sube a R2, el PDF solo marca que hay video, se ve en el panel).
+- **Cámaras:** ADAS ahora admite varias series (una por fila con "+ Agregar cámara", la cantidad es la cantidad de series; la comparación con VisionBLO espera esa cantidad). Casillas nuevas: Cámara DSM (añadido de la ADAS, sin serie propia) y MDVR (con canales 4 u 8 y serie). PDF, panel y comentario del ticket las muestran con comas.
+- **Requiere otra intervención (solo intervención):** casilla con motivo obligatorio en el paso "Intervención realizada". Al cerrar la hoja la API crea una subtarea nueva en la misma tarea (mismo ticket, sin técnico ni fecha), deja una incidencia `requiere_otro_tecnico` en el panel de incidencias, agenda una actividad en Odoo a los destinatarios y agrega el aviso al comentario del ticket. La visita original queda "Hecho"; el ticket queda abierto por la subtarea nueva. Código: `api/src/services/derivacion.service.ts`, `createDerivedSubtask` en `calendarTask.service.ts`.
+- **Falta:** probarlo contra staging (la API de Render escribe en Odoo real), ver cómo queda el panel de incidencias para este tipo, confirmar si la DSM también cuenta como módulo "cámara" en VisionBLO (hoy la comparación solo espera las ADAS) y si el mapeo de productos debe tildar DSM/MDVR. Agrega un campo en la base compartida: no desplegar con técnicos trabajando sin avisar.
+- **Aparte:** los 2 tests de `odoo.service.test.ts` que fallaban ya se actualizaron (ver tema 16).
+
+### 16. PRE duplicados al ticket #39509 (caso Renzo Gonzalez, 2026-10-13; arreglos hechos sin commit ni deploy)
+- **Qué pasó:** dos hojas del mismo PRE de la unidad JQE994 (tarea 21959) creadas con 11 s de diferencia (doble toque con mala señal). Cada envío a Odoo daba timeout a los 60 s aunque Odoo igual publicaba, la API lo marcaba FAILED y la PWA reintentaba: **7 mensajes y 7 PDF** en 45 min, con correo a 10 seguidores cada vez, **cliente incluido** (vial.lavalle@gmail.com).
+- **Hecho en la PWA:** bloqueo de botones de inicio con spinner ("Abriendo…"), no crear si ya hay hoja en curso, todas las entradas abren la misma hoja (`elegirHojaPrincipal`), y recarga automática de la app al desplegar una versión nueva (`ActualizadorPWA`, solo fuera de las hojas).
+- **Hecho en la API:** `pushConformidadToTicket` verifica si el PDF ya está publicado antes de postear y, si hay timeout, vuelve a consultar el ticket antes de dar el envío por fallido (con tests). Producción parece haber corrido una versión sin el chequeo anterior (commit del 10/10): **confirmar el deploy en Render**.
+- **Pendiente:** decidir qué hoja se descarta (A `6ace3a20…ec84d` o B `6ace3c31…ec84e`, ambas en POST pendiente); limpiar los 6 mensajes repetidos del ticket (lo hace el usuario); decidir si el PRE debe publicarse como nota interna para no mandar correo al cliente (por ahora se deja como está); freno en el servidor para dos hojas de la misma unidad y día (descartado por ahora).
+- **Envío forzado de BGJ01 (2026-10-14):** la hoja `CONF-20261013-06039D55` (_id `6ace5016…ec84f`, ticket 39509) quedó FAILED por timeout. Se dejó el script `api/scripts/forzarEnvioTicket39509.ts` (dry-run por defecto; `--apply` publica en Odoo PRODUCCIÓN con las credenciales comentadas de `.env` y marca `odooSync` SYNCED). Lo corre el usuario; **confirmar que se ejecutó** y borrar el script si ya no hace falta. Las fotos pre/post se bajaron a `Downloads\BGJ01_pre_post`.
+- **Test del envío único (2026-10-14):** los 86 tests de la API pasan; los 5 de `odoo.service.test.ts` cubren no duplicar y el timeout. **Sin test:** el flujo completo de `syncConformidadToOdoo` (candado en memoria, guard SYNCED, PRE y completo independientes, carrera de 2 requests).
+- **Si falla un envío:** queda `odooSync`/`preOdooSync` = FAILED con `lastError`; se reintenta solo (home de la PWA) o con el botón "Reintentar" de la hoja; solo SYNCED queda bloqueado. **Brechas:** el auto-reintento no tiene enfriamiento (`odooRetryDue` siempre true si no es SYNCED, martilla Odoo si está caído); no hay reenvío desde el panel web; el candado es solo en memoria (no sirve con 2 instancias o reinicio).
+- **Decisiones pendientes:** agregar enfriamiento al auto-reintento, botón de reenvío en el panel y tests del controller/carrera.
 

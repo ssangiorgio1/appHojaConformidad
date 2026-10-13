@@ -313,7 +313,8 @@ export const resolveSubtareaIncidencia = asyncHandler(async (req: Request, res: 
   // necesita la fecha nueva. Best-effort: la reprogramación ya se hizo en Odoo, así que si esto falla se anota el
   // error en la incidencia y no se corta la respuesta.
   const esConstancia = incidencia.tipo === 'no_encontrada';
-  if (incidencia.ticketOdooId && ((body.start && body.end) || esConstancia)) {
+  // Una derivación (la visita ya se hizo y tiene su propia hoja en el ticket) no genera constancia ni PDF de reprogramación.
+  if (incidencia.tipo !== 'requiere_otro_tecnico' && incidencia.ticketOdooId && ((body.start && body.end) || esConstancia)) {
     try {
       const tecnico = await UsuarioModel.findById(incidencia.tecnicoId);
       const nuevaInicio = body.start ? new Date(`${body.start.replace(' ', 'T')}Z`) : null;

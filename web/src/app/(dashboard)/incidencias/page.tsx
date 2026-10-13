@@ -79,6 +79,9 @@ export default function IncidenciasPage() {
     return (
       <>
         {inc.tipo === 'pre_cancelado' && <div className="text-[11.5px] font-bold text-warning-700">PRE cancelado por el técnico</div>}
+        {inc.tipo === 'requiere_otro_tecnico' && (
+          <div className="text-[11.5px] font-bold text-warning-700">Requiere otro técnico: la visita ya se hizo, falta la reparación</div>
+        )}
         {inc.estado === 'propuesta_pendiente' && inc.propuestaInicio && (
           <div className="text-[12px] font-bold text-primary">
             Propone: {fechaHoraAr(inc.propuestaInicio)} a {fechaHoraAr(inc.propuestaFin)}

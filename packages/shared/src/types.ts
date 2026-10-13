@@ -126,6 +126,8 @@ export interface Phase {
   item7Detalle?: string;
   item8Detalle?: string;
   observaciones: string;
+  // Solo para el panel: nunca se imprime en el PDF que ve el cliente.
+  observacionesInternas?: string;
   fotos: Foto[];
   firma: Firma | null;
 }
@@ -142,6 +144,7 @@ export function emptyPhase(): Phase {
     item7Detalle: '',
     item8Detalle: '',
     observaciones: '',
+    observacionesInternas: '',
     fotos: [],
     firma: null,
   };

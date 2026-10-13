@@ -197,87 +197,115 @@ export async function scheduleSubtareaReprogramarActivity(params: {
   );
 }
 
+// ¿Ya está publicado este PDF en el ticket? Es la huella del envío único: el nombre del archivo lleva el codigoActa (único
+// por hoja/fase), así que un adjunto con ese nombre colgado de un mensaje del ticket significa que ya se envió. Devuelve
+// además los adjuntos que haya con ese nombre (uno huérfano de un intento que murió entre el create y el message_post se
+// reutiliza en vez de crear otro).
+async function consultarPublicado(params: {
+  ticketId: number;
+  fileName: string;
+  as: { login: string; password: string };
+}): Promise<{ existingIds: number[]; posted: boolean }> {
+  const existingIds = (await withTimeout(
+    executeKwAsCredentials(params.as.login, params.as.password, 'ir.attachment', 'search', [
+      [
+        ['res_model', '=', 'helpdesk.ticket'],
+        ['res_id', '=', params.ticketId],
+        ['name', '=', params.fileName],
+      ],
+    ]),
+    'pushConformidadToTicket:check-attachment',
+    UPLOAD_TIMEOUT_MS,
+  )) as number[];
+  if (!existingIds.length) return { existingIds, posted: false };
+  const posted = (await withTimeout(
+    executeKwAsCredentials(params.as.login, params.as.password, 'mail.message', 'search_count', [
+      [
+        ['model', '=', 'helpdesk.ticket'],
+        ['res_id', '=', params.ticketId],
+        ['attachment_ids', 'in', existingIds],
+      ],
+    ]),
+    'pushConformidadToTicket:check-message',
+    UPLOAD_TIMEOUT_MS,
+  )) as number;
+  return { existingIds, posted: posted > 0 };
+}
+
+const esperar = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const esTimeout = (err: unknown) => err instanceof Error && /Tiempo de espera agotado/i.test(err.message);
+
 // Posts a chatter note with the finished hoja de conformidad PDF attached to
 // the ticket. Uses message_post (core mail.thread) so nothing needs to be
 // configured on the Odoo side first — no custom fields to coordinate.
 // `as` is the técnico's own linked Odoo credentials — the message is posted
 // under their Odoo identity, not the shared service account.
+//
+// Envío único: message_post manda el correo a los seguidores del ticket (incluido el cliente), así que un segundo post
+// ensucia el ticket y le llega duplicado. Por eso (1) antes de publicar se verifica que no esté ya, y (2) si Odoo tarda más
+// que el tiempo de espera, el envío NO se da por fallido a ciegas: Odoo suele terminar de publicar igual, así que se
+// vuelve a consultar el ticket y solo si de verdad no está se informa el error. Un falso "fallido" disparaba reintentos que
+// publicaban el mismo PDF (y el mismo correo) una y otra vez. Si el chequeo mismo falla, tira error (queda FAILED) en vez de
+// arriesgar un duplicado.
 export async function pushConformidadToTicket(params: {
   ticketId: number;
   pdfBuffer: Buffer;
   fileName: string;
   resumenHtml: string;
   as: { login: string; password: string };
+  // Espera antes de re-consultar tras un timeout (Odoo puede estar terminando de publicar). Configurable para los tests.
+  esperaVerificacionMs?: number;
 }): Promise<void> {
   try {
-    // Garantía de envío único: el correo al cliente sale con message_post, así que un segundo post ensucia el
-    // ticket y le llega duplicado. El nombre del archivo lleva el codigoActa (único por hoja/fase), por eso
-    // sirve de huella: si ya hay un adjunto con ese nombre en el ticket y colgado de un mensaje, ya se envió y
-    // no se vuelve a postear. Si el chequeo falla, tira error (queda FAILED) en vez de arriesgar un duplicado.
-    const existingIds = (await withTimeout(
-      executeKwAsCredentials(params.as.login, params.as.password, 'ir.attachment', 'search', [
-        [
-          ['res_model', '=', 'helpdesk.ticket'],
-          ['res_id', '=', params.ticketId],
-          ['name', '=', params.fileName],
-        ],
-      ]),
-      'pushConformidadToTicket:check-attachment',
-      UPLOAD_TIMEOUT_MS,
-    )) as number[];
-    if (existingIds.length) {
-      const posted = (await withTimeout(
-        executeKwAsCredentials(params.as.login, params.as.password, 'mail.message', 'search_count', [
-          [
-            ['model', '=', 'helpdesk.ticket'],
-            ['res_id', '=', params.ticketId],
-            ['attachment_ids', 'in', existingIds],
-          ],
+    const previo = await consultarPublicado(params);
+    if (previo.posted) return;
+    const existingIds = previo.existingIds;
+
+    try {
+      const base64 = params.pdfBuffer.toString('base64');
+      // Adjunto huérfano de un intento anterior que murió entre el create y el message_post: se reutiliza en vez
+      // de crear otro.
+      const reuseAttachmentId = existingIds[0];
+
+      // message_post's `attachments` kwarg expects raw content and
+      // base64-encodes it itself — feeding it an already-base64 string double
+      // encodes the PDF into a file that no reader can open. `datas` on
+      // ir.attachment, by contrast, IS the base64 payload directly, so we
+      // create the attachment ourselves and only hand message_post its id.
+      const attachmentId = reuseAttachmentId ?? await withTimeout(
+        executeKwAsCredentials(params.as.login, params.as.password, 'ir.attachment', 'create', [
+          {
+            name: params.fileName,
+            datas: base64,
+            res_model: 'helpdesk.ticket',
+            res_id: params.ticketId,
+            mimetype: 'application/pdf',
+          },
         ]),
-        'pushConformidadToTicket:check-message',
+        'pushConformidadToTicket:attachment',
         UPLOAD_TIMEOUT_MS,
-      )) as number;
-      if (posted > 0) return;
+      );
+
+      await withTimeout(
+        executeKwAsCredentials(params.as.login, params.as.password, 'helpdesk.ticket', 'message_post', [[params.ticketId]], {
+          body: params.resumenHtml,
+          // mail.thread.message_post runs `body = escape(body)` (markupsafe) on
+          // any plain string — only a Markup instance (which JSON-RPC can't
+          // carry) or body_is_html=True skips that and keeps our tags as tags.
+          body_is_html: true,
+          message_type: 'comment',
+          subtype_xmlid: 'mail.mt_comment',
+          attachment_ids: [attachmentId],
+        }),
+        'pushConformidadToTicket:message',
+        UPLOAD_TIMEOUT_MS,
+      );
+    } catch (err) {
+      if (!esTimeout(err)) throw err;
+      await esperar(params.esperaVerificacionMs ?? 5000);
+      if ((await consultarPublicado(params)).posted) return;
+      throw err;
     }
-
-    const base64 = params.pdfBuffer.toString('base64');
-    // Adjunto huérfano de un intento anterior que murió entre el create y el message_post: se reutiliza en vez
-    // de crear otro.
-    const reuseAttachmentId = existingIds[0];
-
-    // message_post's `attachments` kwarg expects raw content and
-    // base64-encodes it itself — feeding it an already-base64 string double
-    // encodes the PDF into a file that no reader can open. `datas` on
-    // ir.attachment, by contrast, IS the base64 payload directly, so we
-    // create the attachment ourselves and only hand message_post its id.
-    const attachmentId = reuseAttachmentId ?? await withTimeout(
-      executeKwAsCredentials(params.as.login, params.as.password, 'ir.attachment', 'create', [
-        {
-          name: params.fileName,
-          datas: base64,
-          res_model: 'helpdesk.ticket',
-          res_id: params.ticketId,
-          mimetype: 'application/pdf',
-        },
-      ]),
-      'pushConformidadToTicket:attachment',
-      UPLOAD_TIMEOUT_MS,
-    );
-
-    await withTimeout(
-      executeKwAsCredentials(params.as.login, params.as.password, 'helpdesk.ticket', 'message_post', [[params.ticketId]], {
-        body: params.resumenHtml,
-        // mail.thread.message_post runs `body = escape(body)` (markupsafe) on
-        // any plain string — only a Markup instance (which JSON-RPC can't
-        // carry) or body_is_html=True skips that and keeps our tags as tags.
-        body_is_html: true,
-        message_type: 'comment',
-        subtype_xmlid: 'mail.mt_comment',
-        attachment_ids: [attachmentId],
-      }),
-      'pushConformidadToTicket:message',
-      UPLOAD_TIMEOUT_MS,
-    );
   } catch (err) {
     const classified = classify(err);
     if (/does not exist|no access|not found/i.test(classified.message)) {

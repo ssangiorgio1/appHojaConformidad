@@ -38,7 +38,9 @@ const SubtareaIncidenciaSchema = new Schema(
     // proponer otra fecha y hora (ver propuestaInicio). Ver docs-cancelar-pre-reprogramar.md.
     // 'llegada_tarde': el técnico llegó pasada la tolerancia de la hora agendada y la unidad ya no estaba — es una
     // reprogramación por demora de WARA, no una visita fallida (no se cobra VIS.003). Ver clasificarIncidencia.ts.
-    tipo: { type: String, enum: ['no_encontrada', 'pre_cancelado', 'llegada_tarde'], default: 'no_encontrada' },
+    tipo: { type: String, enum: ['no_encontrada', 'pre_cancelado', 'llegada_tarde', 'requiere_otro_tecnico'], default: 'no_encontrada' },
+    // 'requiere_otro_tecnico': una intervención quedó diagnosticada pero la reparación le toca a otro técnico; la incidencia
+    // apunta a la subtarea NUEVA creada para eso (ver derivacion.service.ts) y coordinación la agenda y asigna.
     // Hora agendada de la visita y hora a la que el técnico marcó "llegué" (enSitioAt), y el tipo que sugirió el
     // sistema al comparar ambas. Coordinación puede corregir `tipo` al resolver; tipoSugerido queda como registro.
     horaAgendada: { type: Date, default: null },

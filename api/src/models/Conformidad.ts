@@ -51,6 +51,7 @@ const PhaseSchema = new Schema(
     item7Detalle: { type: String, default: '' },
     item8Detalle: { type: String, default: '' },
     observaciones: { type: String, default: '' },
+    observacionesInternas: { type: String, default: '' },
     fotos: { type: [FotoSchema], default: [] },
     firma: { type: FirmaSchema, default: null },
   },
@@ -251,6 +252,22 @@ const ConformidadSchema = new Schema(
     // Productos de la orden que no se pudieron instalar/retirar en el lugar: clave de la casilla -> motivo que escribió el
     // técnico. Las claves son los nombres de casilla de la app (camelCase, sin puntos). Vacío = nada que informar.
     noInstalados: { type: Schema.Types.Mixed, default: () => ({}) },
+    // Intervención diagnosticada pero no reparada porque le corresponde a otro técnico: se crea una subtarea nueva en la misma
+    // tarea y se avisa a coordinación (ver derivacion.service.ts). null = no aplica.
+    derivacion: {
+      type: new Schema(
+        {
+          requerida: { type: Boolean, default: false },
+          motivo: { type: String, default: '' },
+          // Cuándo se procesó (subtarea creada y coordinación avisada) y la subtarea nueva, si Odoo la pudo crear.
+          procesadaAt: { type: Date, default: null },
+          subtareaNuevaOdooId: { type: Number, default: null },
+          error: { type: String, default: '' },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
 
     deletedAt: { type: Date, default: null },
   },

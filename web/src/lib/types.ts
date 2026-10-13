@@ -119,6 +119,8 @@ export interface Phase {
   item7Detalle?: string;
   item8Detalle?: string;
   observaciones: string;
+  // Solo para el panel: nunca se imprime en el PDF que ve el cliente.
+  observacionesInternas?: string;
   fotos: Foto[];
   firma: Firma | null;
 }
@@ -352,7 +354,7 @@ export interface SubtareaIncidencia {
   motivo: string;
   estado: EstadoSubtareaIncidencia;
   // 'pre_cancelado': el técnico empezó el PRE y no pudo seguir; puede traer una propuesta de nueva fecha y hora.
-  tipo?: 'no_encontrada' | 'pre_cancelado';
+  tipo?: 'no_encontrada' | 'pre_cancelado' | 'requiere_otro_tecnico';
   propuestaInicio?: string | null;
   propuestaFin?: string | null;
   motivoRechazo?: string;

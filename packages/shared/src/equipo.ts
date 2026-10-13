@@ -69,7 +69,15 @@ export const EQUIP_GROUPS = [
       { key: 'camarasAdas', label: 'Cámaras ADAS', checkbox: true },
       // Only asked (and shown) when camarasAdas is checked — same idea as
       // io1Detalle/etc.
-      { key: 'camarasAdasSerie', label: 'N° de serie (Cámaras ADAS)', dependsOn: 'camarasAdas' },
+      // Una cámara por vehículo es lo habitual, pero hay trabajos con varias (ej. 10): el N° de serie de cada una va en su
+      // propia línea (`series: true`, ver seriesDe) y la cantidad es la cantidad de series.
+      { key: 'camarasAdasSerie', label: 'N° de serie (Cámaras ADAS)', dependsOn: 'camarasAdas', series: true },
+      // La DSM (monitoreo del conductor) es un añadido de la cámara ADAS: no tiene N° de serie propio. Suele ir, pero no siempre.
+      { key: 'camarasDsm', label: 'Cámara DSM (añadido de la ADAS)', checkbox: true },
+      // Grabador de 4 u 8 cámaras: uno por unidad.
+      { key: 'mdvr', label: 'MDVR (grabador de video)', checkbox: true },
+      { key: 'mdvrCanales', label: 'Cámaras del MDVR (canales)', dependsOn: 'mdvr', canales: true },
+      { key: 'mdvrSerie', label: 'N° de serie (MDVR)', dependsOn: 'mdvr' },
       { key: 'moduloWifi', label: 'Módulo wifi', checkbox: true },
       { key: 'antenaStarlink', label: 'Antena Starlink', checkbox: true },
       { key: 'antenaStarlinkSerie', label: 'N° de serie (Antena Starlink)', dependsOn: 'antenaStarlink' },
@@ -125,6 +133,28 @@ export type Equipo = Partial<Record<EquipoTextKey, string>> &
     // uninstalled, comma-separated — each with its own photo gallery (slotKey = key).
     elementosRetirados?: string;
   };
+
+// Campos `series: true` (cámaras ADAS / DSM): varios N° de serie en un solo texto, uno por línea. Se aceptan también comas
+// o punto y coma por si se pega una lista.
+export function seriesDe(valor: string | undefined | null): string[] {
+  return (valor ?? '')
+    .split(/[\n,;]+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+// "A1" + salto de línea + "A2" -> "A1, A2" (PDF, panel, comentario del ticket).
+export function formatSeries(valor: string | undefined | null): string {
+  return seriesDe(valor).join(', ');
+}
+
+// Cantidad de cámaras ADAS cargadas: la cantidad de series; tildada sin series todavía cuenta 1.
+export function cantidadCamarasAdas(equipo: Equipo): number {
+  if (!equipo.camarasAdas) return 0;
+  return Math.max(1, seriesDe(equipo.camarasAdasSerie).length);
+}
+
+export const CANALES_MDVR_OPTIONS = ['4', '8'] as const;
 
 export function emptyEquipo(): Equipo {
   return {};

@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { CHECKLIST_ITEMS, DETAIL_FIELD_BY_KEY } from '@wara/shared/src/checklist';
 import { EQUIP_CHECK_FIELDS, EQUIP_GROUPS, EQUIP_ITEM_PHOTO_LABEL } from '@wara/shared/src/equipo';
-import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY } from '@wara/shared/src/photoSlots';
+import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY, VIDEO_SERVICIO_KEY } from '@wara/shared/src/photoSlots';
 import type { ServiceMode } from '@wara/shared/src/serviceMode';
 import { SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, type ChecklistValue, type SatisfaccionFirma } from '@wara/shared';
 import { Card } from '@/components/ui/Card';
@@ -70,6 +70,7 @@ const GALLERY_LABELS: Record<string, string> = {
   ...EQUIP_ITEM_PHOTO_LABEL,
   [INTERVENCION_GROUP_KEY]: 'Intervención realizada',
   [EXTRA_POST_PHOTOS_KEY]: 'Otras fotos',
+  [VIDEO_SERVICIO_KEY]: 'Video del servicio',
 };
 
 // Fotos sincronizadas antes de que el servidor empezara a persistir slotKey
@@ -253,7 +254,7 @@ export default function ConformidadDetailPage() {
               fase === f ? 'bg-surface text-primary shadow-soft-sm' : 'text-muted'
             }`}
           >
-            {f === 'pre' ? 'PRE-instalación' : 'POST-instalación'}
+            {f === 'pre' ? 'Pre-Conformidad' : 'Post-Conformidad'}
           </button>
         ))}
       </div>
@@ -295,6 +296,15 @@ export default function ConformidadDetailPage() {
                 {phase?.observaciones || 'Sin observaciones.'}
               </div>
             </div>
+
+            {phase?.observacionesInternas?.trim() && (
+              <div className="mt-4">
+                <div className="mb-2 text-xs font-extrabold text-muted">Observaciones internas (no figuran en el PDF)</div>
+                <div className="whitespace-pre-wrap rounded-md bg-surface p-3.5 text-[12.5px] font-medium leading-relaxed shadow-inset">
+                  {phase.observacionesInternas}
+                </div>
+              </div>
+            )}
           </Card>
 
           <Card className="p-6">
@@ -335,7 +345,7 @@ export default function ConformidadDetailPage() {
                           <img src={foto.url} alt="" className="h-full w-full object-cover" />
                         )}
                       </span>
-                      <span className="truncate text-[10px] font-semibold text-muted">{label ?? 'Foto'}</span>
+                      <span className="truncate text-[10px] font-semibold text-muted">{label ?? (isVideo ? 'Video' : 'Foto')}</span>
                       {foto.descripcion && (
                         <span className="line-clamp-3 text-[10px] font-medium leading-tight text-text">{foto.descripcion}</span>
                       )}

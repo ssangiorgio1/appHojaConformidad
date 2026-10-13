@@ -124,6 +124,11 @@ export const INTERVENCION_GROUP_KEY = 'intervencion';
 // label in the PDF ("Otras fotos", see GALLERY_LABELS in printHtml.ts).
 export const EXTRA_POST_PHOTOS_KEY = 'extra_post';
 
+// Video opcional del servicio (todos los modos): un clip corto que el técnico puede grabar al cerrar, por ejemplo para
+// dejar constancia de cómo quedó funcionando. Viaja como una Foto más (mimeType 'video/webm'); el PDF solo marca que hay
+// un video adjunto y se ve en el panel.
+export const VIDEO_SERVICIO_KEY = 'video_servicio';
+
 // Galería libre y opcional en los pasos de desinstalación donde se tilda lo
 // retirado (sensores/módulos): fotos adicionales a las de cada ítem.
 export const EXTRA_RETIRO_PHOTOS_KEY = 'extra_retiro';

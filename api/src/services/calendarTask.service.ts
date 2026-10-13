@@ -1208,3 +1208,33 @@ export async function moveCalendarTask(id: number, input: { start: string; end: 
     throw classify(err);
   }
 }
+
+// Subtarea nueva para que OTRO técnico vaya a la misma unidad (la intervención se hizo y se diagnosticó, pero la reparación
+// le corresponde a otro). Cuelga de la misma tarea padre (mismo ticket) y copia proyecto, cliente y etiquetas de la unidad
+// original. Sin técnico ni fecha a propósito: coordinación la agenda y decide quién va. Devuelve el id nuevo.
+export async function createDerivedSubtask(params: {
+  parentTaskId: number;
+  originalTaskId: number;
+  name: string;
+  descriptionHtml: string;
+}): Promise<number> {
+  try {
+    const rows = (await withTimeout(
+      executeKw('project.task', 'read', [[params.originalTaskId]], { fields: ['project_id', 'partner_id', 'tag_ids'] }),
+      'CREATE_DERIVED_SUBTASK:read',
+    )) as Array<{ project_id: [number, string] | false; partner_id: [number, string] | false; tag_ids: number[] }>;
+    const o = rows[0];
+    if (!o) throw new Error(`No se encontró la tarea ${params.originalTaskId} en Odoo`);
+    const vals: Record<string, unknown> = {
+      name: params.name,
+      parent_id: params.parentTaskId,
+      description: params.descriptionHtml,
+    };
+    if (o.project_id) vals.project_id = o.project_id[0];
+    if (o.partner_id) vals.partner_id = o.partner_id[0];
+    if (o.tag_ids?.length) vals.tag_ids = [[6, 0, o.tag_ids]];
+    return (await withTimeout(executeKw('project.task', 'create', [vals]), 'CREATE_DERIVED_SUBTASK:create')) as number;
+  } catch (err) {
+    throw classify(err);
+  }
+}

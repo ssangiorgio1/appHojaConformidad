@@ -1,6 +1,6 @@
 import { CHECKLIST_ITEMS, DETAIL_FIELD_BY_KEY, type ChecklistValue } from './checklist.js';
-import { EQUIP_GROUPS, EQUIP_CHECK_FIELDS, EQUIP_ITEM_PHOTO_LABEL, isEquipoFieldVisible } from './equipo.js';
-import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY, EXTRA_RETIRO_PHOTOS_KEY, type PhotoSlotDef } from './photoSlots.js';
+import { EQUIP_GROUPS, EQUIP_CHECK_FIELDS, EQUIP_ITEM_PHOTO_LABEL, formatSeries, isEquipoFieldVisible } from './equipo.js';
+import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY, EXTRA_RETIRO_PHOTOS_KEY, VIDEO_SERVICIO_KEY, type PhotoSlotDef } from './photoSlots.js';
 import { getServiceMode } from './serviceMode.js';
 import { SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, isEquipoSwap, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
 
@@ -89,7 +89,7 @@ function checklistTable(record: PrintableConformidad, soloPre = false): string {
     </tr>`;
   }
   return `<table class="check-table">
-    <thead><tr><th>Ítem a revisar</th><th>PRE instalación</th>${soloPre ? '' : '<th>POST instalación</th>'}</tr></thead>
+    <thead><tr><th>Ítem a revisar</th><th>Pre-Conformidad</th>${soloPre ? '' : '<th>Post-Conformidad</th>'}</tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 }
@@ -110,14 +110,16 @@ function equipoFieldLabel(f: { key: string; label: string }, tipoServicio: TipoS
 
 function fieldRows(
   equipo: Record<string, unknown>,
-  fields: readonly { key: string; label: string }[],
+  fields: readonly { key: string; label: string; series?: boolean }[],
   tipoServicio: TipoServicio | null,
 ): string {
   return fields
     .map((f) => {
       const val = equipo[f.key];
       const label = equipoFieldLabel(f, tipoServicio);
-      return `<tr><td class="k">${esc(label)}</td><td class="v">${esc(typeof val === 'string' ? val : '') || '—'}</td></tr>`;
+      // Cámaras ADAS / DSM: varios N° de serie, uno por línea en el dato (ver seriesDe).
+      const texto = typeof val === 'string' ? ('series' in f && f.series ? formatSeries(val) : val) : '';
+      return `<tr><td class="k">${esc(label)}</td><td class="v">${esc(texto) || '—'}</td></tr>`;
     })
     .join('');
 }
@@ -172,7 +174,15 @@ function equipoGrid(record: PrintableConformidad): string {
           tipoServicio,
         ),
     ),
-    equipCard('Elementos adicionales instalados', fieldRows(equipo, byTitle['Elementos adicionales instalados'].fields, tipoServicio)),
+    equipCard(
+      'Elementos adicionales instalados',
+      fieldRows(
+        equipo,
+        // Series, canales del MDVR, etc. solo cuando su casilla está tildada.
+        byTitle['Elementos adicionales instalados'].fields.filter((f) => isEquipoFieldVisible(f, record.equipo)),
+        tipoServicio,
+      ),
+    ),
     retiradosCard,
     equipCard(
       'Control de instalación',
@@ -193,6 +203,7 @@ const GALLERY_LABELS: Record<string, string> = {
   [INTERVENCION_GROUP_KEY]: 'Intervención realizada',
   [EXTRA_POST_PHOTOS_KEY]: 'Otras fotos',
   [EXTRA_RETIRO_PHOTOS_KEY]: 'Otras fotos de lo desinstalado',
+  [VIDEO_SERVICIO_KEY]: 'Video del servicio',
 };
 
 async function photosBlock(slots: PhotoSlotDef[], fotos: Foto[], titulo: string, resolvePhotoSrc: PhotoSrcResolver): Promise<string> {

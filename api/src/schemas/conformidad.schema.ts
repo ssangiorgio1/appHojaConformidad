@@ -52,6 +52,7 @@ const phaseInputSchema = z.object({
   item7Detalle: z.string().optional(),
   item8Detalle: z.string().optional(),
   observaciones: z.string().optional(),
+  observacionesInternas: z.string().optional(),
   fotos: z.array(fotoSchema).optional(),
   firma: firmaSchema.optional(),
 });
@@ -191,8 +192,15 @@ const noInstaladosSchema = z
   .record(z.string().min(1).max(60), z.string().trim().min(1).max(300))
   .refine((r) => Object.keys(r).length <= 40, { message: 'Demasiados productos no instalados' });
 
+// Intervención que requiere otra intervención de otro técnico (ver derivacion.service.ts).
+const derivacionSchema = z.object({
+  requerida: z.boolean(),
+  motivo: z.string().trim().max(500),
+});
+
 export const patchConformidadSchema = topLevelSchema.partial().extend({
   noInstalados: noInstaladosSchema.optional(),
+  derivacion: derivacionSchema.nullable().optional(),
   verificacionEquipo: verificacionEquipoSchema.optional(),
   pre: phaseInputSchema.optional(),
   post: phaseInputSchema.optional(),
