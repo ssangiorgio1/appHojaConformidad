@@ -34,6 +34,8 @@ const FirmaSchema = new Schema(
     satisfaccion: { type: String, enum: ['satisfecho', 'insatisfecho', 'no_firma_insatisfecho'], default: null },
     motivo: { type: String },
     nombreFirmante: { type: String },
+    dniFirmante: { type: String },
+    cargoFirmante: { type: String },
     clienteAusente: { type: Boolean, default: false },
   },
   { _id: false },
@@ -42,6 +44,11 @@ const FirmaSchema = new Schema(
 const PhaseSchema = new Schema(
   {
     checklist: { type: ChecklistSchema, default: () => ({}) },
+    item1Detalle: { type: String, default: '' },
+    item2Detalle: { type: String, default: '' },
+    item3Detalle: { type: String, default: '' },
+    item4Detalle: { type: String, default: '' },
+    item5Detalle: { type: String, default: '' },
     fallaDetalle: { type: String, default: '' },
     item6AirbagDetalle: { type: String, default: '' },
     item6GuineDetalle: { type: String, default: '' },

@@ -106,6 +106,8 @@ export interface Firma {
   motivo?: string;
   // Name of the person signing — required in PRE and POST unless the client refuses to sign.
   nombreFirmante?: string;
+  dniFirmante?: string;
+  cargoFirmante?: string;
   // The client wasn't available to sign — advanced under the technician's
   // responsibility, without a signature or nombreFirmante.
   clienteAusente?: boolean;
@@ -113,6 +115,12 @@ export interface Firma {
 
 export interface Phase {
   checklist: Checklist;
+  // Detalle interno (solo panel, no va a la conformidad impresa) cuando items 1-5 responden NO.
+  item1Detalle?: string;
+  item2Detalle?: string;
+  item3Detalle?: string;
+  item4Detalle?: string;
+  item5Detalle?: string;
   fallaDetalle?: string;
   // Same idea as fallaDetalle (item6_falla): required detail when the
   // matching item answers whatever requiresDetailWhen says (see
@@ -135,6 +143,11 @@ export interface Phase {
 export function emptyPhase(): Phase {
   return {
     checklist: emptyChecklist(),
+    item1Detalle: '',
+    item2Detalle: '',
+    item3Detalle: '',
+    item4Detalle: '',
+    item5Detalle: '',
     fallaDetalle: '',
     item6AirbagDetalle: '',
     item6GuineDetalle: '',
@@ -154,6 +167,11 @@ export function emptyPhase(): Phase {
 // ChecklistEditor/missingChecklistDetail (checklist.ts) expect.
 export function phaseDetalles(phase: Phase): Partial<Record<ChecklistKey, string | undefined>> {
   return {
+    item1: phase.item1Detalle,
+    item2: phase.item2Detalle,
+    item3: phase.item3Detalle,
+    item4: phase.item4Detalle,
+    item5: phase.item5Detalle,
     item6_falla: phase.fallaDetalle,
     item6_airbag: phase.item6AirbagDetalle,
     item6_guine: phase.item6GuineDetalle,

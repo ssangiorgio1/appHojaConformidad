@@ -74,7 +74,7 @@ function checklistTable(record: PrintableConformidad, soloPre = false): string {
     const post = record.post.checklist[item.key] ?? null;
     // Any item with requiresDetailWhen (item6_falla, item7, item8 today) may
     // carry a detail — not just the falla, unlike before.
-    const detailField = DETAIL_FIELD_BY_KEY[item.key];
+    const detailField = item.detailHiddenInPdf ? undefined : DETAIL_FIELD_BY_KEY[item.key];
     const preDetalle = detailField ? record.pre[detailField] : undefined;
     const postDetalle = detailField ? record.post[detailField] : undefined;
     rows += `<tr>
@@ -95,6 +95,7 @@ function checklistTable(record: PrintableConformidad, soloPre = false): string {
 }
 
 function equipCard(title: string, rowsHtml: string, extraClass = ""): string {
+  if (!rowsHtml) return '';
   return `<div class="equip-card${extraClass ? " " + extraClass : ""}">
     <div class="equip-card-title">${esc(title)}</div>
     <table class="equip-card-table">${rowsHtml}</table>
@@ -116,6 +117,8 @@ function fieldRows(
   return fields
     .map((f) => {
       const val = equipo[f.key];
+      // Solo se imprime lo que se completó: nada de filas vacías ni casillas sin tildar.
+      if (typeof val !== 'string' || !val.trim() || val === 'NO') return '';
       const label = equipoFieldLabel(f, tipoServicio);
       // Cámaras ADAS / DSM: varios N° de serie, uno por línea en el dato (ver seriesDe).
       const texto = typeof val === 'string' ? ('series' in f && f.series ? formatSeries(val) : val) : '';
@@ -128,7 +131,8 @@ function checkRows(equipo: Record<string, unknown>, fields: readonly { key: stri
   return fields
     .map((f) => {
       const val = equipo[f.key];
-      const label = val === 'SI' ? 'Sí' : val === 'NO' ? 'No' : '—';
+      if (val !== 'SI' && val !== 'NO') return '';
+      const label = val === 'SI' ? 'Sí' : 'No';
       return `<tr><td class="k">${esc(f.label)}</td><td class="v">${label}</td></tr>`;
     })
     .join('');
@@ -157,22 +161,24 @@ function equipoGrid(record: PrintableConformidad): string {
       )
     : '';
 
+  // Los detalles de IO1/IO2/AO1/AO2 (dependsOn) no se imprimen cuando
+  // su checkbox no está tildado — mismo criterio que el wizard POST y
+  // el resumen del panel, para no mostrar texto viejo de un campo que
+  // el técnico llegó a tipear y después destildó.
+  const ioRows = fieldRows(
+    equipo,
+    byTitle['Entradas / Salidas'].fields.filter((f) => isEquipoFieldVisible(f, record.equipo)),
+    tipoServicio,
+  );
+
   const cards = [
     equipCard(datosEquipoTitle, fieldRows(equipo, datosEquipoFields, tipoServicio), "equip-card-wide"),
     equipCard('Sensores', fieldRows(equipo, byTitle['Sensores'].fields, tipoServicio)),
     equipCard(
       'Módulos',
       fieldRows(equipo, byTitle['Módulos'].fields, tipoServicio) +
-        `<tr><td colspan="2" class="mini-sub">Entradas / Salidas</td></tr>` +
-        // Los detalles de IO1/IO2/AO1/AO2 (dependsOn) no se imprimen cuando
-        // su checkbox no está tildado — mismo criterio que el wizard POST y
-        // el resumen del panel, para no mostrar texto viejo de un campo que
-        // el técnico llegó a tipear y después destildó.
-        fieldRows(
-          equipo,
-          byTitle['Entradas / Salidas'].fields.filter((f) => isEquipoFieldVisible(f, record.equipo)),
-          tipoServicio,
-        ),
+        (ioRows ? `<tr><td colspan="2" class="mini-sub">Entradas / Salidas</td></tr>` : '') +
+        ioRows,
     ),
     equipCard(
       'Elementos adicionales instalados',
@@ -421,7 +427,7 @@ export async function buildPrintHtml(
     <div class="sig-row">
       <div class="sig-block">
         ${sigSrc(record.pre.firma) ? `<img class="sig" src="${esc(sigSrc(record.pre.firma))}">` : sigPlaceholder(record.pre.firma)}
-        <div class="sig-caption">Firma del cliente (PRE)${record.pre.firma?.nombreFirmante ? ` — ${esc(record.pre.firma.nombreFirmante)}` : ''}</div>
+        <div class="sig-caption">Firma del cliente (PRE)${record.pre.firma?.nombreFirmante ? ` — ${esc(record.pre.firma.nombreFirmante)}` : ''}${record.pre.firma?.dniFirmante ? ` — DNI ${esc(record.pre.firma.dniFirmante)}` : ''}${record.pre.firma?.cargoFirmante ? ` — ${esc(record.pre.firma.cargoFirmante)}` : ''}</div>
         ${
           record.pre.firma?.clienteAusente && record.pre.firma?.motivo
             ? `<div class="sig-caption">Motivo: ${esc(record.pre.firma.motivo)}</div>`
@@ -437,7 +443,7 @@ export async function buildPrintHtml(
       <div class="sig-block">
         ${sigSrc(record.post.firma) ? `<img class="sig" src="${esc(sigSrc(record.post.firma))}">` : sigPlaceholder(record.post.firma)}
         <div class="sig-caption">
-          Firma del cliente (POST)${record.post.firma?.nombreFirmante ? ` — ${esc(record.post.firma.nombreFirmante)}` : ''}${record.post.firma?.satisfaccion ? ` — ${esc(SATISFACCION_LABELS[record.post.firma.satisfaccion])}` : ''}
+          Firma del cliente (POST)${record.post.firma?.nombreFirmante ? ` — ${esc(record.post.firma.nombreFirmante)}` : ''}${record.post.firma?.dniFirmante ? ` — DNI ${esc(record.post.firma.dniFirmante)}` : ''}${record.post.firma?.cargoFirmante ? ` — ${esc(record.post.firma.cargoFirmante)}` : ''}${record.post.firma?.satisfaccion ? ` — ${esc(SATISFACCION_LABELS[record.post.firma.satisfaccion])}` : ''}
         </div>
         ${
           record.post.firma?.satisfaccion !== 'satisfecho' && record.post.firma?.motivo

@@ -36,18 +36,23 @@ export interface ChecklistItemDef {
   // reported warning light is operational info for WARA, not something that
   // belongs on the document the client signs/receives.
   hiddenInPdf?: boolean;
+  // Como hiddenInPdf pero solo para el textfield de detalle: el SI/NO sigue
+  // en el PDF del cliente, el detalle queda solo para la empresa (panel).
+  detailHiddenInPdf?: boolean;
 }
 
 export const CHECKLIST_ITEMS: ChecklistItemDef[] = [
-  { key: 'item1', label: '1. Luces de posición, guiñe, balizas, luces altas y bajas e ignición del vehículo.' },
+  { key: 'item1', label: '1. Luces de posición, guiñe, balizas, luces altas y bajas e ignición del vehículo.', requiresDetailWhen: 'NO', detailHiddenInPdf: true },
   {
     key: 'item2',
     label: '2. Autorización por parte de un responsable para el encendido del vehículo.',
     note: 'Procedimiento: A) Freno de mano puesto. B) Cambio en punto neutro. C) Embrague y freno presionados antes de encender.',
+    requiresDetailWhen: 'NO',
+    detailHiddenInPdf: true,
   },
-  { key: 'item3', label: '3. Estado general del vehículo (chapería y pintura).' },
-  { key: 'item4', label: '4. Paragolpes traseros y delanteros.' },
-  { key: 'item5', label: '5. Tablero y panel del vehículo (fotos del panel antes del desarme).' },
+  { key: 'item3', label: '3. Estado general del vehículo (chapería y pintura).', requiresDetailWhen: 'NO', detailHiddenInPdf: true },
+  { key: 'item4', label: '4. Paragolpes traseros y delanteros.', requiresDetailWhen: 'NO', detailHiddenInPdf: true },
+  { key: 'item5', label: '5. Tablero y panel del vehículo (fotos del panel antes del desarme).', requiresDetailWhen: 'NO', detailHiddenInPdf: true },
   {
     key: 'item6_airbag',
     label: 'a) Luz de airbag.',
@@ -83,6 +88,11 @@ export function missingChecklistItems(checklist: Checklist): ChecklistItemDef[] 
 export const DETAIL_FIELD_BY_KEY: Partial<
   Record<
     ChecklistKey,
+    | 'item1Detalle'
+    | 'item2Detalle'
+    | 'item3Detalle'
+    | 'item4Detalle'
+    | 'item5Detalle'
     | 'fallaDetalle'
     | 'item6AirbagDetalle'
     | 'item6GuineDetalle'
@@ -93,6 +103,11 @@ export const DETAIL_FIELD_BY_KEY: Partial<
     | 'item8Detalle'
   >
 > = {
+  item1: 'item1Detalle',
+  item2: 'item2Detalle',
+  item3: 'item3Detalle',
+  item4: 'item4Detalle',
+  item5: 'item5Detalle',
   item6_falla: 'fallaDetalle',
   item6_airbag: 'item6AirbagDetalle',
   item6_guine: 'item6GuineDetalle',

@@ -116,6 +116,11 @@ export interface Phase {
   item6AlternadorDetalle?: string;
   item6PresionDetalle?: string;
   item6TempDetalle?: string;
+  item1Detalle?: string;
+  item2Detalle?: string;
+  item3Detalle?: string;
+  item4Detalle?: string;
+  item5Detalle?: string;
   item7Detalle?: string;
   item8Detalle?: string;
   observaciones: string;

@@ -37,12 +37,19 @@ const firmaSchema = z
     satisfaccion: z.enum(['satisfecho', 'insatisfecho', 'no_firma_insatisfecho']).nullable().optional(),
     motivo: z.string().optional(),
     nombreFirmante: z.string().optional(),
+    dniFirmante: z.string().regex(/^\d*$/, 'dniFirmante must contain digits only').optional(),
+    cargoFirmante: z.string().optional(),
     clienteAusente: z.boolean().optional(),
   })
   .nullable();
 
 const phaseInputSchema = z.object({
   checklist: checklistSchema.optional(),
+  item1Detalle: z.string().optional(),
+  item2Detalle: z.string().optional(),
+  item3Detalle: z.string().optional(),
+  item4Detalle: z.string().optional(),
+  item5Detalle: z.string().optional(),
   fallaDetalle: z.string().optional(),
   item6AirbagDetalle: z.string().optional(),
   item6GuineDetalle: z.string().optional(),
