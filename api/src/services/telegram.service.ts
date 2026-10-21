@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { cerrarSuspensionAbierta } from './suspensionVisita.js';
 import { env } from '../config/env.js';
 import { VisitaNotificacionModel } from '../models/VisitaNotificacion.js';
 
@@ -70,6 +71,11 @@ export async function notificarEstadoVisita(
   if (estado === 'en_camino' && !visita.enCaminoAt) visita.enCaminoAt = now;
   if (estado === 'en_sitio' && !visita.enSitioAt) visita.enSitioAt = now;
   if (estado === 'completo' && !visita.completoAt) visita.completoAt = now;
+  // Cualquier transición (volver a "Llegué", cerrar la visita) saca la visita de la suspensión.
+  if (visita.suspendida) {
+    visita.suspendida = false;
+    cerrarSuspensionAbierta(visita.suspensiones, now);
+  }
 
   if (!visita.chatId) {
     visita.ultimoEnvio = { estado, status: 'SKIPPED_NO_CHAT', error: '', at: new Date() };

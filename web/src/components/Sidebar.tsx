@@ -36,6 +36,18 @@ export const NAV_ITEMS = [
     roles: ['coordinacion', 'mesa_ayuda', 'admin', 'superadmin'] as const,
   },
   {
+    href: '/tickets',
+    label: 'Tickets',
+    icon: IconDocument,
+    roles: ['coordinacion', 'mesa_ayuda', 'admin', 'superadmin'] as const,
+  },
+  {
+    href: '/facturacion',
+    label: 'Facturación',
+    icon: IconDocument,
+    roles: ['coordinacion', 'admin', 'superadmin'] as const,
+  },
+  {
     href: '/deposito',
     label: 'Depósito',
     icon: IconGrid,

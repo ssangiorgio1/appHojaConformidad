@@ -5,7 +5,7 @@ import { VisionbloError } from '../config/visionblo.js';
 import { getGraficasRango } from '../services/equipoGraficas.service.js';
 import { numeroEquipoPorImei } from '../services/stockEquipo.service.js';
 import { getHistorialUnidad } from '../services/historialUnidad.service.js';
-import { buscarEquipos, getEstadoEquipo, vistaTecnico } from '../services/equipoEstado.service.js';
+import { buscarEquipos, getEstadoEquipo, getSeriesEquipos, vistaTecnico } from '../services/equipoEstado.service.js';
 
 function traducirError(err: unknown): never {
   if (err instanceof VisionbloError) throw new HttpError(err.code === 'NOT_CONFIGURED' ? 503 : 502, err.message);
@@ -56,6 +56,16 @@ export const graficas = asyncHandler(async (req: Request, res: Response) => {
   const { desde, hasta } = req.query as unknown as { desde: string; hasta: string };
   try {
     res.json(await getGraficasRango(equipoId, desde, hasta));
+  } catch (err) {
+    traducirError(err);
+  }
+});
+
+// Número de equipo (serie del diagnóstico) de varias unidades; lo usa el panel en listas, CSV y propuestas.
+export const series = asyncHandler(async (req: Request, res: Response) => {
+  const { equipoIds } = req.body as { equipoIds: number[] };
+  try {
+    res.json({ series: await getSeriesEquipos(equipoIds) });
   } catch (err) {
     traducirError(err);
   }

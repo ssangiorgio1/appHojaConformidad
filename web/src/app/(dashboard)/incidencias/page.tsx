@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
+import { useToast } from '@/components/ui/Toast';
 import { IconAlertTriangle } from '@/components/ui/Icons';
 import { IncidenciaDestinatariosPanel } from '@/components/IncidenciaDestinatariosPanel';
 import { ReprogramarIncidenciaPanel } from '@/components/ReprogramarIncidenciaPanel';
@@ -37,6 +38,7 @@ const PAGE_SIZE = 20;
 
 export default function IncidenciasPage() {
   const { usuario, getIdToken } = useAuth();
+  const toast = useToast();
   const [estadoFiltro, setEstadoFiltro] = useState<string>('pendiente_reprogramar,rechazada');
   const [page, setPage] = useState(1);
   const { data, loading, error, refetch } = useApiData(
@@ -67,6 +69,7 @@ export default function IncidenciasPage() {
     try {
       await resolveSubtareaIncidencia(await getIdToken(), inc._id);
       await refetch();
+      toast('Propuesta aceptada correctamente.');
     } catch (err) {
       setErrorAccion(err instanceof ApiError ? err.message : 'No se pudo aceptar la propuesta.');
     } finally {
@@ -79,18 +82,34 @@ export default function IncidenciasPage() {
     return (
       <>
         {inc.tipo === 'pre_cancelado' && <div className="text-[11.5px] font-bold text-warning-700">PRE cancelado por el técnico</div>}
+        {inc.tipo === 'reprogramado_cliente' && (
+          <div className="text-[11.5px] font-bold text-warning-700">
+            El cliente pidió reprogramar en el lugar ·{' '}
+            {inc.firmaCliente?.sinFirma ? (
+              <>sin firma: {inc.firmaCliente.motivoSinFirma}</>
+            ) : inc.firmaCliente?.url ? (
+              <>
+                firmó {inc.firmaCliente.nombre}
+                {inc.firmaCliente.dni ? ` (DNI ${inc.firmaCliente.dni})` : ''} ·{' '}
+                <a href={inc.firmaCliente.url} target="_blank" rel="noreferrer" className="underline">
+                  ver firma
+                </a>
+              </>
+            ) : null}
+          </div>
+        )}
         {inc.tipo === 'requiere_otro_tecnico' && (
           <div className="text-[11.5px] font-bold text-warning-700">Requiere otro técnico: la visita ya se hizo, falta la reparación</div>
         )}
         {inc.estado === 'propuesta_pendiente' && inc.propuestaInicio && (
           <div className="text-[12px] font-bold text-primary">
-            Propone: {fechaHoraAr(inc.propuestaInicio)} a {fechaHoraAr(inc.propuestaFin)}
+            {inc.tipo === 'reprogramado_cliente' ? 'El cliente eligió' : 'Propone'}: {fechaHoraAr(inc.propuestaInicio)} a {fechaHoraAr(inc.propuestaFin)}
           </div>
         )}
         {inc.estado === 'rechazada' && (
           <div className="text-[12px] font-bold text-bad">Propuesta rechazada{inc.motivoRechazo ? `: ${inc.motivoRechazo}` : ''}</div>
         )}
-        {inc.estado === 'reprogramada' && inc.pdfReprogramacionError && (
+        {(inc.estado === 'reprogramada' || inc.tipo === 'reprogramado_cliente') && inc.pdfReprogramacionError && (
           <div className="text-[11.5px] font-semibold text-bad">El PDF no se adjuntó al ticket: {inc.pdfReprogramacionError}</div>
         )}
       </>

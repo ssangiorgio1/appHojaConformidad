@@ -35,7 +35,7 @@ El remito/recibo de BO3 hoy es solo comprobante y no toca ningún stock. En BO4 
 ## Modelo de datos (Mongo/mongoose, como el resto de la API)
 
 - **ProductoStock**: `tipo` (`SERIALIZADO` | `CANTIDAD`), código, nombre, categoría padre (de ahí sale el árbol), `odooProductId` opcional, stock mínimo.
-- **UbicacionStock**: `DEPOSITO` o `TECNICO` (con `tecnicoId`).
+- **UbicacionStock**: `DEPOSITO`, `TECNICO` (con `tecnicoId`) o `CLIENTE` (con `clienteId`; agregado 2026-10-16, ver más abajo).
 - **ItemSerie** (solo serializados): producto, `nroSerie`, `imei`, `ubicacionId`, `estado` (`EN_DEPOSITO | EN_TECNICO | INSTALADO | EN_REVISION | RMA | BAJA`), `condicion`, `vehiculoId`/`equipoId` al instalarse. Índice único en serie e IMEI.
 - **StockCantidad**: `(productoId, ubicacionId) → cantidad`. Índice único por par.
 - **MovimientoStock**: libro inmutable. Tipo, origen, destino, producto, cantidad o `itemSerieId`, usuario, fecha, referencia al comprobante.
@@ -67,6 +67,16 @@ El remito/recibo de BO3 hoy es solo comprobante y no toca ningún stock. En BO4 
 
 Los remitos de BO3 no calculan saldos porque nunca tocaron stock. Los saldos iniciales se cargan con un **conteo físico** (depósito y cada técnico) como `AJUSTE` de apertura. Los comprobantes nuevos generan movimientos desde una **fecha de corte**. Lo anterior queda como historial consultable.
 
+## Stock en poder de clientes (agregado 2026-10-16)
+
+A veces **se envía stock directamente a los clientes** (equipos, accesorios o repuestos que quedan en su poder), así que el panel no puede tener solo depósito y técnicos: el cliente es una tercera ubicación.
+
+- **Ubicación `CLIENTE`:** una por cliente, con el mismo modelo (`StockCantidad` y `ItemSerie` por ubicación). El equipo serializado enviado a un cliente pasa a `EN_CLIENTE`, distinto de `INSTALADO` (que es colocado en un vehículo).
+- **Movimientos:** depósito → cliente (envío, con remito), técnico → cliente (el técnico lo deja en el lugar), cliente → depósito o técnico (devolución o retiro). El mismo circuito de `Transferencia` (`PENDIENTE → EN_TRANSITO → RECIBIDA`), porque el cliente confirma la recepción.
+- **Vista en el panel:** en la ficha del cliente, "Stock en su poder" con series y cantidades, quién lo envió y cuándo; además un total por producto para saber cuánto hay "en la calle".
+- **Relación con otros temas:** la entrega de equipo backup o de equipo personal (el acta de retiro/entrega en `docs-retiro-entrega-equipo.md`) hoy no mueve stock. Al instalarse un equipo que el cliente ya tenía en su poder, el consumo sale de ahí y no del técnico.
+- **Reglas a definir:** si el cliente puede quedar con saldo permanente (consignación) o solo en tránsito, si el stock en poder del cliente se factura o es comodato, y qué pasa si el cliente no devuelve algo (¿pasa a `BAJA`, a cobro?).
+
 ## Pendiente de definir
 
 - Cómo es el remito/recibo de BO3 (campos, quién lo usa, si incluye accesorios por cantidad). Falta una captura o el endpoint.
@@ -75,3 +85,4 @@ Los remitos de BO3 no calculan saldos porque nunca tocaron stock. Los saldos ini
 - Si hay una carga inicial de los equipos ya instalados en campo (relacionado con `Equipo` en `ALCANCE_BACKOFFICE.md` §8, que hay que revisar para no duplicar `MovimientoStock`).
 - Si algún día se crea un segundo depósito: si las transferencias entre depósitos pasan por el mismo circuito (sí, es una `TRANSFERENCIA` más).
 - Si Odoo necesita enterarse de los consumos (hoy no: la facturación sale de la orden de venta).
+- Cliente como ubicación de stock: ¿consignación, comodato o venta? ¿quién confirma que el cliente recibió? ¿cómo se concilia con el remito de BO3?

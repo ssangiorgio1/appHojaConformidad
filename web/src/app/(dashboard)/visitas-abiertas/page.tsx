@@ -49,7 +49,7 @@ export default function VisitasAbiertasPage() {
         <div>
           <div className="text-xl font-extrabold lg:text-2xl">Visitas abiertas</div>
           <div className="mt-0.5 text-sm font-semibold text-muted">
-            Viajes que un técnico dejó abiertos (en camino o en sitio). Si una visita quedó pegada, por ejemplo porque otro técnico de la
+            Viajes que un técnico dejó abiertos (en camino o en sitio) y tareas que suspendió para atender otra. Si una visita quedó pegada, por ejemplo porque otro técnico de la
             misma tarea terminó el trabajo, se cierra acá. No se avisa al cliente ni se toca Odoo.
           </div>
         </div>
@@ -73,8 +73,17 @@ export default function VisitasAbiertasPage() {
                 </div>
                 <div className="text-[12.5px] font-semibold text-muted">{v.cliente || 'Cliente sin dato'} · día {v.fecha}</div>
               </div>
-              <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-bold text-text">{ESTADO[v.estado]}</span>
+              {v.suspendida ? (
+                <span className="rounded-full bg-warning-600 px-2.5 py-1 text-[11px] font-bold text-white">Suspendida</span>
+              ) : (
+                <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-bold text-text">{ESTADO[v.estado]}</span>
+              )}
             </div>
+            {v.suspendida && (
+              <div className="text-[12px] font-bold text-warning-700">
+                El técnico suspendió esta tarea{v.motivoSuspension ? `: ${v.motivoSuspension}` : ''}. Estaba {ESTADO[v.estado].toLowerCase()}.
+              </div>
+            )}
             <div className="text-[12.5px] text-muted">
               Salió: {formatIsoDateTime(v.enCaminoAt ?? undefined)} · Llegó: {formatIsoDateTime(v.enSitioAt ?? undefined)} · abierta hace{' '}
               {duracion(v.horasAbierta)}

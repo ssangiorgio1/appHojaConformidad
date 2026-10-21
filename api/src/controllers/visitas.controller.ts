@@ -3,10 +3,20 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { HttpError } from '../middleware/error.middleware.js';
 import { VisitaNotificacionModel } from '../models/VisitaNotificacion.js';
 import { UsuarioModel } from '../models/Usuario.js';
-import { notificarEstadoVisita, buildOptInLink } from '../services/telegram.service.js';
+import { notificarEstadoVisita, buildOptInLink, resolverMomento } from '../services/telegram.service.js';
 import { isTaskAssignedToTechnician } from '../services/calendarTask.service.js';
 import { cerrarVisitasAjenasSiTodoResuelto } from '../services/loteVisita.service.js';
-import type { TareaIdParam, EstadoVisitaInput, FechaQuery, FinalizarVisitaInput } from '../schemas/visita.schema.js';
+import { cerrarSuspensionAbierta } from '../services/suspensionVisita.js';
+import { postNotaInternaTarea } from '../services/odoo.service.js';
+import { decryptSecret } from '../utils/secretBox.js';
+import type {
+  TareaIdParam,
+  EstadoVisitaInput,
+  FechaQuery,
+  FinalizarVisitaInput,
+  SuspenderVisitaInput,
+  ReanudarVisitaInput,
+} from '../schemas/visita.schema.js';
 
 // Cierra el hueco de autorización de setEstadoVisita/finalizarVisitaLote: sin
 // esto, cualquier rol 'tecnico' autenticado podía pasar un tareaOdooId ajeno
@@ -52,6 +62,28 @@ async function assertTecnicoOwnership(tareaOdooId: number, req: Request): Promis
 // al técnico sin poder trabajar.
 const VISITA_VENCE_HORAS = 12;
 
+// Otra visita EN CURSO del técnico (distinta tarea, o la misma tarea en otra fecha: franja reprogramada/partida; el
+// mismo lote en la misma fecha no se bloquea a sí mismo). Una visita suspendida no cuenta: justamente se suspende
+// para poder atender otra tarea.
+async function buscarOtraVisitaEnCurso(tareaOdooId: number, fecha: string, tecnicoId: string) {
+  const desde = new Date(Date.now() - VISITA_VENCE_HORAS * 3_600_000);
+  return VisitaNotificacionModel.findOne({
+    tecnicoId,
+    abierta: true,
+    suspendida: { $ne: true },
+    estado: { $in: ['en_camino', 'en_sitio'] },
+    $nor: [{ tareaOdooId, fecha }],
+    updatedAt: { $gte: desde },
+  }).sort({ updatedAt: -1 });
+}
+
+function errorOtraVisita(otra: { estado: string; tareaOdooId: number }): HttpError {
+  return new HttpError(
+    409,
+    `Ya tenés un ${otra.estado === 'en_camino' ? 'viaje' : 'trabajo'} en curso (tarea #${otra.tareaOdooId}). Terminalo, suspendelo o cancelalo antes de empezar otro.`,
+  );
+}
+
 async function assertSinOtraVisitaAbierta(tareaOdooId: number, fecha: string, req: Request): Promise<void> {
   if (req.user!.role !== 'tecnico') return;
   const tecnicoId = req.user!.usuarioId;
@@ -59,29 +91,19 @@ async function assertSinOtraVisitaAbierta(tareaOdooId: number, fecha: string, re
   const yaAbierta = await VisitaNotificacionModel.exists({ tareaOdooId, tecnicoId, fecha, abierta: true });
   if (yaAbierta) return;
 
-  const desde = new Date(Date.now() - VISITA_VENCE_HORAS * 3_600_000);
-  const otra = await VisitaNotificacionModel.findOne({
-    tecnicoId,
-    abierta: true,
-    estado: { $in: ['en_camino', 'en_sitio'] },
-    // Otra visita = distinta tarea, o la misma tarea en otra fecha (franja reprogramada/partida): el
-    // mismo lote en la misma fecha no se bloquea a sí mismo.
-    $nor: [{ tareaOdooId, fecha }],
-    updatedAt: { $gte: desde },
-  }).sort({ updatedAt: -1 });
-  if (otra) {
-    throw new HttpError(
-      409,
-      `Ya tenés un ${otra.estado === 'en_camino' ? 'viaje' : 'trabajo'} en curso (tarea #${otra.tareaOdooId}). Terminalo o cancelalo antes de empezar otro.`,
-    );
-  }
+  const otra = await buscarOtraVisitaEnCurso(tareaOdooId, fecha, String(tecnicoId));
+  if (otra) throw errorOtraVisita(otra);
 }
 
 // Tarea compartida por 2+ técnicos: el viaje lo gestiona uno solo (el titular, el primero que salió). Si un
 // compañero ya tiene el viaje abierto para esta (tarea, fecha), el otro no abre uno propio — con la ficha
 // desactualizada la PWA todavía le puede ofrecer "Salir hacia destino" — y trabaja con la llegada del titular
 // (ver getVisita.titular). Solo aplica a abrir un viaje nuevo ('en_camino'): un viaje propio ya abierto sigue su curso.
-async function assertSinViajeDeCompanero(tareaOdooId: number, fecha: string, req: Request): Promise<void> {
+//
+// Sin señal, los dos pueden tocar "Salir" y sincronizar en cualquier orden: el titular debe ser quien salió PRIMERO (por la hora
+// real del toque, `ocurrioAt`), no quien sincronizó primero. Si mi salida es anterior a la que ya está registrada, se acepta y
+// pasa a ser la más temprana (getVisita elige el titular por enCaminoAt ascendente).
+async function assertSinViajeDeCompanero(tareaOdooId: number, fecha: string, req: Request, ocurrioAt?: string): Promise<void> {
   if (req.user!.role !== 'tecnico') return;
   const tecnicoId = req.user!.usuarioId;
 
@@ -100,6 +122,7 @@ async function assertSinViajeDeCompanero(tareaOdooId: number, fecha: string, req
     .sort({ enCaminoAt: 1 })
     .populate<{ tecnicoId: { nombre: string } | null }>('tecnicoId', 'nombre');
   if (companero) {
+    if (salioAntes(ocurrioAt, companero.enCaminoAt)) return;
     const nombre = companero.tecnicoId?.nombre || 'Tu compañero';
     throw new HttpError(
       409,
@@ -116,6 +139,16 @@ async function assertSinViajeDeCompanero(tareaOdooId: number, fecha: string, req
 // le volvía "Salir hacia destino"), se le registra su propia visita en sitio, sin traslado (enCaminoAt vacío: no
 // cuenta en los promedios) y sin chat (no manda otro aviso al cliente). Solo si no tiene visita propia para esa
 // (tarea, fecha) y la tarea le está asignada en Odoo.
+// ¿Mi salida (hora real del toque, encolada sin señal) fue anterior a la del compañero? Solo cuenta con una hora válida (ni
+// futura ni de hace más de 24 h, ver resolverMomento) y con un compañero que sí tiene hora de salida registrada.
+export function salioAntes(ocurrioAt: string | undefined, enCaminoCompanero: Date | null | undefined): boolean {
+  if (!ocurrioAt || !enCaminoCompanero) return false;
+  const t = new Date(ocurrioAt).getTime();
+  if (Number.isNaN(t)) return false;
+  const valida = resolverMomento(ocurrioAt, null).getTime() === t;
+  return valida && t < enCaminoCompanero.getTime();
+}
+
 const ASIGNADA_TTL_MS = 5 * 60_000;
 const asignadaCache = new Map<string, { ok: boolean; at: number }>();
 
@@ -140,6 +173,7 @@ async function adoptarViajeDeCompanero(
       ...(acotar ?? {}),
       tecnicoId: { $ne: usuarioId },
       abierta: true,
+      suspendida: { $ne: true },
       estado: 'en_sitio',
       updatedAt: { $gte: desde },
     })
@@ -178,7 +212,7 @@ export const setEstadoVisita = asyncHandler(async (req: Request, res: Response) 
   const { estado, fecha, ocurrioAt } = req.body as EstadoVisitaInput;
 
   await assertTecnicoOwnership(tareaOdooId, req);
-  if (estado === 'en_camino') await assertSinViajeDeCompanero(tareaOdooId, fecha, req);
+  if (estado === 'en_camino') await assertSinViajeDeCompanero(tareaOdooId, fecha, req, ocurrioAt);
   await assertSinOtraVisitaAbierta(tareaOdooId, fecha, req);
   const visita = await notificarEstadoVisita(tareaOdooId, estado, req.user!.usuarioId, fecha, ocurrioAt);
   res.json(visita);
@@ -257,6 +291,9 @@ export const getVisita = asyncHandler(async (req: Request, res: Response) => {
     optedIn: Boolean(visita?.chatId),
     optInLink: buildOptInLink(tareaOdooId),
     titular,
+    // Suspendida por el técnico (solo vale mientras la visita siga abierta).
+    suspendida: Boolean(visita?.abierta && visita?.suspendida),
+    motivoSuspension: visita?.abierta && visita?.suspendida ? (visita.suspensiones.at(-1)?.motivo ?? '') : '',
   });
 });
 
@@ -277,17 +314,31 @@ export const getVisitaActiva = asyncHandler(async (req: Request, res: Response) 
   let visita = await VisitaNotificacionModel.findOne({
     tecnicoId: req.user!.usuarioId,
     abierta: true,
+    suspendida: { $ne: true },
     estado: { $in: ['en_camino', 'en_sitio'] },
   }).sort({ updatedAt: -1 });
   // Sin visita propia pero viajando con un titular que ya llegó: banner de trabajo en progreso para él también.
   if (!visita && req.user!.role === 'tecnico') visita = await adoptarViajeDeCompanero(String(req.user!.usuarioId));
 
+  // Las suspendidas (hasta 24 h) para recordarle al técnico que quedaron pendientes de reanudar.
+  const suspendidas = (
+    await VisitaNotificacionModel.find({
+      tecnicoId: req.user!.usuarioId,
+      abierta: true,
+      suspendida: true,
+      updatedAt: { $gte: new Date(Date.now() - 24 * 3_600_000) },
+    })
+      .sort({ updatedAt: -1 })
+      .select('tareaOdooId fecha suspensiones')
+  ).map((v) => ({ tareaOdooId: v.tareaOdooId, fecha: v.fecha, motivo: v.suspensiones.at(-1)?.motivo ?? '' }));
+
   if (!visita) {
-    res.json({ visita: null });
+    res.json({ visita: null, suspendidas });
     return;
   }
 
   res.json({
+    suspendidas,
     visita: {
       tareaOdooId: visita.tareaOdooId,
       // El front la necesita para poder cancelar/cerrar ESTE viaje puntual
@@ -343,3 +394,68 @@ export const cancelarVisita = asyncHandler(async (req: Request, res: Response) =
   );
   res.status(204).send();
 });
+
+// Suspende la visita en curso del técnico (caso excepcional) para que pueda atender otra tarea cercana y volver:
+// la visita sigue abierta pero deja de contar como "en curso". No avisa al cliente (no cambia de estado) y NO manda nada
+// por Telegram. En Odoo deja SOLO una nota interna en la subtarea (o en la tarea, si no tiene) que el cliente no ve.
+// Idempotente: el reenvío de la cola sin señal no suma otra suspensión ni repite la nota.
+export const suspenderVisita = asyncHandler(async (req: Request, res: Response) => {
+  const { tareaOdooId } = req.params as unknown as TareaIdParam;
+  const { fecha, motivo, ocurrioAt, subtareaOdooIds } = req.body as SuspenderVisitaInput;
+  const tecnicoId = String(req.user!.usuarioId);
+
+  const visita = await VisitaNotificacionModel.findOne({ tareaOdooId, tecnicoId, fecha, abierta: true });
+  if (!visita) throw new HttpError(404, 'No hay una visita abierta de esta tarea para suspender.');
+  if (visita.estado !== 'en_camino' && visita.estado !== 'en_sitio') throw new HttpError(409, 'Solo se puede suspender un viaje o un trabajo en curso.');
+  if (visita.suspendida) {
+    res.json({ tareaOdooId, estado: visita.estado, suspendida: true });
+    return;
+  }
+
+  const momento = resolverMomento(ocurrioAt, visita.enCaminoAt ?? visita.enSitioAt);
+  visita.suspendida = true;
+  visita.suspensiones.push({ desdeAt: momento, hastaAt: null, motivo });
+  await visita.save();
+
+  // Nota interna en Odoo (best-effort: si falla, la suspensión ya quedó). Nunca un comentario público ni al ticket.
+  try {
+    const usuario = await UsuarioModel.findById(tecnicoId);
+    const quien = usuario?.nombre || usuario?.email || 'El técnico';
+    const bodyHtml = `<p><b>Tarea suspendida por el técnico</b> — ${esc(quien)}. Motivo: ${esc(motivo)}</p><p>Nota interna: no la ve el cliente.</p>`;
+    const as = usuario?.odoo ? { login: usuario.odoo.login, password: decryptSecret(usuario.odoo.passwordEnc) } : undefined;
+    for (const taskId of subtareaOdooIds?.length ? subtareaOdooIds : [tareaOdooId]) {
+      await postNotaInternaTarea({ taskId, bodyHtml, as });
+    }
+  } catch (err) {
+    console.error('VISITA_SUSPENDER_ODOO_NOTE_FAILED', tareaOdooId, err);
+  }
+
+  res.json({ tareaOdooId, estado: visita.estado, suspendida: true });
+});
+
+// Reanuda una visita suspendida. Solo si no hay otra en curso (se suspende justamente para atender otra: hay que
+// terminarla o suspenderla antes de volver). Idempotente.
+export const reanudarVisita = asyncHandler(async (req: Request, res: Response) => {
+  const { tareaOdooId } = req.params as unknown as TareaIdParam;
+  const { fecha, ocurrioAt } = req.body as ReanudarVisitaInput;
+  const tecnicoId = String(req.user!.usuarioId);
+
+  const visita = await VisitaNotificacionModel.findOne({ tareaOdooId, tecnicoId, fecha, abierta: true });
+  if (!visita) throw new HttpError(404, 'No hay una visita abierta de esta tarea para reanudar.');
+  if (!visita.suspendida) {
+    res.json({ tareaOdooId, estado: visita.estado, suspendida: false });
+    return;
+  }
+
+  const otra = await buscarOtraVisitaEnCurso(tareaOdooId, fecha, tecnicoId);
+  if (otra) throw errorOtraVisita(otra);
+
+  visita.suspendida = false;
+  cerrarSuspensionAbierta(visita.suspensiones, resolverMomento(ocurrioAt, visita.suspensiones.at(-1)?.desdeAt));
+  await visita.save();
+  res.json({ tareaOdooId, estado: visita.estado, suspendida: false });
+});
+
+function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}

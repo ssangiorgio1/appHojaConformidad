@@ -1,4 +1,5 @@
 import type { ServiceMode } from './serviceMode.js';
+import type { MotivoIntervencion, TipoUnidad } from './types.js';
 
 export interface PhotoSlotDef {
   key: string;
@@ -32,9 +33,19 @@ const PRE_MODE_SLOT: Partial<Record<ServiceMode, PhotoSlotDef>> = {
   reparacion: { key: 'estado_equipo_prereparacion', label: 'Estado del equipo antes de reparar', required: true },
 };
 
-export function prePhotoSlotsFor(mode: ServiceMode): PhotoSlotDef[] {
+// Otro equipo (surtidor, generador, etc.): no hay patente, laterales ni tablero. Se pide el lugar donde va el equipo
+// (instalación) o el equipo a intervenir; en una intervención además queda el slot de "estado antes de intervenir"
+// de PRE_MODE_SLOT. A confirmar con operaciones qué más hace falta fotografiar en estos casos.
+function preSlotsOtroEquipo(mode: ServiceMode): PhotoSlotDef[] {
+  const label =
+    mode === 'instalacion' ? 'Lugar donde se va a instalar el equipo' : mode === 'reparacion' ? 'Equipo a intervenir (vista general)' : 'Equipo y lugar (vista general)';
+  return [{ key: 'lugar_instalacion', label, required: true, multi: true }];
+}
+
+export function prePhotoSlotsFor(mode: ServiceMode, tipoUnidad?: TipoUnidad | null): PhotoSlotDef[] {
+  const base = tipoUnidad === 'otro_equipo' ? preSlotsOtroEquipo(mode) : PRE_PHOTO_SLOTS_BASE;
   const modeSlot = PRE_MODE_SLOT[mode];
-  return modeSlot ? [...PRE_PHOTO_SLOTS_BASE, modeSlot, PRE_EXTRA_SLOT] : [...PRE_PHOTO_SLOTS_BASE, PRE_EXTRA_SLOT];
+  return modeSlot ? [...base, modeSlot, PRE_EXTRA_SLOT] : [...base, PRE_EXTRA_SLOT];
 }
 
 // Fixed, ordered capture guide for POST when an equipment is installed/
@@ -100,10 +111,16 @@ const POST_PHOTO_SLOTS_CAMBIO_EQUIPO: PhotoSlotDef[] = [
   { key: 'cableado_retirado', label: 'Cableado retirado / puntas aisladas', required: false, multi: true },
 ];
 
-export function postPhotoSlotsFor(mode: ServiceMode): PhotoSlotDef[] {
+function postSlotsBase(mode: ServiceMode): PhotoSlotDef[] {
   if (mode === 'retiro') return POST_PHOTO_SLOTS_RETIRO;
   if (mode === 'cambio_equipo') return POST_PHOTO_SLOTS_CAMBIO_EQUIPO;
   return POST_PHOTO_SLOTS_INSTALACION;
+}
+
+// Un equipo que no es un vehículo no tiene tablero ni odómetro: se sacan torpedo y odómetro/horómetro.
+export function postPhotoSlotsFor(mode: ServiceMode, _motivoIntervencion?: unknown, tipoUnidad?: TipoUnidad | null): PhotoSlotDef[] {
+  const slots = postSlotsBase(mode);
+  return tipoUnidad === 'otro_equipo' ? slots.filter((s) => s.key !== 'torpedo' && s.key !== 'odometro') : slots;
 }
 
 // Each checkable item under "Módulos y sensores" (antena/sensor/módulo/

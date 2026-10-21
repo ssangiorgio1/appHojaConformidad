@@ -150,6 +150,41 @@ export async function pushReprogramacionToTicket(params: {
   }
 }
 
+// NOTA INTERNA en una tarea (project.task) de Field Service: solo la ve el personal. A diferencia de un comentario
+// (`mail.mt_comment`), una nota (`mail.mt_note`) no se envía por correo a los seguidores ni se publica para el cliente.
+// Con la cuenta del técnico si la vinculó, si no con la de servicio. Ver la suspensión de una visita.
+export async function postNotaInternaTarea(params: { taskId: number; bodyHtml: string; as?: { login: string; password: string } }): Promise<void> {
+  const kwargs = { body: params.bodyHtml, body_is_html: true, message_type: 'comment', subtype_xmlid: 'mail.mt_note' };
+  try {
+    await withTimeout(
+      params.as
+        ? executeKwAsCredentials(params.as.login, params.as.password, 'project.task', 'message_post', [[params.taskId]], kwargs)
+        : executeKw('project.task', 'message_post', [[params.taskId]], kwargs),
+      'postNotaInternaTarea',
+      UPLOAD_TIMEOUT_MS,
+    );
+  } catch (err) {
+    throw classify(err);
+  }
+}
+
+// Nota (comentario) en el ticket, sin adjunto: por ejemplo cuando coordinación cambia la fecha que había elegido el
+// cliente. Con la cuenta del técnico si la vinculó, si no con la de servicio.
+export async function postTicketNote(params: { ticketId: number; bodyHtml: string; as?: { login: string; password: string } }): Promise<void> {
+  try {
+    const kwargs = { body: params.bodyHtml, body_is_html: true, message_type: 'comment', subtype_xmlid: 'mail.mt_comment' };
+    await withTimeout(
+      params.as
+        ? executeKwAsCredentials(params.as.login, params.as.password, 'helpdesk.ticket', 'message_post', [[params.ticketId]], kwargs)
+        : executeKw('helpdesk.ticket', 'message_post', [[params.ticketId]], kwargs),
+      'postTicketNote',
+      UPLOAD_TIMEOUT_MS,
+    );
+  } catch (err) {
+    throw classify(err);
+  }
+}
+
 // Buscador genérico de res.users por nombre, para elegir a quién agregar
 // como destinatario de scheduleSubtareaReprogramarActivity de más abajo —
 // a diferencia de listTechnicians (calendarTask.service.ts, acotado a quien

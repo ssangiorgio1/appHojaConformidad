@@ -19,7 +19,7 @@ function fechaReporte(ts: number | null): string {
 
 // Unidades dentro del área elegida en el mapa. Cada fila se despliega con todos sus datos; el
 // estado en vivo (bo3) se pide recién al desplegar esa fila, nunca para toda la tabla.
-export function FlotaAreaTabla({ unidades, onLimpiar }: { unidades: FlotaUnidad[]; onLimpiar: () => void }) {
+export function FlotaAreaTabla({ unidades, onLimpiar, titulo = 'Unidades en el área' }: { unidades: FlotaUnidad[]; onLimpiar: () => void; titulo?: string }) {
   const [abierta, setAbierta] = useState<number | null>(null);
   // `visible` maneja la animación: se abre en el frame siguiente al montaje y, al cerrar, la fila
   // se desmonta recién cuando terminó de colapsar.
@@ -51,7 +51,7 @@ export function FlotaAreaTabla({ unidades, onLimpiar }: { unidades: FlotaUnidad[
     <Card className="flex flex-col gap-3 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-extrabold text-text">
-          Unidades en el área · {unidades.length.toLocaleString('es-AR')}
+          {titulo} · {unidades.length.toLocaleString('es-AR')}
         </h2>
         <button type="button" onClick={onLimpiar} className="text-xs font-bold text-primary-600">
           Limpiar selección

@@ -9,6 +9,9 @@ export interface VisitaAbierta {
   tareaOdooId: number;
   fecha: string;
   estado: 'en_camino' | 'en_sitio';
+  // El técnico la suspendió para atender otra tarea cercana (caso excepcional).
+  suspendida?: boolean;
+  motivoSuspension?: string;
   tecnico: { nombre: string; email: string } | null;
   cliente: string;
   enCaminoAt: string | null;
@@ -141,6 +144,8 @@ export interface VerificacionEquipo {
 }
 
 export interface ConformidadDoc {
+  // Posible duplicado de otra hoja de la misma unidad y día; 'pendiente' frena el envío a Odoo hasta que se libere.
+  duplicado?: { de: string; estado: 'pendiente' | 'liberada'; detectadoAt: string; revisadoAt: string | null } | null;
   _id: string;
   clientId: string;
   codigoActa: string;
@@ -155,6 +160,8 @@ export interface ConformidadDoc {
   hora: string;
   fechaHora?: string;
   matricula: string;
+  // Ausente = 'vehiculo'. 'otro_equipo': surtidor, generador, etc. (sin patente ni tablero).
+  tipoUnidad?: 'vehiculo' | 'otro_equipo';
   instalador: string;
   tecnicoId?: string;
   responsableEmpresa: string;
@@ -359,7 +366,9 @@ export interface SubtareaIncidencia {
   motivo: string;
   estado: EstadoSubtareaIncidencia;
   // 'pre_cancelado': el técnico empezó el PRE y no pudo seguir; puede traer una propuesta de nueva fecha y hora.
-  tipo?: 'no_encontrada' | 'pre_cancelado' | 'requiere_otro_tecnico';
+  tipo?: 'no_encontrada' | 'pre_cancelado' | 'requiere_otro_tecnico' | 'reprogramado_cliente';
+  // 'reprogramado_cliente': el cliente pidió reprogramar en el lugar; la fecha elegida va en propuestaInicio/Fin.
+  firmaCliente?: { url: string; nombre: string; dni: string; sinFirma: boolean; motivoSinFirma: string };
   propuestaInicio?: string | null;
   propuestaFin?: string | null;
   motivoRechazo?: string;

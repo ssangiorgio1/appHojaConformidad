@@ -6,6 +6,7 @@ import sharp from 'sharp';
 import { buildPrintHtml, type PrintableConformidad } from '@wara/shared';
 import { buildObjectKey, uploadBuffer } from './r2.service.js';
 import { buildReprogramacionHtml, type ReprogramacionPdfData } from './reprogramacionPdf.js';
+import { buildReprogramacionClienteHtml, type ReprogramacionClienteData } from './reprogramacionClientePdf.js';
 import { buildConstanciaVisitaFallidaHtml, type ConstanciaVisitaFallidaData } from './constanciaVisitaFallidaPdf.js';
 import { buildRetiroEquipoHtml, type RetiroEquipoPdfData } from './retiroEquipoPdf.js';
 
@@ -226,6 +227,11 @@ export function buildReprogramacionPdfBuffer(data: ReprogramacionPdfData): Promi
 // Constancia de visita fallida (ver constanciaVisitaFallidaPdf.ts). Sin caché, igual que la de reprogramación.
 export function buildConstanciaVisitaFallidaPdfBuffer(data: ConstanciaVisitaFallidaData): Promise<Buffer> {
   return renderPdfBuffer(async () => buildConstanciaVisitaFallidaHtml(data, LOGO_DATA_URI));
+}
+
+// Constancia de reprogramación a pedido del cliente, con su firma (ver reprogramacionClientePdf.ts).
+export function buildReprogramacionClientePdfBuffer(data: ReprogramacionClienteData): Promise<Buffer> {
+  return renderPdfBuffer(async () => buildReprogramacionClienteHtml(data, LOGO_DATA_URI));
 }
 
 // Acta de retiro / entrega de equipo (ver retiroEquipoPdf.ts). Sin caché: se genera una vez por acta.

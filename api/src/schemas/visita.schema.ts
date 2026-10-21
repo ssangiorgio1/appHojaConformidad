@@ -32,7 +32,23 @@ export const finalizarVisitaSchema = z.object({
   ocurrioAt: ocurrioAtField,
 });
 
+// Suspender la visita en curso para atender otra tarea cercana (caso excepcional): el motivo es obligatorio.
+export const suspenderVisitaSchema = z.object({
+  fecha: fechaField,
+  motivo: z.string().trim().min(1, 'El motivo es obligatorio').max(300),
+  // Subtareas (unidades) de esta tarea a las que se deja la nota interna de Odoo. Sin ellas (tarea suelta), va en la tarea.
+  subtareaOdooIds: z.array(z.number().int().positive()).max(50).optional(),
+  ocurrioAt: ocurrioAtField,
+});
+
+export const reanudarVisitaSchema = z.object({
+  fecha: fechaField,
+  ocurrioAt: ocurrioAtField,
+});
+
 export type TareaIdParam = z.infer<typeof tareaIdParamSchema>;
 export type FechaQuery = z.infer<typeof fechaQuerySchema>;
 export type EstadoVisitaInput = z.infer<typeof estadoVisitaSchema>;
 export type FinalizarVisitaInput = z.infer<typeof finalizarVisitaSchema>;
+export type SuspenderVisitaInput = z.infer<typeof suspenderVisitaSchema>;
+export type ReanudarVisitaInput = z.infer<typeof reanudarVisitaSchema>;

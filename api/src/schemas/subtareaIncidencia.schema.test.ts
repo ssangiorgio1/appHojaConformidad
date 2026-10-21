@@ -31,6 +31,37 @@ describe('createSubtareaIncidenciaSchema', () => {
   });
 });
 
+const PNG_1PX = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const cliente = { ...base, tipo: 'reprogramado_cliente' as const, propuestaInicio: '2026-10-09T13:00:00.000Z', propuestaFin: '2026-10-09T14:00:00.000Z' };
+
+describe('reprogramado_cliente', () => {
+  it('acepta con firma (nombre y DNI) o con "no hay quien firme" y motivo', () => {
+    expect(createSubtareaIncidenciaSchema.safeParse({ ...cliente, firma: { png: PNG_1PX, nombre: 'Ana Pérez', dni: '30111222' } }).success).toBe(true);
+    expect(createSubtareaIncidenciaSchema.safeParse({ ...cliente, sinFirma: { motivo: 'Se fue el encargado' } }).success).toBe(true);
+  });
+
+  it('exige una de las dos, no ambas, y la fecha elegida', () => {
+    expect(createSubtareaIncidenciaSchema.safeParse(cliente).success).toBe(false);
+    expect(
+      createSubtareaIncidenciaSchema.safeParse({ ...cliente, firma: { png: PNG_1PX, nombre: 'Ana' }, sinFirma: { motivo: 'x' } }).success,
+    ).toBe(false);
+    expect(createSubtareaIncidenciaSchema.safeParse({ ...base, tipo: 'reprogramado_cliente', sinFirma: { motivo: 'x' } }).success).toBe(false);
+  });
+
+  it('rechaza una firma que no es un PNG', () => {
+    const falso = 'data:image/png;base64,' + Buffer.from('no soy un png').toString('base64');
+    expect(createSubtareaIncidenciaSchema.safeParse({ ...cliente, firma: { png: falso, nombre: 'Ana' } }).success).toBe(false);
+  });
+
+  it('la firma también se acepta en los otros tipos (no está / reprogramar), pero no firma y ausente a la vez', () => {
+    expect(createSubtareaIncidenciaSchema.safeParse({ ...base, firma: { png: PNG_1PX, nombre: 'Ana' } }).success).toBe(true);
+    expect(createSubtareaIncidenciaSchema.safeParse({ ...base, sinFirma: { motivo: 'Cliente ausente' } }).success).toBe(true);
+    expect(
+      createSubtareaIncidenciaSchema.safeParse({ ...base, firma: { png: PNG_1PX, nombre: 'Ana' }, sinFirma: { motivo: 'x' } }).success,
+    ).toBe(false);
+  });
+});
+
 describe('resolveSubtareaIncidenciaSchema', () => {
   it('aceptar sin hora es válido (usa la propuesta)', () => {
     expect(resolveSubtareaIncidenciaSchema.safeParse({ estado: 'reprogramada' }).success).toBe(true);

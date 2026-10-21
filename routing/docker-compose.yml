@@ -1,0 +1,12 @@
+# Servicio de rutas por calle (OSRM) para probar localmente. Los datos del mapa NO van en el repositorio:
+# se generan con preparar.sh en C:\osrm-data (ver README.md).
+services:
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend
+    container_name: wara-osrm
+    command: osrm-routed --algorithm mld --max-table-size 500 /data/mendoza.osrm
+    ports:
+      - "5000:5000"
+    volumes:
+      - C:/osrm-data:/data:ro
+    restart: unless-stopped

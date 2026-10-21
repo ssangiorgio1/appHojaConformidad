@@ -2,7 +2,7 @@ import { env } from './env.js';
 
 export class VisionbloError extends Error {
   constructor(
-    public code: 'NOT_CONFIGURED' | 'SESSION_EXPIRED' | 'HTTP' | 'TIMEOUT',
+    public code: 'NOT_CONFIGURED' | 'SESSION_EXPIRED' | 'HTTP' | 'TIMEOUT' | 'NETWORK',
     message: string,
   ) {
     super(message);
@@ -34,7 +34,10 @@ async function visionbloRequest(path: string, body?: unknown, timeoutMs = TIMEOU
     if (err instanceof Error && err.name === 'TimeoutError') {
       throw new VisionbloError('TIMEOUT', `VisionBLO no respondió en ${timeoutMs / 1000}s (${path}).`);
     }
-    throw err;
+    // Sin conexión con VisionBLO (ej. el connect timeout de 10 s de undici, 'fetch failed'): se informa como
+    // 502 con un mensaje claro en vez de caer en un 500 "Internal server error".
+    const causa = err instanceof Error && err.cause instanceof Error ? ` (${(err.cause as NodeJS.ErrnoException).code ?? err.cause.name})` : '';
+    throw new VisionbloError('NETWORK', `No se pudo conectar con VisionBLO (${path})${causa}. Probá de nuevo en un momento.`);
   }
   const text = await res.text();
   if (!res.ok) throw new VisionbloError('HTTP', `VisionBLO respondió ${res.status} en ${path}: ${text.slice(0, 200)}`);

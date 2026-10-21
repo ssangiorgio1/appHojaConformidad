@@ -53,6 +53,13 @@ export function buildObjectKey(params: {
   return `fotos/${year}/${month}/${params.codigoActa}_${params.fase}_${suffix}_${timestamp}_${params.indice ?? 0}.${ext}`;
 }
 
+// Firma que el cliente dibuja al reprogramar en el lugar (incidencia 'reprogramado_cliente'). La sube la API
+// misma (viene en el POST de la incidencia), así que no pasa por la URL prefirmada. Mismo sufijo opaco que el resto.
+export function buildIncidenciaFirmaKey(localId: string, fecha: string): string {
+  const [year, month] = fecha.split('-');
+  return `firmas/${year}/${month}/incidencia_${deriveOpaqueSuffix(localId)}_firma.png`;
+}
+
 export async function createPresignedUploadUrl(key: string, contentType: string) {
   const command = new PutObjectCommand({
     Bucket: env.R2_BUCKET_NAME,

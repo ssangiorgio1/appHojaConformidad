@@ -4,7 +4,23 @@ const fechaField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'fecha must be YYYY-M
 
 export const createSubtareaIncidenciaSchema = z
   .object({
-  tipo: z.enum(['no_encontrada', 'pre_cancelado']).default('no_encontrada'),
+  tipo: z.enum(['no_encontrada', 'pre_cancelado', 'reprogramado_cliente']).default('no_encontrada'),
+  // Firma (en cualquier tipo; obligatoria solo en 'reprogramado_cliente') del cliente (PNG en data URI, la sube la API a R2) con nombre y DNI de quien
+  // firmó, o `sinFirma` con el motivo cuando no había quien firmara. Una de las dos es obligatoria.
+  firma: z
+    .object({
+      png: z
+        .string()
+        .startsWith('data:image/png;base64,')
+        .max(400_000)
+        .refine((v) => Buffer.from(v.slice('data:image/png;base64,'.length), 'base64').subarray(0, 8).toString('hex') === '89504e470d0a1a0a', {
+          message: 'La firma no es un PNG válido',
+        }),
+      nombre: z.string().trim().min(1).max(120),
+      dni: z.string().trim().max(20).default(''),
+    })
+    .optional(),
+  sinFirma: z.object({ motivo: z.string().trim().min(1, 'El motivo es obligatorio').max(300) }).optional(),
   // Hora agendada de la visita (ISO). Con ella la API compara la llegada del técnico y sugiere si fue visita
   // fallida o llegada tarde (ver clasificarIncidencia.ts).
   horaAgendada: z.string().datetime().optional(),
@@ -30,6 +46,15 @@ export const createSubtareaIncidenciaSchema = z
   clientId: z.string().min(8).max(64).optional(),
   ocurrioAt: z.string().datetime().optional(),
   })
+  .refine((d) => d.tipo !== 'reprogramado_cliente' || (!!d.propuestaInicio && !!d.propuestaFin), {
+    message: 'La reprogramación a pedido del cliente lleva la fecha y hora que eligió',
+    path: ['propuestaInicio'],
+  })
+  .refine((d) => d.tipo !== 'reprogramado_cliente' || !!d.firma !== !!d.sinFirma, {
+    message: 'Firma del cliente o "no hay quien firme" con motivo (una sola)',
+    path: ['firma'],
+  })
+  .refine((d) => !(d.firma && d.sinFirma), { message: 'Firma del cliente o "cliente ausente" con motivo (una sola)', path: ['firma'] })
   .refine((d) => !d.propuestaInicio === !d.propuestaFin, { message: 'propuestaInicio y propuestaFin van juntos', path: ['propuestaFin'] })
   .refine((d) => !d.propuestaInicio || !d.propuestaFin || d.propuestaFin > d.propuestaInicio, {
     message: 'propuestaFin debe ser posterior a propuestaInicio',

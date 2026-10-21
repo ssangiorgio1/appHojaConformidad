@@ -17,6 +17,17 @@ const UltimoEnvioSchema = new Schema(
   { _id: false },
 );
 
+// Cada vez que el técnico suspendió esta visita (la dejó para atender otra tarea cercana y volvió): desde/hasta y por
+// qué. Los reportes descuentan ese tiempo (ver suspensionVisita.ts). `hastaAt` queda vacío mientras sigue suspendida.
+const SuspensionSchema = new Schema(
+  {
+    desdeAt: { type: Date, required: true },
+    hastaAt: { type: Date, default: null },
+    motivo: { type: String, required: true, trim: true },
+  },
+  { _id: false },
+);
+
 // Un documento = un VIAJE del técnico a esa tarea, no "el estado de la
 // tarea" — una misma tareaOdooId puede tener más de uno en el tiempo (ej.
 // coordinación reprograma una unidad de un lote y el técnico vuelve otro
@@ -48,6 +59,10 @@ const VisitaNotificacionSchema = new Schema(
     // leerlo.
     fecha: { type: String, required: true },
     abierta: { type: Boolean, default: true, index: true },
+    // Visita suspendida por el técnico (caso excepcional): sigue abierta, pero no cuenta como "en curso" — no
+    // bloquea empezar otra tarea ni sale en el banner. Se reanuda desde la ficha, o se cierra como cualquier visita.
+    suspendida: { type: Boolean, default: false },
+    suspensiones: { type: [SuspensionSchema], default: [] },
     // Lo completa el webhook de Telegram cuando el cliente toca el link de
     // opt-in (t.me/<bot>?start=<tareaOdooId>) — null hasta ese momento, y el
     // envío de mensajes queda en SKIPPED_NO_CHAT mientras tanto.

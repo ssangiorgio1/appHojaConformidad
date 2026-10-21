@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { IconX } from '@/components/ui/Icons';
+import { useToast } from '@/components/ui/Toast';
 import { resolveSubtareaIncidencia, listTechnicians, ApiError } from '@/lib/api';
 import { useApiData } from '@/lib/useApiData';
 import { useAuth } from '@/auth/AuthContext';
@@ -49,6 +50,7 @@ export function ReprogramarIncidenciaPanel({
 }) {
   useBodyScrollLock();
   const { getIdToken } = useAuth();
+  const toast = useToast();
   const { data: technicians } = useApiData(listTechnicians, []);
   // Con una propuesta del técnico, arranca con su fecha y hora (coordinación puede cambiarlas al aceptar).
   const propuesta = incidencia.estado === 'propuesta_pendiente' && incidencia.propuestaInicio ? arFechaHora(incidencia.propuestaInicio) : null;
@@ -87,6 +89,7 @@ export function ReprogramarIncidenciaPanel({
         technicianId: technicianId === '' ? undefined : Number(technicianId),
       });
       await onUpdated();
+      toast(propuesta ? 'Propuesta aceptada con otra hora correctamente.' : 'Visita reprogramada correctamente.');
       onClose();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No se pudo reprogramar la visita.');

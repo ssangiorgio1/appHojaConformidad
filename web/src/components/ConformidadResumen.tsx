@@ -14,7 +14,7 @@ import type { ConformidadDoc } from '@/lib/types';
 // Combina los slots de los 3 modos — ver misma nota en conformidades/[id]/page.tsx.
 const ALL_MODES: ServiceMode[] = ['instalacion', 'retiro', 'reparacion'];
 const PHOTO_SLOT_LABELS: Record<'pre' | 'post', Record<string, string>> = {
-  pre: Object.fromEntries(ALL_MODES.flatMap((m) => prePhotoSlotsFor(m)).map((s) => [s.key, s.label])),
+  pre: Object.fromEntries(ALL_MODES.flatMap((m) => [...prePhotoSlotsFor(m), ...prePhotoSlotsFor(m, 'otro_equipo')]).map((s) => [s.key, s.label])),
   post: Object.fromEntries(ALL_MODES.flatMap((m) => postPhotoSlotsFor(m)).map((s) => [s.key, s.label])),
 };
 

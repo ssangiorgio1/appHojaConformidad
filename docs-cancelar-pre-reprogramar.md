@@ -80,3 +80,20 @@ Si además se conserva el PRE como borrador, se suma el trabajo del tema 3.
 
 - Cómo se entera el técnico de un rechazo (¿actividad o nota en la subtarea, o aviso en la PWA?).
 - Con propuestas por unidad, si el PDF sale uno por unidad o uno solo con todas las unidades y sus horarios (recomendado: uno solo).
+
+## Reprogramación a pedido del cliente, con firma (2026-10-20)
+
+Tercer motivo de incidencia, `reprogramado_cliente`: el técnico fue al lugar y el cliente pidió pasar la visita a otro día. Queda constancia firmada.
+
+**Decisiones:**
+- El PDF "Constancia de reprogramación a pedido del cliente" **sale al reportar** (la fecha ya está acordada con el cliente), no cuando coordinación responde. Se adjunta al ticket, igual que la visita fallida, y coordinación recibe la actividad en la tarea.
+- La incidencia queda `propuesta_pendiente` con la fecha que eligió el cliente. Coordinación puede aceptar, cambiar la hora o rechazar. El PDF queda con la fecha del cliente; si coordinación pone otra, **solo se deja una nota en el ticket** (no hay segundo PDF).
+- Firma del cliente (PNG, nombre y DNI opcional) o **"No hay quien firme"** con motivo. Una de las dos es obligatoria.
+- **Se cobra** `VIS.003` (visita fallida) en este caso.
+- El PRE empezado queda como borrador.
+
+**API:** tipo y `firmaCliente` en `SubtareaIncidencia`; el PNG viaja en el POST (`firma.png`, data URI ≤ 400.000 caracteres, validado por bytes mágicos) y la API lo sube a R2 con `buildIncidenciaFirmaKey`; `reprogramacionClientePdf.ts` + `buildReprogramacionClientePdfBuffer`; `postTicketNote` para la nota. Si falla la subida de la firma el reporte no se guarda (el reintento por `clientId` es idempotente). Si falla el envío del PDF queda `pdfReprogramacionError`, que el panel muestra.
+**PWA:** tercera opción "Lo pidió el cliente" en `ReporteVisitaCampos` (fecha obligatoria, `SignaturePad`, nombre, DNI o "No hay quien firme"); `errorReporte` y `firmaAlBody`. Funciona sin señal por la cola (la firma va dentro del reporte encolado).
+**Panel:** en Incidencias muestra el tipo, quién firmó con enlace a la firma (o el motivo de que no hubo), y el error del PDF.
+
+**Falta:** probar contra el Odoo de staging, ver el PDF renderizado con una firma real, y probar la pantalla en un celular. No hay reintento del PDF si falló al crear (queda visible el error en el panel).

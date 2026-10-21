@@ -1,4 +1,4 @@
-import { CHECKLIST_ITEMS, DETAIL_FIELD_BY_KEY, type ChecklistValue } from './checklist.js';
+import { checklistItemsFor, DETAIL_FIELD_BY_KEY, type ChecklistValue } from './checklist.js';
 import { EQUIP_GROUPS, EQUIP_CHECK_FIELDS, EQUIP_ITEM_PHOTO_LABEL, formatSeries, isEquipoFieldVisible } from './equipo.js';
 import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY, EXTRA_RETIRO_PHOTOS_KEY, VIDEO_SERVICIO_KEY, type PhotoSlotDef } from './photoSlots.js';
 import { getServiceMode } from './serviceMode.js';
@@ -15,6 +15,7 @@ export type PrintableConformidad = Pick<
   | 'fecha'
   | 'hora'
   | 'matricula'
+  | 'tipoUnidad'
   | 'instalador'
   | 'responsableEmpresa'
   | 'status'
@@ -64,7 +65,7 @@ function siNoBadge(value: ChecklistValue): string {
 
 function checklistTable(record: PrintableConformidad, soloPre = false): string {
   let rows = '';
-  for (const item of CHECKLIST_ITEMS) {
+  for (const item of checklistItemsFor(record.tipoUnidad)) {
     if (item.group) {
       rows += `<tr class="subhead-row"><td colspan="${soloPre ? 2 : 3}" class="subhead">${esc(item.group)}</td></tr>`;
     }
@@ -285,8 +286,8 @@ export async function buildPrintHtml(
   const mode = getServiceMode(record);
 
   const [prePhotos, postPhotos] = await Promise.all([
-    photosBlock(prePhotoSlotsFor(mode), record.pre.fotos, 'Fotos PRE', resolvePhotoSrc),
-    soloPre ? '' : photosBlock(postPhotoSlotsFor(mode), record.post.fotos, 'Fotos POST', resolvePhotoSrc),
+    photosBlock(prePhotoSlotsFor(mode, record.tipoUnidad), record.pre.fotos, 'Fotos PRE', resolvePhotoSrc),
+    soloPre ? '' : photosBlock(postPhotoSlotsFor(mode, undefined, record.tipoUnidad), record.post.fotos, 'Fotos POST', resolvePhotoSrc),
   ]);
   // Lo que escribe el técnico en el paso "Observaciones" del PRE — lo ve el
   // cliente. Foto.descripcion (qué encontró en la foto extra) es solo para el
@@ -401,7 +402,7 @@ export async function buildPrintHtml(
 
   <div class="keep-together">
     <table class="info-table">
-      <tr><td class="k">Cliente</td><td class="v">${esc(record.cliente)}</td><td class="k">Matrícula</td><td class="v">${esc(record.matricula)}</td></tr>
+      <tr><td class="k">Cliente</td><td class="v">${esc(record.cliente)}</td><td class="k">${record.tipoUnidad === 'otro_equipo' ? 'Equipo' : 'Matrícula'}</td><td class="v">${esc(record.matricula)}</td></tr>
       <tr><td class="k">Fecha y hora</td><td class="v">${esc(fmtDateTime(record.fecha, record.hora))}</td><td class="k">Técnico</td><td class="v">${esc(record.instalador)}</td></tr>
       <tr>
         <td class="k">Responsable empresa</td>
@@ -412,7 +413,7 @@ export async function buildPrintHtml(
   </div>
 
   <div class="keep-together">
-    <div class="section-banner">Revisión general del vehículo antes de comenzar la instalación</div>
+    <div class="section-banner">${record.tipoUnidad === 'otro_equipo' ? 'Revisión general del equipo antes de comenzar' : 'Revisión general del vehículo antes de comenzar la instalación'}</div>
     ${checklistTable(record, soloPre)}
   </div>
 

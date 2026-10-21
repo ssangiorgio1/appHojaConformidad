@@ -39,6 +39,10 @@ const envSchema = z.object({
   QSTASH_CURRENT_SIGNING_KEY: z.string().optional(),
   QSTASH_NEXT_SIGNING_KEY: z.string().optional(),
 
+  // Servidor de rutas por calle (OSRM, ver routing/ en la raíz del repo), ej. http://localhost:5000. Opcional: sin
+  // esto /api/ruteo responde que no está disponible y el panel usa las zonas por radio en línea recta.
+  ROUTING_URL: z.string().url().optional(),
+
   CORS_ORIGINS: z.string().default(''),
 
   // Alertas al cliente por Telegram (seguimiento de visita) — opcionales:
@@ -65,4 +69,5 @@ export const env = {
   // Render/most dashboards store multi-line PEM keys with literal "\n" sequences
   FIREBASE_PRIVATE_KEY: parsed.data.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
   ODOO_URL: parsed.data.ODOO_URL.replace(/\/+$/, ''),
+  ROUTING_URL: parsed.data.ROUTING_URL?.replace(/\/+$/, ''),
 };

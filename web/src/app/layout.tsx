@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import { AuthProvider } from '@/auth/AuthContext';
 import { AppShellBehavior } from '@/components/AppShellBehavior';
+import { ToastProvider } from '@/components/ui/Toast';
 import './globals.css';
 
 const inter = Inter({
@@ -35,7 +36,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="es">
       <body className={`${inter.variable} font-sans antialiased`}>
         <AppShellBehavior />
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </AuthProvider>
       </body>
     </html>
   );

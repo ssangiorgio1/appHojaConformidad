@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { CHECKLIST_ITEMS, DETAIL_FIELD_BY_KEY } from '@wara/shared/src/checklist';
+import { checklistItemsFor, DETAIL_FIELD_BY_KEY } from '@wara/shared/src/checklist';
 import { EQUIP_CHECK_FIELDS, EQUIP_GROUPS, EQUIP_ITEM_PHOTO_LABEL } from '@wara/shared/src/equipo';
 import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY, VIDEO_SERVICIO_KEY } from '@wara/shared/src/photoSlots';
 import type { ServiceMode } from '@wara/shared/src/serviceMode';
@@ -20,6 +20,7 @@ import {
   listUsuarios,
   searchCambioEquipoPendientes,
   setAltaConformidad,
+  liberarDuplicadoConformidad,
 } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
 import { useApiData } from '@/lib/useApiData';
@@ -57,7 +58,7 @@ function checklistTone(value: ChecklistValue): BadgeTone {
 // "torpedo"/"odometro", por eso el orden no importa).
 const ALL_MODES: ServiceMode[] = ['instalacion', 'retiro', 'reparacion'];
 const PHOTO_SLOT_LABELS: Record<'pre' | 'post', Record<string, string>> = {
-  pre: Object.fromEntries(ALL_MODES.flatMap((m) => prePhotoSlotsFor(m)).map((s) => [s.key, s.label])),
+  pre: Object.fromEntries(ALL_MODES.flatMap((m) => [...prePhotoSlotsFor(m), ...prePhotoSlotsFor(m, 'otro_equipo')]).map((s) => [s.key, s.label])),
   post: Object.fromEntries(ALL_MODES.flatMap((m) => postPhotoSlotsFor(m)).map((s) => [s.key, s.label])),
 };
 
@@ -94,6 +95,11 @@ export default function ConformidadDetailPage() {
   // Actualiza con la respuesta del servidor en vez de refetchear todo el
   // registro — evita que la página entera vuelva a mostrar "Cargando..."
   // (loading pisa el `c` ya cargado) solo por tildar un check.
+  async function handleLiberarDuplicado() {
+    const idToken = await getIdToken();
+    setData(await liberarDuplicadoConformidad(idToken, id));
+  }
+
   async function handleToggleAlta(area: 'mesaAyuda' | 'coordinacion', checked: boolean) {
     const idToken = await getIdToken();
     const updated = await setAltaConformidad(idToken, id, area, checked);
@@ -127,17 +133,45 @@ export default function ConformidadDetailPage() {
   // api/src/controllers/conformidades.controller.ts) — no hay URL que
   // guardar, así que acá solo lo abrimos en una pestaña nueva, igual que en
   // la PWA (src/app/(app)/ver/[id]/page.tsx).
+  //
+  // La pestaña se abre ANTES de pedir el PDF, mientras el click del usuario
+  // todavía cuenta como gesto: generarlo tarda varios segundos (Puppeteer) y un
+  // window.open posterior a ese await lo bloquea el navegador sin avisar — la
+  // primera vez parecía "no hacer nada" y recién después dejaba abrirlo.
   async function handleGeneratePdf() {
+    if (generatingPdf) return;
     setGeneratingPdf(true);
     setPdfError(null);
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.title = 'Generando PDF...';
+      win.document.body.style.cssText = 'font-family:system-ui,sans-serif;display:grid;place-items:center;height:100vh;margin:0;color:#555';
+      win.document.body.textContent = 'Generando PDF, esperá unos segundos...';
+    }
     try {
       const idToken = await getIdToken();
       const blob = await generateConformidadPdf(idToken, id);
       const blobUrl = URL.createObjectURL(blob);
-      window.open(blobUrl, '_blank');
+      if (win && !win.closed) {
+        win.location.href = blobUrl;
+      } else {
+        // Pestaña bloqueada o cerrada a mano: se descarga para que nunca falle en silencio.
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = `conformidad-${c?.codigoActa ?? id}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
       setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
     } catch (err) {
-      setPdfError((err as Error).message || 'No se pudo generar el PDF.');
+      win?.close();
+      const msg = (err as Error).message;
+      setPdfError(
+        err instanceof TypeError
+          ? 'No se pudo conectar con el servidor. Probá de nuevo.'
+          : `No se pudo generar el PDF${msg ? `: ${msg}` : '.'} Probá de nuevo.`,
+      );
     } finally {
       setGeneratingPdf(false);
     }
@@ -149,8 +183,10 @@ export default function ConformidadDetailPage() {
     const rows: Array<
       { kind: 'header'; label: string } | { kind: 'item'; key: string; label: string; value: ChecklistValue; detalle?: string }
     > = [];
-    for (const item of CHECKLIST_ITEMS) {
-      const isGroup6 = item.key.startsWith('item6_');
+    const otroEquipo = c?.tipoUnidad === 'otro_equipo';
+    for (const item of checklistItemsFor(c?.tipoUnidad)) {
+      // El encabezado "6. Revisión de luces del tablero" es del vehículo.
+      const isGroup6 = !otroEquipo && item.key.startsWith('item6_');
       if (isGroup6 && !inGroup6) {
         rows.push({ kind: 'header', label: '6. Revisión de luces del tablero en general' });
         inGroup6 = true;
@@ -162,7 +198,7 @@ export default function ConformidadDetailPage() {
       rows.push({ kind: 'item', key: item.key, label: item.label, value: phase.checklist[item.key], detalle });
     }
     return rows;
-  }, [phase]);
+  }, [phase, c?.tipoUnidad]);
 
   if (loading && !c) return <div className="p-6 text-sm font-semibold text-muted">Cargando...</div>;
   if (error || !c) return <div className="p-6 text-sm font-semibold text-bad">{error || 'No encontrado'}</div>;
@@ -176,6 +212,20 @@ export default function ConformidadDetailPage() {
         <span className="font-bold text-text">{c.codigoActa}</span>
       </Link>
 
+      {c.duplicado?.estado === 'pendiente' && (
+        <Card className="flex flex-wrap items-center justify-between gap-3 border border-bad p-4">
+          <div className="text-[13px] font-semibold text-bad">
+            Posible duplicado: ya existe otra hoja de esta unidad el mismo día. No se envía a Odoo hasta que la revises.{' '}
+            <Link href={`/conformidades/${c.duplicado.de}`} className="underline">
+              Ver la otra hoja
+            </Link>
+          </div>
+          <button onClick={handleLiberarDuplicado} className="rounded-md bg-surface px-3 py-2 text-[12.5px] font-bold shadow-soft-sm">
+            No es duplicado, liberar
+          </button>
+        </Card>
+      )}
+
       <Card className="flex flex-col gap-4 p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="text-lg font-extrabold">{c.cliente || 'Sin nombre de cliente'}</div>
@@ -186,8 +236,12 @@ export default function ConformidadDetailPage() {
               disabled={generatingPdf}
               className="flex items-center gap-1.5 rounded-md bg-surface px-3 py-2 text-[12.5px] font-bold shadow-soft-sm disabled:opacity-60"
             >
-              <IconDocument />
-              {generatingPdf ? 'Generando...' : 'Ver PDF'}
+              {generatingPdf ? (
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden />
+              ) : (
+                <IconDocument />
+              )}
+              {generatingPdf ? 'Generando PDF...' : 'Ver PDF'}
             </button>
           </div>
         </div>

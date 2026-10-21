@@ -12,6 +12,10 @@ export const historialUnidadQuerySchema = z.object({
   matricula: z.string().trim().min(2).max(40),
 });
 
+export const seriesEquiposBodySchema = z.object({
+  equipoIds: z.array(z.coerce.number().int().positive()).min(1).max(300),
+});
+
 export const equipoIdParamsSchema = z.object({
   equipoId: z.coerce.number().int().positive(),
 });

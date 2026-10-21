@@ -1,3 +1,4 @@
+import { buscarHojaPrevia } from '../services/duplicidadUnidad.service.js';
 import { audit } from '../services/audit.service.js';
 import type { Request, Response } from 'express';
 import { Types } from 'mongoose';
@@ -178,6 +179,7 @@ export const createConformidad = asyncHandler(async (req: Request, res: Response
     fecha: body.fecha,
     hora: body.hora,
     matricula: body.matricula,
+    tipoUnidad: body.tipoUnidad ?? 'vehiculo',
     instalador: body.instalador,
     responsableEmpresa: body.responsableEmpresa,
     status: 'pendiente_post',
@@ -214,7 +216,32 @@ export const createConformidad = asyncHandler(async (req: Request, res: Response
     }
   }
 
+  // Otra hoja de la misma unidad y día (otro técnico, sin señal, o un doble toque): se guarda igual pero queda frenada
+  // para Odoo hasta que coordinación la revise. Best-effort: un fallo acá nunca debe perder la hoja.
+  try {
+    const previa = await buscarHojaPrevia(record);
+    if (previa) {
+      record.duplicado = { de: new Types.ObjectId(previa), estado: 'pendiente', detectadoAt: new Date(), revisadoPor: null, revisadoAt: null };
+      await record.save();
+      console.warn('CONFORMIDAD_POSIBLE_DUPLICADO', { id: String(record._id), de: previa });
+    }
+  } catch (err) {
+    console.error('CONFORMIDAD_DUPLICADO_CHECK_FAILED', record._id, err);
+  }
+
   res.status(201).json(record);
+});
+
+// Coordinación/admin revisan un posible duplicado: 'liberar' = no lo es (sigue su curso, se envía a Odoo).
+export const resolverDuplicadoConformidad = asyncHandler(async (req: Request, res: Response) => {
+  const record = await ConformidadModel.findOne({ _id: req.params.id, deletedAt: null });
+  if (!record) throw new HttpError(404, 'Conformidad not found');
+  if (!record.duplicado) throw new HttpError(400, 'Esta hoja no está marcada como posible duplicado');
+  record.duplicado.estado = 'liberada';
+  record.duplicado.revisadoPor = new Types.ObjectId(String(req.user!.usuarioId));
+  record.duplicado.revisadoAt = new Date();
+  await record.save();
+  res.json(record);
 });
 
 // Vinculación manual (o de respaldo, si no se pudo en el momento de crear la
@@ -322,7 +349,7 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
     throw new HttpError(400, 'PRE must be finished before submitting POST data');
   }
 
-  const topLevel = ['numero', 'cliente', 'fecha', 'hora', 'matricula', 'instalador', 'responsableEmpresa', 'tipoServicio', 'motivoIntervencion', 'motivoIntervencionDetalle', 'cambioEquipoRazon', 'cambioEquipoRazonDetalle'] as const;
+  const topLevel = ['numero', 'cliente', 'fecha', 'hora', 'matricula', 'tipoUnidad', 'instalador', 'responsableEmpresa', 'tipoServicio', 'motivoIntervencion', 'motivoIntervencionDetalle', 'cambioEquipoRazon', 'cambioEquipoRazonDetalle'] as const;
   for (const key of topLevel) {
     if (body[key] !== undefined) (record as unknown as Record<string, unknown>)[key] = body[key];
   }
@@ -642,6 +669,20 @@ async function runSyncConformidadToOdoo(req: Request, res: Response, fase: 'pre'
   // they must have linked their own Odoo login from the profile screen first.
   const usuario = await UsuarioModel.findById(req.user!.usuarioId);
   if (!usuario?.odoo) throw new HttpError(400, 'Vinculá tu cuenta de Odoo en tu perfil antes de enviar.');
+
+  // Posible duplicado sin revisar: no se envía nada a Odoo hasta que coordinación lo libere (ver duplicidadUnidad.service.ts).
+  // Se responde 200 con FAILED y el motivo (en vez de un 4xx) para que la PWA lo muestre sin descartar nada.
+  if (record.duplicado?.estado === 'pendiente') {
+    record[syncKey] = {
+      status: 'FAILED',
+      attempts: record[syncKey]?.attempts ?? 0,
+      lastError: 'Posible duplicado: otra hoja de esta unidad ya existe. Coordinación debe revisarla antes de enviarse a Odoo.',
+      lastAttemptAt: new Date(),
+    };
+    await record.save();
+    res.json({ [syncKey]: record[syncKey] });
+    return;
+  }
 
   // Envío único: un registro ya SYNCED nunca se reenvía (no hay force). El correo al cliente sale con cada post.
   if (record[syncKey]?.status === 'SYNCED') {

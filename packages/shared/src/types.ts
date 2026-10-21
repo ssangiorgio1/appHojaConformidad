@@ -6,6 +6,10 @@ export type EstadoServicio = 'borrador_pre' | 'pendiente_post' | 'completo';
 // Chosen by the técnico when creating the service — drives what "Datos del
 // equipo" asks for in POST (see equipo.ts's modeloInstalado/imeiInstalado,
 // only used when it's 'cambio_equipo').
+// Qué se interviene: un vehículo (patente, fotos de matrícula, laterales, torpedo y odómetro) u otro equipo sin
+// patente ni tablero (surtidor, generador, etc.): ahí `matricula` guarda el nombre o código del equipo.
+export type TipoUnidad = 'vehiculo' | 'otro_equipo';
+
 export type TipoServicio = 'instalacion' | 'desinstalacion' | 'reparacion' | 'cambio_equipo' | 'cambio_unidad';
 
 export const TIPO_SERVICIO_LABELS: Record<TipoServicio, string> = {
@@ -252,6 +256,8 @@ export interface ConformidadRecord {
   fecha: string; // YYYY-MM-DD
   hora: string; // HH:mm
   matricula: string;
+  // Ausente = 'vehiculo' (hojas anteriores a este dato).
+  tipoUnidad?: TipoUnidad;
   instalador: string;
   responsableEmpresa: string;
 

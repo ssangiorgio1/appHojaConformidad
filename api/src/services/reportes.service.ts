@@ -3,10 +3,32 @@ import { VisitaNotificacionModel } from '../models/VisitaNotificacion.js';
 import { UsuarioModel } from '../models/Usuario.js';
 import { getTechnicianTaskStats, arDateToOdooUtc } from './calendarTask.service.js';
 import type { ReporteVisitasQuery } from '../schemas/reporte.schema.js';
+import { minutosSuspendidosEn, type SuspensionVisita } from './suspensionVisita.js';
 
 function minutosEntre(a: Date | null | undefined, b: Date | null | undefined): number | null {
   if (!a || !b) return null;
   return Math.max(0, Math.round((b.getTime() - a.getTime()) / 60000));
+}
+
+// Traslado (enCaminoAt → enSitioAt) y tiempo en sitio (enSitioAt → completoAt) netos: sin el tiempo que la visita estuvo
+// suspendida (el técnico atendiendo otra tarea). Sin suspensiones es igual a minutosEntre.
+type VisitaConTiempos = {
+  enCaminoAt?: Date | null;
+  enSitioAt?: Date | null;
+  completoAt?: Date | null;
+  suspensiones?: SuspensionVisita[] | null;
+};
+
+function minutosTrasladoNeto(v: VisitaConTiempos): number | null {
+  const bruto = minutosEntre(v.enCaminoAt, v.enSitioAt);
+  if (bruto === null) return null;
+  return Math.max(0, bruto - minutosSuspendidosEn(v.suspensiones, v.enCaminoAt, v.enSitioAt, v.completoAt));
+}
+
+function minutosEnSitioNeto(v: VisitaConTiempos): number | null {
+  const bruto = minutosEntre(v.enSitioAt, v.completoAt);
+  if (bruto === null) return null;
+  return Math.max(0, bruto - minutosSuspendidosEn(v.suspensiones, v.enSitioAt, v.completoAt, v.completoAt));
 }
 
 // "En sitio" (enSitioAt → completoAt) es el tiempo TOTAL del viaje una vez
@@ -137,11 +159,11 @@ export async function getReporteVisitas(query: ReporteVisitasQuery) {
       enCaminoAt: v.enCaminoAt,
       enSitioAt: v.enSitioAt,
       completoAt: v.completoAt,
-      minutosTraslado: minutosEntre(v.enCaminoAt, v.enSitioAt),
+      minutosTraslado: minutosTrasladoNeto(v),
       // Tiempo total en el lugar (llegada → cierre) — incluye instalar TODAS
       // las unidades del lote más cualquier otro tiempo en el lugar que no es
       // instalación pura (ver minutosInstalandoTotal para esa parte sola).
-      minutosEnSitio: minutosEntre(v.enSitioAt, v.completoAt),
+      minutosEnSitio: minutosEnSitioNeto(v),
       // Suma de minutosInstalandoUnidad de cada unidad del lote — estimado,
       // ver la nota en esa función.
       minutosInstalandoTotal,
@@ -214,7 +236,7 @@ export async function getReporteTecnicos(query: ReporteVisitasQuery): Promise<Re
   if (rango) visitFilter.enCaminoAt = { $ne: null, ...rango };
 
   const visitas = await VisitaNotificacionModel.find(visitFilter)
-    .select('tecnicoId tareaOdooId enCaminoAt enSitioAt completoAt')
+    .select('tecnicoId tareaOdooId enCaminoAt enSitioAt completoAt suspensiones')
     .lean();
 
   // Mismo cruce con Conformidad que getReporteVisitas, para poder promediar
@@ -239,8 +261,8 @@ export async function getReporteTecnicos(query: ReporteVisitasQuery): Promise<Re
   for (const v of visitas) {
     if (!v.tecnicoId) continue;
     const key = String(v.tecnicoId);
-    const traslado = minutosEntre(v.enCaminoAt, v.enSitioAt);
-    const sitio = minutosEntre(v.enSitioAt, v.completoAt);
+    const traslado = minutosTrasladoNeto(v);
+    const sitio = minutosEnSitioNeto(v);
     // Mismo motivo que en getReporteVisitas: filtrar por técnico antes de
     // pasarle candidatas a unidadesDeVisita — 2 técnicos pueden compartir
     // tareaOdooId con viajes propios.

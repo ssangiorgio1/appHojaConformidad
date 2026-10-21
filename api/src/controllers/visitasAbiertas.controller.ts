@@ -43,6 +43,8 @@ export const listVisitasAbiertas = asyncHandler(async (_req: Request, res: Respo
       tareaOdooId: v.tareaOdooId,
       fecha: v.fecha,
       estado: v.estado,
+      suspendida: v.suspendida === true,
+      motivoSuspension: v.suspendida ? (v.suspensiones.at(-1)?.motivo ?? '') : '',
       tecnico: t ? { nombre: t.nombre, email: t.email } : null,
       cliente: hojas[0]?.cliente ?? '',
       enCaminoAt: v.enCaminoAt,

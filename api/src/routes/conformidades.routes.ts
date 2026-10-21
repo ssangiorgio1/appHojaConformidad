@@ -26,6 +26,7 @@ import {
   getEquipoActual,
   getCambioEquipoPorSubtarea,
   getCambioUnidadPendientes,
+  resolverDuplicadoConformidad,
 } from '../controllers/conformidades.controller.js';
 
 export const conformidadesRouter = Router();
@@ -79,5 +80,10 @@ conformidadesRouter.post(
   requireRole(['mesa_ayuda', 'coordinacion', 'admin', 'superadmin']),
   validate(altaConformidadSchema),
   setAltaConformidad,
+);
+conformidadesRouter.post(
+  '/:id/duplicado/liberar',
+  requireRole(['coordinacion', 'mesa_ayuda', 'admin', 'superadmin']),
+  resolverDuplicadoConformidad,
 );
 conformidadesRouter.delete('/:id', requireRole(['admin', 'superadmin']), deleteConformidad);

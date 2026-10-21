@@ -158,6 +158,8 @@ const topLevelSchema = z.object({
   fecha: fechaField,
   hora: z.string(),
   matricula: z.string(),
+  // Qué se interviene: vehículo (con patente) u otro equipo sin patente ni tablero (surtidor, generador, etc.).
+  tipoUnidad: z.enum(['vehiculo', 'otro_equipo']),
   instalador: z.string(),
   responsableEmpresa: z.string(),
 });
@@ -168,6 +170,7 @@ export const createConformidadSchema = topLevelSchema
     cliente: true,
     hora: true,
     matricula: true,
+    tipoUnidad: true,
     instalador: true,
     responsableEmpresa: true,
   })

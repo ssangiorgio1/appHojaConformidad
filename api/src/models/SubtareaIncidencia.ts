@@ -38,7 +38,24 @@ const SubtareaIncidenciaSchema = new Schema(
     // proponer otra fecha y hora (ver propuestaInicio). Ver docs-cancelar-pre-reprogramar.md.
     // 'llegada_tarde': el técnico llegó pasada la tolerancia de la hora agendada y la unidad ya no estaba — es una
     // reprogramación por demora de WARA, no una visita fallida (no se cobra VIS.003). Ver clasificarIncidencia.ts.
-    tipo: { type: String, enum: ['no_encontrada', 'pre_cancelado', 'llegada_tarde', 'requiere_otro_tecnico'], default: 'no_encontrada' },
+    tipo: { type: String, enum: ['no_encontrada', 'pre_cancelado', 'llegada_tarde', 'requiere_otro_tecnico', 'reprogramado_cliente'], default: 'no_encontrada' },
+    // 'reprogramado_cliente': el técnico fue al lugar y el cliente pidió reprogramar para otro día; la fecha ya está
+    // acordada con el cliente (propuestaInicio/Fin) y queda firmada por él, o con "no hay quien firme". El PDF sale
+    // al crearla, no al resolver; coordinación puede aceptar, cambiar la hora o rechazar. Se cobra VIS.003 (visita fallida).
+    firmaCliente: {
+      type: new Schema(
+        {
+          // URL pública de la firma en R2; vacía si no hubo quien firmara.
+          url: { type: String, default: '' },
+          nombre: { type: String, default: '' },
+          dni: { type: String, default: '' },
+          sinFirma: { type: Boolean, default: false },
+          motivoSinFirma: { type: String, default: '' },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
     // 'requiere_otro_tecnico': una intervención quedó diagnosticada pero la reparación le toca a otro técnico; la incidencia
     // apunta a la subtarea NUEVA creada para eso (ver derivacion.service.ts) y coordinación la agenda y asigna.
     // Hora agendada de la visita y hora a la que el técnico marcó "llegué" (enSitioAt), y el tipo que sugirió el

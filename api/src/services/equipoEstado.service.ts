@@ -1,4 +1,4 @@
-import { visionbloPostJson } from '../config/visionblo.js';
+import { VisionbloError, visionbloPostJson } from '../config/visionblo.js';
 import { FlotaUnidadModel } from '../models/FlotaUnidad.js';
 import { matriculaRegex } from './historialUnidad.service.js';
 
@@ -348,4 +348,44 @@ export async function getEstadoEquipo(equipoId: number, opts: { forzar?: boolean
 // dónde está — esto consulta cualquier equipo de la cuenta, no sólo los del técnico.
 export function vistaTecnico(e: EstadoEquipo): EstadoEquipo {
   return { ...e, posicion: null, movil: e.movil ? { ...e.movil, cliente: '' } : null };
+}
+
+// Número de equipo (campo `serie` del diagnóstico) y nombre de varias unidades de una vez, para listas y
+// documentos del panel. Es 1 pedido a bo3 por equipo (equipo/diagnostico, no los 3-4 del estado completo),
+// con pocos en paralelo y una memoria de 24 h: la serie de un equipo no cambia.
+export interface SerieEquipo {
+  serie: string | null;
+  nombre: string | null;
+}
+const SERIE_TTL_MS = 24 * 3_600_000;
+const SERIE_PARALELO = 5;
+const seriesCache = new Map<number, SerieEquipo & { at: number }>();
+
+export async function getSeriesEquipos(ids: number[]): Promise<Record<number, SerieEquipo | null>> {
+  const salida: Record<number, SerieEquipo | null> = {};
+  const pendientes: number[] = [];
+  for (const id of new Set(ids)) {
+    const hit = seriesCache.get(id);
+    if (hit && Date.now() - hit.at < SERIE_TTL_MS) salida[id] = { serie: hit.serie, nombre: hit.nombre };
+    else pendientes.push(id);
+  }
+  let siguiente = 0;
+  async function trabajador() {
+    while (siguiente < pendientes.length) {
+      const id = pendientes[siguiente++];
+      try {
+        const dg = await visionbloPostJson<DiagnosticoCrudo>('equipo/diagnostico', { equipo_id: String(id) });
+        const r = { serie: dg.equipo.serie ?? null, nombre: dg.equipo.nombre?.trim() || null };
+        seriesCache.set(id, { ...r, at: Date.now() });
+        if (seriesCache.size > 5000) seriesCache.delete(seriesCache.keys().next().value as number);
+        salida[id] = r;
+      } catch (err) {
+        // Sin sesión o sin configurar no sirve seguir: se corta todo. Un equipo puntual que falla queda en null.
+        if (err instanceof VisionbloError && (err.code === 'NOT_CONFIGURED' || err.code === 'SESSION_EXPIRED' || err.code === 'NETWORK')) throw err;
+        salida[id] = null;
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(SERIE_PARALELO, pendientes.length) }, trabajador));
+  return salida;
 }

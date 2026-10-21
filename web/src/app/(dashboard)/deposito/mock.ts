@@ -1,7 +1,9 @@
 // MAQUETA del módulo de inventario (docs-inventario-tecnico.md). Datos de ejemplo: nada de esto sale de la API.
 // Cuando exista el backend, estos tipos se reemplazan por los del modelo real (ProductoStock, ItemSerie, StockCantidad).
 
-export type EstadoSerie = 'disponible' | 'en_revision' | 'rma' | 'en_tecnico';
+// disponible: en el depósito; en_tecnico: nuevo en poder del técnico; retirado: sacado de una unidad, el técnico lo trae;
+// en_revision / en_reparacion / listo: en el laboratorio (listo = probado y apto para volver al depósito).
+export type EstadoSerie = 'disponible' | 'en_revision' | 'en_reparacion' | 'listo' | 'en_tecnico' | 'retirado';
 
 export type ItemSerie = { serie: string; imei: string; estado: EstadoSerie; nota?: string };
 
@@ -33,7 +35,7 @@ export const PRODUCTOS: Producto[] = [
 ];
 
 // ---- Generación determinística de series (para que la maqueta sea estable entre renders) ----
-function imei(base: number): string {
+export function imei(base: number): string {
   return String(868450041000000 + base * 7919).padStart(15, '0');
 }
 
@@ -49,15 +51,8 @@ function series(prefix: string, desde: number, n: number, overrides: Record<numb
 export type StockDeposito = { productoId: string; cantidad?: number; series?: ItemSerie[] };
 
 export const STOCK_DEPOSITO: StockDeposito[] = [
-  {
-    productoId: 'gps-fmb920',
-    series: series('FMB', 1200, 14, {
-      11: { estado: 'en_revision', nota: 'Devuelto de AD 880 CC' },
-      12: { estado: 'en_revision', nota: 'Devuelto de AC 278 ZG' },
-      13: { estado: 'rma', nota: 'No enciende' },
-    }),
-  },
-  { productoId: 'gps-fmc130', series: series('FMC', 340, 4, { 3: { estado: 'en_revision', nota: 'Carcasa dañada' } }) },
+  { productoId: 'gps-fmb920', series: series('FMB', 1200, 11) },
+  { productoId: 'gps-fmc130', series: series('FMC', 340, 3) },
   { productoId: 'gps-2102', series: series('G21', 780, 9) },
   { productoId: 'pantalla-a33w', series: series('A33', 90, 2) },
   { productoId: 'mdvr', series: series('MDV', 15, 5) },
@@ -72,7 +67,19 @@ export const STOCK_DEPOSITO: StockDeposito[] = [
   { productoId: 'ramal', cantidad: 64 },
 ];
 
-export type Tecnico = { id: string; nombre: string; zona: string };
+// Laboratorio: equipos que volvieron de unidades y se revisan y reparan en el laboratorio antes de volver al depósito.
+export const STOCK_LABORATORIO: StockDeposito[] = [
+  {
+    productoId: 'gps-fmb920',
+    series: [
+      ...series('FMB', 1211, 2, { 0: { estado: 'en_revision', nota: 'Retirado de AD 880 CC' }, 1: { estado: 'en_revision', nota: 'Retirado de AC 278 ZG' } }),
+      ...series('FMB', 1213, 1, { 0: { estado: 'en_reparacion', nota: 'No enciende: se cambia la fuente' } }),
+    ],
+  },
+  { productoId: 'gps-fmc130', series: series('FMC', 343, 1, { 0: { estado: 'en_revision', nota: 'Carcasa dañada' } }) },
+];
+
+export type Tecnico ={ id: string; nombre: string; zona: string };
 
 export const TECNICOS: Tecnico[] = [
   { id: 't1', nombre: 'Carlos Méndez', zona: 'Zona Norte' },
@@ -92,7 +99,11 @@ export const STOCK_TECNICOS: StockTecnico[] = [
   { tecnicoId: 't1', productoId: 'corte-motor', cantidad: 2 },
   { tecnicoId: 't1', productoId: 'ramal', cantidad: 8 },
   { tecnicoId: 't1', productoId: 'puerta', cantidad: 1 },
-  { tecnicoId: 't2', productoId: 'gps-fmb920', series: enTecnico('FMB', 1150, 2) },
+  {
+    tecnicoId: 't2',
+    productoId: 'gps-fmb920',
+    series: [...enTecnico('FMB', 1150, 2), { serie: 'FMB00987', imei: imei(987), estado: 'retirado', nota: 'Retirado de AB 412 KD' }],
+  },
   { tecnicoId: 't2', productoId: 'gps-2102', series: enTecnico('G21', 700, 1) },
   { tecnicoId: 't2', productoId: 'boton-panico', cantidad: 2 },
   { tecnicoId: 't2', productoId: 'ramal', cantidad: 5 },
@@ -116,18 +127,105 @@ export const CONSUMO_PREVISTO: { tecnicoId: string; productoId: string; cantidad
   { tecnicoId: 't1', productoId: 'puerta', cantidad: 2, detalle: 'Visita en Pilar (apertura de puertas)' },
 ];
 
+export type SentidoTransferencia = 'a_tecnico' | 'a_deposito';
+
+export type LineaTransferencia = { productoId: string; cantidad: number; series?: string[] };
+
 export type TransferenciaMock = {
   id: string;
   fecha: string;
   tecnicoId: string;
-  estado: 'pendiente' | 'en_transito' | 'recibida';
-  lineas: { productoId: string; cantidad: number }[];
+  sentido: SentidoTransferencia;
+  estado: 'pendiente' | 'recibida';
+  lineas: LineaTransferencia[];
+  // Hoja de ruta: productos ya tildados al cargar/recolectar y momento (ISO) de cada hito.
+  cargadas: string[];
+  hitos: { creada: string; recibida?: string };
+  // Firmas digitales (PNG en data URL) tomadas en el momento de la entrega en mano; sin ellas la transferencia no se confirma.
+  firmas?: { entrega: string; recibe: string };
 };
 
 export const TRANSFERENCIAS: TransferenciaMock[] = [
-  { id: 'T-0042', fecha: '2026-10-09', tecnicoId: 't3', estado: 'pendiente', lineas: [{ productoId: 'boton-panico', cantidad: 4 }, { productoId: 'gps-fmb920', cantidad: 3 }] },
-  { id: 'T-0041', fecha: '2026-10-08', tecnicoId: 't1', estado: 'en_transito', lineas: [{ productoId: 'puerta', cantidad: 4 }, { productoId: 'ramal', cantidad: 10 }] },
-  { id: 'T-0040', fecha: '2026-10-06', tecnicoId: 't2', estado: 'recibida', lineas: [{ productoId: 'camara', cantidad: 3 }, { productoId: 'mdvr', cantidad: 1 }] },
+  {
+    id: 'T-0042',
+    fecha: '2026-10-09',
+    tecnicoId: 't3',
+    sentido: 'a_tecnico',
+    estado: 'pendiente',
+    lineas: [
+      { productoId: 'boton-panico', cantidad: 4 },
+      { productoId: 'gps-fmb920', cantidad: 3, series: ['FMB01200', 'FMB01201', 'FMB01202'] },
+    ],
+    cargadas: ['boton-panico'],
+    hitos: { creada: '2026-10-09T09:15:00' },
+  },
+  {
+    id: 'T-0041',
+    fecha: '2026-10-08',
+    tecnicoId: 't1',
+    sentido: 'a_tecnico',
+    estado: 'pendiente',
+    lineas: [{ productoId: 'puerta', cantidad: 4 }, { productoId: 'ramal', cantidad: 10 }],
+    cargadas: ['puerta', 'ramal'],
+    hitos: { creada: '2026-10-08T10:00:00' },
+  },
+  {
+    id: 'T-0040',
+    fecha: '2026-10-06',
+    tecnicoId: 't2',
+    sentido: 'a_tecnico',
+    estado: 'recibida',
+    lineas: [{ productoId: 'camara', cantidad: 3 }, { productoId: 'mdvr', cantidad: 1, series: ['MDV00008'] }],
+    cargadas: ['camara', 'mdvr'],
+    hitos: { creada: '2026-10-06T09:30:00', recibida: '2026-10-06T15:20:00' },
+  },
+];
+
+// Historial de ejemplo: entregas y devoluciones ya firmadas, para probar el buscador de movimientos.
+const cerrada = (
+  id: string,
+  dia: string,
+  tecnicoId: string,
+  sentido: SentidoTransferencia,
+  lineas: LineaTransferencia[],
+): TransferenciaMock => ({
+  id,
+  fecha: dia,
+  tecnicoId,
+  sentido,
+  estado: 'recibida',
+  lineas,
+  cargadas: lineas.map((l) => l.productoId),
+  hitos: { creada: `${dia}T09:00:00`, recibida: `${dia}T11:30:00` },
+});
+
+TRANSFERENCIAS.push(
+  cerrada('T-0039', '2026-10-05', 't1', 'a_tecnico', [{ productoId: 'gps-fmb920', cantidad: 3, series: ['FMB01100', 'FMB01101', 'FMB01102'] }, { productoId: 'boton-panico', cantidad: 4 }]),
+  cerrada('T-0038', '2026-10-02', 't4', 'a_tecnico', [{ productoId: 'gps-fmc130', cantidad: 2, series: ['FMC00330', 'FMC00331'] }, { productoId: 'rfid', cantidad: 1 }]),
+  cerrada('T-0037', '2026-09-29', 't2', 'a_deposito', [{ productoId: 'gps-fmb920', cantidad: 1, series: ['FMB00950'] }]),
+  cerrada('T-0036', '2026-09-24', 't3', 'a_tecnico', [{ productoId: 'gps-fmb920', cantidad: 2, series: ['FMB01180', 'FMB01181'] }, { productoId: 'varilla', cantidad: 2 }]),
+  cerrada('T-0035', '2026-09-18', 't2', 'a_tecnico', [{ productoId: 'gps-2102', cantidad: 1, series: ['G2100700'] }, { productoId: 'camara', cantidad: 3 }]),
+);
+
+// Cambio de equipo en una unidad: sale uno (vuelve al laboratorio) y entra uno nuevo del inventario del técnico.
+export type Recambio = {
+  id: string;
+  fecha: string;
+  tecnicoId: string;
+  unidad: string;
+  nuevo: { productoId: string; serie: string; imei: string };
+  retirado: { productoId: string; serie: string; imei: string };
+};
+
+export const RECAMBIOS: Recambio[] = [
+  {
+    id: 'RC-0001',
+    fecha: '2026-10-14',
+    tecnicoId: 't2',
+    unidad: 'AB 412 KD',
+    nuevo: { productoId: 'gps-fmb920', serie: 'FMB01149', imei: imei(1149) },
+    retirado: { productoId: 'gps-fmb920', serie: 'FMB00987', imei: imei(987) },
+  },
 ];
 
 export const productoPorId = (id: string): Producto => PRODUCTOS.find((p) => p.id === id)!;

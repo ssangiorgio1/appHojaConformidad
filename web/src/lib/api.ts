@@ -1,3 +1,4 @@
+import type { RutaAcceso, TerritorioTecnico } from "./rutasAcceso";
 import type {
   CalendarTask,
   ConformidadDoc,
@@ -126,6 +127,11 @@ export async function generateConformidadPdf(idToken: string, id: string): Promi
 
 export function setAltaConformidad(idToken: string, id: string, area: 'mesaAyuda' | 'coordinacion', checked: boolean) {
   return apiFetch<ConformidadDoc>(`/api/conformidades/${id}/alta`, idToken, { method: 'POST', body: { area, checked } });
+}
+
+// Coordinación/admin confirman que la hoja marcada como posible duplicado no lo es: sigue su curso y se envía a Odoo.
+export function liberarDuplicadoConformidad(idToken: string, id: string) {
+  return apiFetch<ConformidadDoc>(`/api/conformidades/${id}/duplicado/liberar`, idToken, { method: 'POST' });
 }
 
 // Endpoint acotado para el emparejamiento de cambio de equipo — a propósito
@@ -270,10 +276,172 @@ export function getNumeroEquipoPorImei(idToken: string, imei: string) {
   return apiFetch<{ numEquipo: string | null }>(`/api/equipos/numero-por-imei?imei=${encodeURIComponent(imei)}`, idToken).then((r) => r.numEquipo);
 }
 
+// Rutas de acceso rápido y territorios por técnico (planificación de visitas), guardados en el sistema.
+export type RutaAccesoInput = Pick<RutaAcceso, 'nombre' | 'color' | 'anchoKm' | 'puntos' | 'activa'>;
+// Trazo por las calles que pasa por los puntos marcados, sin guardar nada (vista previa al marcar).
+export function previsualizarRutaAcceso(idToken: string, puntos: Array<[number, number]>) {
+  return apiFetch<{ trazo: Array<[number, number]>; km: number; porCalle: boolean }>('/api/planificacion/rutas/previsualizar', idToken, { method: 'POST', body: { puntos } });
+}
+export interface TerritorioInput {
+  tecnicoNombre: string;
+  rutas: string[];
+  departamentos: string[];
+  distritos: string[];
+}
+export function listRutasAcceso(idToken: string) {
+  return apiFetch<{ data: RutaAcceso[] }>('/api/planificacion/rutas', idToken).then((r) => r.data);
+}
+export function createRutaAcceso(idToken: string, body: RutaAccesoInput) {
+  return apiFetch<RutaAcceso>('/api/planificacion/rutas', idToken, { method: 'POST', body });
+}
+export function updateRutaAcceso(idToken: string, id: string, body: RutaAccesoInput) {
+  return apiFetch<RutaAcceso>(`/api/planificacion/rutas/${id}`, idToken, { method: 'PUT', body });
+}
+export function deleteRutaAcceso(idToken: string, id: string) {
+  return apiFetch<void>(`/api/planificacion/rutas/${id}`, idToken, { method: 'DELETE' });
+}
+export function listTerritorios(idToken: string) {
+  return apiFetch<{ data: TerritorioTecnico[] }>('/api/planificacion/territorios', idToken).then((r) => r.data);
+}
+export function saveTerritorio(idToken: string, tecnicoId: string, body: TerritorioInput) {
+  return apiFetch<TerritorioTecnico | void>(`/api/planificacion/territorios/${tecnicoId}`, idToken, { method: 'PUT', body });
+}
+
+// Rutas por calle (servidor OSRM configurado en la API con ROUTING_URL). Sin él `disponible` es false.
+export interface ParadaRecorrido {
+  id: string | number;
+  posicion: number;
+  kmDesdeAnterior: number;
+  minDesdeAnterior: number;
+  kmAcumulado: number;
+}
+export interface Recorrido {
+  paradas: ParadaRecorrido[];
+  totalKm: number;
+  totalMin: number;
+  vuelta: { km: number; min: number } | null;
+  /** Traza por las calles, como [longitud, latitud]. */
+  geometria: Array<[number, number]>;
+}
+/** Tramo que hacen juntos todos los técnicos, de la oficina al punto donde se separan. */
+export interface TramoCompartido {
+  km: number;
+  min: number;
+  geometria: Array<[number, number]>;
+}
+export interface RecorridoTecnico extends Recorrido {
+  /** Posición del técnico en la lista pedida (0 = el primero). */
+  tecnico: number;
+}
+export function getRuteoEstado(idToken: string) {
+  return apiFetch<{ disponible: boolean }>('/api/ruteo/estado', idToken).then((r) => r.disponible);
+}
+export function ordenarVisitasPorCalle(
+  idToken: string,
+  origen: { latitud: number; longitud: number },
+  puntos: { id: string | number; latitud: number; longitud: number }[],
+  volver: boolean,
+) {
+  return apiFetch<Recorrido>('/api/ruteo/visitas', idToken, { method: 'POST', body: { origen, puntos, volver } });
+}
+
+// Reparte los puntos entre `cantidad` técnicos (por zonas alrededor del origen) y arma el recorrido de cada uno.
+// cercania = de la unidad más cercana a la siguiente más cercana; optimo = el recorrido más corto en total.
+export type CriterioOrden = 'cercania' | 'optimo';
+
+export function ordenarVisitasVariosTecnicos(
+  idToken: string,
+  origen: { latitud: number; longitud: number },
+  // `tecnicos`: posiciones (0 = el primero) de los técnicos a los que ya les corresponde por su territorio (con varios, la zona se comparte).
+  puntos: { id: string | number; latitud: number; longitud: number; tecnicos?: number[] }[],
+  cantidad: number,
+  volver: boolean,
+  criterio: CriterioOrden = 'cercania',
+  // `primeroId`: la primera visita; `desdeOficina` false = el recorrido empieza en ella, sin el viaje desde la oficina.
+  opciones: {
+    primeroId?: string | number;
+    desdeOficina?: boolean;
+    // `vias`: por técnico, puntos [longitud, latitud] de una ruta de acceso por donde pasa (la API los corta hasta donde le sirven).
+    vias?: Array<Array<[number, number]>>;
+    // `juntosHasta`: los técnicos van juntos hasta ese punto y ahí se separan.
+    juntosHasta?: { latitud: number; longitud: number };
+  } = {},
+) {
+  return apiFetch<{ recorridos: RecorridoTecnico[]; compartido: TramoCompartido | null }>('/api/ruteo/visitas-varios-tecnicos', idToken, {
+    method: 'POST',
+    body: { origen, puntos, cantidad, volver, criterio, ...opciones },
+  });
+}
+
+// Número de equipo (serie del diagnóstico) de varios equipos; null si bo3 no lo devolvió.
+export interface SerieEquipo {
+  serie: string | null;
+  nombre: string | null;
+}
+export function getSeriesEquipos(idToken: string, equipoIds: number[]) {
+  return apiFetch<{ series: Record<string, SerieEquipo | null> }>('/api/equipos/series', idToken, { method: 'POST', body: { equipoIds } }).then((r) => r.series);
+}
+
 export function getEstadoEquipo(idToken: string, equipoId: number, forzar = false) {
   return apiFetch<EstadoEquipo>(`/api/equipos/${equipoId}/estado${forzar ? '?forzar=1' : ''}`, idToken);
 }
 
 export function getGraficasEquipo(idToken: string, equipoId: number, desde: string, hasta: string = desde) {
   return apiFetch<GraficasEquipo>(`/api/equipos/${equipoId}/graficas?desde=${desde}&hasta=${hasta}`, idToken);
+}
+
+// ---- Firma de hojas de ruta del depósito desde el celular del técnico ----
+export type PedidoFirmaInput = {
+  transferenciaId: string;
+  tecnicoNombre: string;
+  sentido: 'a_tecnico' | 'a_deposito';
+  lineas: { nombre: string; cantidad: number; series?: string[] }[];
+};
+
+export type PedidoFirmaPublico = {
+  transferenciaId: string;
+  tecnicoNombre: string;
+  sentido: 'a_tecnico' | 'a_deposito';
+  lineas: { nombre: string; cantidad: number; series: string[] }[];
+  firmada: boolean;
+};
+
+export function crearPedidoFirma(idToken: string, body: PedidoFirmaInput) {
+  return apiFetch<{ token: string; expiresAt: string }>('/api/firmas-transferencia', idToken, { method: 'POST', body });
+}
+
+export function getEstadoPedidoFirma(idToken: string, token: string) {
+  return apiFetch<{ firmada: boolean; firma: string | null; firmedAt: string | null }>(`/api/firmas-transferencia/${encodeURIComponent(token)}`, idToken);
+}
+
+// Sin sesión: la página del celular solo tiene el token del link.
+// En el celular "localhost" es el propio celular: si la API está configurada como localhost y el panel se abrió por la
+// IP de la PC (red local), se usa esa misma IP para hablarle a la API.
+function apiUrlParaCelular() {
+  if (typeof window === 'undefined') return API_URL;
+  const u = new URL(API_URL);
+  const local = ['localhost', '127.0.0.1'].includes(u.hostname);
+  if (local && !['localhost', '127.0.0.1'].includes(window.location.hostname)) u.hostname = window.location.hostname;
+  return u.origin;
+}
+
+async function publicFetch<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
+  const res = await fetch(`${apiUrlParaCelular()}${path}`, {
+    method: init?.method ?? 'GET',
+    headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
+    body: init?.body ? JSON.stringify(init.body) : undefined,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new ApiError(res.status, body.error ?? res.statusText);
+  }
+  return res.json() as Promise<T>;
+}
+
+export function getPedidoFirmaPublico(token: string) {
+  return publicFetch<PedidoFirmaPublico>(`/api/publico/firma-transferencia/${encodeURIComponent(token)}`);
+}
+
+export function firmarPedidoPublico(token: string, firma: string) {
+  return publicFetch<{ ok: true }>(`/api/publico/firma-transferencia/${encodeURIComponent(token)}`, { method: 'POST', body: { firma } });
 }

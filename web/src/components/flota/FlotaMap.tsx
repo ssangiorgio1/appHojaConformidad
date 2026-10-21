@@ -2,6 +2,7 @@
 
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import './leafletParche';
 import { useEffect, useRef } from 'react';
 import type { FlotaUnidad } from '@/lib/types';
 import { bo3DiagnosticoUrl } from '@/lib/bo3';
@@ -11,7 +12,7 @@ function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
 
-function popupHtml(u: FlotaUnidad): string {
+export function popupHtml(u: FlotaUnidad): string {
   const reporte = u.ultimoReporte
     ? new Date(u.ultimoReporte * 1000).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour12: false })
     : 'nunca reportó';

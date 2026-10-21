@@ -144,6 +144,19 @@ const OdooSyncSchema = new Schema(
   { _id: false },
 );
 
+// Posible duplicado: otra hoja de la misma unidad el mismo día (ver duplicidadUnidad.service.ts). 'pendiente' frena el
+// envío a Odoo hasta que coordinación la libere; 'liberada' = revisada, sigue su curso.
+const DuplicadoSchema = new Schema(
+  {
+    de: { type: Schema.Types.ObjectId, ref: 'Conformidad', required: true },
+    estado: { type: String, enum: ['pendiente', 'liberada'], default: 'pendiente' },
+    detectadoAt: { type: Date, default: () => new Date() },
+    revisadoPor: { type: Schema.Types.ObjectId, ref: 'Usuario', default: null },
+    revisadoAt: { type: Date, default: null },
+  },
+  { _id: false },
+);
+
 const PdfReporteSchema = new Schema(
   {
     url: { type: String, required: true },
@@ -224,6 +237,8 @@ const ConformidadSchema = new Schema(
     fechaHora: { type: Date, index: true },
 
     matricula: { type: String, default: '', uppercase: true, trim: true, index: true },
+    // 'otro_equipo': surtidor, generador, etc. — sin patente ni tablero; `matricula` guarda el nombre o código del equipo.
+    tipoUnidad: { type: String, enum: ['vehiculo', 'otro_equipo'], default: 'vehiculo' },
     instalador: { type: String, default: '' },
     tecnicoId: { type: Schema.Types.ObjectId, ref: 'Usuario', index: true },
     // Se completa solo cuando un técnico distinto a tecnicoId cierra el POST
@@ -252,6 +267,7 @@ const ConformidadSchema = new Schema(
     // Envío del PDF solo-PRE al ticket al terminar el PRE (odooSync es el del PDF completo).
     preOdooSync: { type: OdooSyncSchema, default: () => ({}) },
     pdfReporte: { type: PdfReporteSchema, default: null },
+    duplicado: { type: DuplicadoSchema, default: null },
     cambioEquipo: { type: CambioEquipoSchema, default: () => ({}) },
     cambioUnidad: { type: CambioUnidadSchema, default: () => ({}) },
     // null = hoja anterior a este dato (o sin paso de control): no se puede afirmar nada.

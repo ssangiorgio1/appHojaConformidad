@@ -68,6 +68,29 @@ export const CHECKLIST_ITEMS: ChecklistItemDef[] = [
   { key: 'item8', label: '8. Tapizados asientos en general.', requiresDetailWhen: 'NO' },
 ];
 
+
+// Revisión de un equipo que no es un vehículo (surtidor, generador, etc.): sin luces, tablero, paragolpes ni tapizados.
+// Reusa las claves de siempre (el esquema de la hoja no cambia): item2 = autorización, item1 = seguridad,
+// item3 = estado general, item5 = cableado, item6_falla = notificar falla. El orden y la
+// numeración son los de esta lista. Los ítems 2 (seguridad) y 4 (cableado) son una propuesta a confirmar con operaciones.
+export const CHECKLIST_ITEMS_OTRO_EQUIPO: ChecklistItemDef[] = [
+  { key: 'item2', label: '1. Autorización por parte de un responsable para la revisión del dispositivo.', requiresDetailWhen: 'NO', detailHiddenInPdf: true },
+  {
+    key: 'item1',
+    label: '2. Equipo detenido y en condiciones seguras para intervenir (sin riesgo eléctrico ni de combustible).',
+    requiresDetailWhen: 'NO',
+    detailHiddenInPdf: true,
+  },
+  { key: 'item3', label: '3. Estado general del dispositivo.', requiresDetailWhen: 'NO', detailHiddenInPdf: true },
+  { key: 'item5', label: '4. Cableado y conexiones existentes sin daños visibles.', requiresDetailWhen: 'NO', detailHiddenInPdf: true },
+  { key: 'item6_falla', label: '5. Notificar sobre alguna falla (luces de algún tipo, alarmas, etc.).', requiresDetailWhen: 'SI', hiddenInPdf: true },
+];
+
+// Qué checklist corresponde: el del vehículo, o el de un equipo sin patente ni tablero.
+export function checklistItemsFor(tipoUnidad?: 'vehiculo' | 'otro_equipo' | null): ChecklistItemDef[] {
+  return tipoUnidad === 'otro_equipo' ? CHECKLIST_ITEMS_OTRO_EQUIPO : CHECKLIST_ITEMS;
+}
+
 export const CHECKLIST_LABELS: Record<ChecklistKey, string> = Object.fromEntries(
   CHECKLIST_ITEMS.map((i) => [i.key, i.label]),
 ) as Record<ChecklistKey, string>;

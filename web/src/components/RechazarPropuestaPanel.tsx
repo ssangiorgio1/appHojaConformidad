@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { IconX } from '@/components/ui/Icons';
+import { useToast } from '@/components/ui/Toast';
 import { rechazarPropuestaIncidencia, ApiError } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
 import type { SubtareaIncidencia } from '@/lib/types';
@@ -22,6 +23,7 @@ export function RechazarPropuestaPanel({
 }) {
   useBodyScrollLock();
   const { getIdToken } = useAuth();
+  const toast = useToast();
   const [motivo, setMotivo] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +38,7 @@ export function RechazarPropuestaPanel({
     try {
       await rechazarPropuestaIncidencia(await getIdToken(), incidencia._id, motivo.trim());
       await onUpdated();
+      toast('Propuesta rechazada correctamente.');
       onClose();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No se pudo rechazar la propuesta.');

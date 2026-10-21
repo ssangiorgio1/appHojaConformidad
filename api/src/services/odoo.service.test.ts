@@ -1,14 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const executeKwAsCredentials = vi.fn();
+const executeKw = vi.fn();
 
 vi.mock('../config/odoo.js', () => ({
-  executeKw: vi.fn(),
+  executeKw,
   executeKwAsCredentials,
   authenticateOdooCredentials: vi.fn(),
 }));
 
-const { pushConformidadToTicket } = await import('./odoo.service.js');
+const { pushConformidadToTicket, postNotaInternaTarea } = await import('./odoo.service.js');
 
 describe('pushConformidadToTicket', () => {
   const pdfBytes = Buffer.from('%PDF-1.4 fake pdf content', 'utf-8');
@@ -113,5 +114,32 @@ describe('pushConformidadToTicket', () => {
     executeKwAsCredentials.mockResolvedValueOnce(0); // ...pero ningún mensaje lo tiene
 
     await expect(pushConformidadToTicket(base)).rejects.toThrow(/Tiempo de espera agotado/);
+  });
+});
+
+describe('postNotaInternaTarea', () => {
+  beforeEach(() => {
+    executeKw.mockReset();
+    executeKwAsCredentials.mockReset();
+  });
+
+  it('publica una nota interna (mail.mt_note), nunca un comentario que le llegue al cliente', async () => {
+    executeKwAsCredentials.mockResolvedValueOnce(true);
+    await postNotaInternaTarea({ taskId: 77, bodyHtml: '<p>Suspendida</p>', as: { login: 'tec@wara.com', password: 'x' } });
+
+    const [, , model, method, args, kwargs] = executeKwAsCredentials.mock.calls[0];
+    expect(model).toBe('project.task');
+    expect(method).toBe('message_post');
+    expect(args).toEqual([[77]]);
+    expect(kwargs.subtype_xmlid).toBe('mail.mt_note');
+    expect(kwargs.subtype_xmlid).not.toBe('mail.mt_comment');
+    expect(kwargs.body).toBe('<p>Suspendida</p>');
+  });
+
+  it('sin cuenta propia del técnico usa la de servicio', async () => {
+    executeKw.mockResolvedValueOnce(true);
+    await postNotaInternaTarea({ taskId: 5, bodyHtml: '<p>x</p>' });
+    expect(executeKwAsCredentials).not.toHaveBeenCalled();
+    expect(executeKw).toHaveBeenCalledWith('project.task', 'message_post', [[5]], expect.objectContaining({ subtype_xmlid: 'mail.mt_note' }));
   });
 });
