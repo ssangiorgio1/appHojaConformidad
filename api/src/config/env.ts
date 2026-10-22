@@ -43,6 +43,11 @@ const envSchema = z.object({
   // esto /api/ruteo responde que no está disponible y el panel usa las zonas por radio en línea recta.
   ROUTING_URL: z.string().url().optional(),
 
+  // Apagada por defecto: con '1', la constancia de visita fallida se manda al ticket de Odoo en el momento en que el técnico
+  // reporta "No está en el lugar" (regla por rango horario, ver docs-visita-fallida-pdf.md). Sin esto el reporte no
+  // manda nada a Odoo y la constancia sigue saliendo al resolver, como antes.
+  CONSTANCIA_AL_REPORTAR: z.enum(['0', '1']).optional(),
+
   CORS_ORIGINS: z.string().default(''),
 
   // Alertas al cliente por Telegram (seguimiento de visita) — opcionales:
@@ -70,4 +75,5 @@ export const env = {
   FIREBASE_PRIVATE_KEY: parsed.data.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
   ODOO_URL: parsed.data.ODOO_URL.replace(/\/+$/, ''),
   ROUTING_URL: parsed.data.ROUTING_URL?.replace(/\/+$/, ''),
+  CONSTANCIA_AL_REPORTAR: parsed.data.CONSTANCIA_AL_REPORTAR === '1',
 };

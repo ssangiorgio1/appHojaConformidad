@@ -40,19 +40,21 @@ describe('buildReprogramacionHtml', () => {
   });
 });
 
-describe('llegada tarde', () => {
+describe('llegada fuera del rango horario', () => {
   const tarde: ReprogramacionPdfData = {
     ...base,
     tipo: 'llegada_tarde',
-    horaAgendada: new Date('2026-10-08T17:30:00Z'),
-    llegadaAt: new Date('2026-10-08T18:00:00Z'),
+    horaAgendada: new Date('2026-10-08T15:00:00Z'), // rango 12:00 a 13:00
+    horaFinAgendada: new Date('2026-10-08T16:00:00Z'),
+    llegadaAt: new Date('2026-10-08T16:20:00Z'), // 13:20
   };
-  it('explica la demora y aclara que es sin cargo', () => {
+  it('explica que llegó fuera del rango (no "demora") y aclara que es sin cargo', () => {
     const html = buildReprogramacionHtml(tarde);
-    expect(html).toContain('demora del técnico');
+    expect(html).toContain('entre las 12:00 y las 13:00');
+    expect(html).toContain('fuera del rango horario');
     expect(html).toContain('sin cargo');
-    expect(html).toContain('14:30');
-    expect(html).toContain('15:00');
+    expect(html).toContain('13:20');
+    expect(html).not.toContain('demora');
   });
   it('las otras reprogramaciones no dicen sin cargo', () => {
     expect(buildReprogramacionHtml(base)).not.toContain('sin cargo');

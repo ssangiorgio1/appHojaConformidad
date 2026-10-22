@@ -61,6 +61,11 @@ const SubtareaIncidenciaSchema = new Schema(
     // Hora agendada de la visita y hora a la que el técnico marcó "llegué" (enSitioAt), y el tipo que sugirió el
     // sistema al comparar ambas. Coordinación puede corregir `tipo` al resolver; tipoSugerido queda como registro.
     horaAgendada: { type: Date, default: null },
+    // Fin del rango horario de la tarea (las visitas se agendan por rango, ej. 12:00 a 13:00).
+    horaFinAgendada: { type: Date, default: null },
+    // El técnico llegó DESPUÉS de que terminó el rango: la reprogramación es en parte culpa de WARA y va sin cargo para el
+    // cliente. Se calcula al reportar (ver clasificarLlegada); coordinación puede corregirlo al resolver.
+    fueraDeRango: { type: Boolean, default: false },
     llegadaAt: { type: Date, default: null },
     tipoSugerido: { type: String, enum: ['no_encontrada', 'llegada_tarde'], default: null },
     tipoCorregidoPor: { type: Schema.Types.ObjectId, ref: 'Usuario', default: null },

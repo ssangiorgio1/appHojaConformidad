@@ -30,7 +30,10 @@ export function trabajoDeHoja(h: HojaLiquidable): TrabajoLiquidable {
   }
   return {
     tipoServicio: h.tipoServicio,
-    equipoGps: h.tipoServicio === 'instalacion' && Boolean(equipo.imei?.trim()),
+    // El IMEI ya no se tipea: alcanza con el N° de equipo (`modelo`) o con el IMEI si el QR lo trajo. "No es un equipo con
+    // N° de equipo" (solo sensor/módulo) no cuenta como equipo GPS.
+    equipoGps:
+      h.tipoServicio === 'instalacion' && !equipo.equipoInstaladoSinSerie?.trim() && Boolean(equipo.imei?.trim() || equipo.modelo?.trim()),
     casillas,
   };
 }

@@ -7,12 +7,14 @@ export const EQUIP_GROUPS = [
   {
     title: 'Datos del equipo',
     fields: [
-      { key: 'modelo', label: 'Modelo', required: true },
-      { key: 'imei', label: 'IMEI', required: true },
+      { key: 'modelo', label: 'N° de equipo', required: true },
+      // El IMEI ya no se tipea (a veces el QR no lo toma y a mano es largo): queda solo si el QR lo trajo, y se muestra en el
+      // PDF y el panel cuando existe. El dato que se pide es el N° de equipo.
+      { key: 'imei', label: 'IMEI' },
       // Solo se piden (y se muestran) cuando tipoServicio es 'cambio_equipo'
       // — ahí modelo/imei de arriba pasan a describir el equipo que se
       // retira. Ver la lógica condicional en la PWA's post/[id]/page.tsx.
-      { key: 'modeloInstalado', label: 'Modelo (equipo instalado)' },
+      { key: 'modeloInstalado', label: 'N° de equipo (equipo instalado)' },
       { key: 'imeiInstalado', label: 'IMEI (equipo instalado)' },
       { key: 'antenaGpsExt', label: 'Antena GPS (Ext)', checkbox: true },
     ],

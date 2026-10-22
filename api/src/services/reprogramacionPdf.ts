@@ -14,6 +14,7 @@ export interface ReprogramacionPdfData {
   tipo: 'no_encontrada' | 'pre_cancelado' | 'llegada_tarde';
   // Solo para 'llegada_tarde': la hora agendada y la de llegada, que justifican la reprogramación sin cargo.
   horaAgendada?: Date | null;
+  horaFinAgendada?: Date | null;
   llegadaAt?: Date | null;
   // Hora que había propuesto el técnico, si coordinación la cambió al aceptar.
   propuestaOriginal?: { inicio: Date; fin: Date } | null;
@@ -38,7 +39,7 @@ export function buildReprogramacionHtml(data: ReprogramacionPdfData, logoDataUri
     data.tipo === 'pre_cancelado'
       ? 'El cliente pidió cambiar la fecha de la visita: el técnico comenzó la revisión inicial (PRE) de la unidad y no pudo completarla en esa visita.'
       : data.tipo === 'llegada_tarde'
-        ? `La visita estaba agendada para las ${data.horaAgendada ? formatoHora(data.horaAgendada) : 'hora pactada'} y el técnico llegó ${data.llegadaAt ? `a las ${formatoHora(data.llegadaAt)}` : 'con demora'}, cuando la unidad ya no se encontraba en el lugar. La reprogramación se debe a la demora del técnico.`
+        ? `La visita estaba agendada ${data.horaAgendada && data.horaFinAgendada ? `entre las ${formatoHora(data.horaAgendada)} y las ${formatoHora(data.horaFinAgendada)}` : 'en un rango horario'} y el técnico llegó ${data.llegadaAt ? `a las ${formatoHora(data.llegadaAt)}` : 'después de que terminó ese rango'}, fuera del rango horario. La reprogramación se debe a esa llegada fuera del rango.`
         : 'El técnico se presentó en el lugar y la unidad no se encontraba.';
   const sinCargo = data.tipo === 'llegada_tarde' ? '<div class="sincargo">Reprogramación sin cargo para el cliente.</div>' : '';
   const cambio =
@@ -70,7 +71,7 @@ export function buildReprogramacionHtml(data: ReprogramacionPdfData, logoDataUri
   <table>
     <tr><td>Motivo</td><td>${esc(data.motivo)}</td></tr>
     <tr><td>Técnico</td><td>${esc(data.tecnicoNombre)}</td></tr>
-    ${data.tipo === 'llegada_tarde' && data.horaAgendada && data.llegadaAt ? `<tr><td>Agendada / llegada</td><td>${esc(formatoHora(data.horaAgendada))} / ${esc(formatoHora(data.llegadaAt))}</td></tr>` : ''}
+    ${data.tipo === 'llegada_tarde' && data.horaAgendada && data.llegadaAt ? `<tr><td>Rango agendado / llegada</td><td>${esc(formatoHora(data.horaAgendada))}${data.horaFinAgendada ? ` a ${esc(formatoHora(data.horaFinAgendada))}` : ''} / ${esc(formatoHora(data.llegadaAt))}</td></tr>` : ''}
     <tr><td>Reportado</td><td>${esc(formatoFechaHora(data.reportadaAt))}</td></tr>
   </table>
 </body></html>`;

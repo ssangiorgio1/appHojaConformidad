@@ -17,6 +17,7 @@ import { incidenciaDestinatarioRouter } from './routes/incidenciaDestinatario.ro
 import { retiroEquipoRouter } from './routes/retiroEquipo.routes.js';
 import { flotaRouter } from './routes/flota.routes.js';
 import { equipoRouter } from './routes/equipo.routes.js';
+import { ubicacionRouter } from './routes/ubicacion.routes.js';
 import { firmaTransferenciaPublicaRouter, firmaTransferenciaRouter } from './routes/firmaTransferencia.routes.js';
 import { internalRouter } from './routes/internal.routes.js';
 import { ruteoRouter } from './routes/ruteo.routes.js';
@@ -64,6 +65,7 @@ app.use('/api/incidencia-destinatarios', incidenciaDestinatarioRouter);
 app.use('/api/retiros-equipo', retiroEquipoRouter);
 app.use('/api/flota', flotaRouter);
 app.use('/api/equipos', equipoRouter);
+app.use('/api/ubicacion', ubicacionRouter);
 app.use('/api/firmas-transferencia', firmaTransferenciaRouter);
 app.use('/api/publico/firma-transferencia', firmaTransferenciaPublicaRouter);
 app.use('/api/ruteo', ruteoRouter);

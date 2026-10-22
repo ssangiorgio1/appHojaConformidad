@@ -1,6 +1,7 @@
-// HTML de la constancia de visita fallida que se adjunta al ticket de Odoo: el técnico llegó a tiempo y la unidad
-// no estaba. Es el respaldo para facturar VIS.003. Si la unidad no estaba porque el técnico llegó tarde, NO va esta
-// constancia sino el PDF de reprogramación sin cargo (ver reprogramacionPdf.ts). Ver docs-visita-fallida-pdf.md.
+// HTML de la constancia de visita fallida que se adjunta al ticket de Odoo: el técnico llegó dentro del rango horario
+// agendado y la visita no pudo hacerse (la unidad no estaba, o se reprogramó). Es el respaldo para facturar VIS.003. Si el
+// técnico llegó después de que terminó el rango, NO va esta constancia sino el PDF de reprogramación sin cargo (ver
+// reprogramacionPdf.ts). Ver docs-visita-fallida-pdf.md.
 import { formatoFechaHora, formatoHora } from './reprogramacionPdf.js';
 
 export interface ConstanciaVisitaFallidaData {
@@ -9,6 +10,10 @@ export interface ConstanciaVisitaFallidaData {
   ticketNumero: number;
   tecnicoNombre: string;
   horaAgendada?: Date | null;
+  // Fin del rango horario agendado.
+  horaFinAgendada?: Date | null;
+  // Por qué no se hizo la visita: la unidad no estaba (default), o se canceló el PRE y se reprograma.
+  tipo?: 'no_encontrada' | 'pre_cancelado';
   // Cuándo marcó "llegué" el técnico: la prueba de presencia.
   llegadaAt?: Date | null;
   reportadaAt: Date;
@@ -39,11 +44,11 @@ export function buildConstanciaVisitaFallidaHtml(data: ConstanciaVisitaFallidaDa
   <header><h1>Constancia de visita fallida</h1>${logoDataUri ? `<img src="${logoDataUri}" alt="WARA">` : ''}</header>
   <div class="unidad">${esc(data.subtareaNombre || 'Unidad')}</div>
   <div>${esc(data.clienteNombre)} · Ticket #${esc(data.ticketNumero)}</div>
-  <div class="resumen">El técnico se presentó en el lugar${data.horaAgendada ? ` a la hora agendada (${esc(formatoHora(data.horaAgendada))})` : ''} y la unidad no se encontraba. No fue posible realizar el trabajo.</div>
+  <div class="resumen">El técnico se presentó en el lugar${data.horaAgendada && data.horaFinAgendada ? ` dentro del rango horario agendado (${esc(formatoHora(data.horaAgendada))} a ${esc(formatoHora(data.horaFinAgendada))})` : ''} ${data.tipo === 'pre_cancelado' ? 'y la visita no pudo completarse, por lo que se reprograma.' : 'y la unidad no se encontraba. No fue posible realizar el trabajo.'}</div>
   <table>
     <tr><td>Motivo</td><td>${esc(data.motivo)}</td></tr>
     <tr><td>Técnico</td><td>${esc(data.tecnicoNombre)}</td></tr>
-    ${data.horaAgendada ? `<tr><td>Hora agendada</td><td>${esc(formatoFechaHora(data.horaAgendada))}</td></tr>` : ''}
+    ${data.horaAgendada ? `<tr><td>Rango agendado</td><td>${esc(formatoFechaHora(data.horaAgendada))}${data.horaFinAgendada ? ` a ${esc(formatoHora(data.horaFinAgendada))}` : ''}</td></tr>` : ''}
     ${data.llegadaAt ? `<tr><td>Llegada del técnico</td><td>${esc(formatoFechaHora(data.llegadaAt))}</td></tr>` : ''}
     <tr><td>Reportado</td><td>${esc(formatoFechaHora(data.reportadaAt))}</td></tr>
   </table>

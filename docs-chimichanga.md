@@ -2,7 +2,7 @@
 
 Este archivo lo lee la skill `chimichanga` (`~/.claude/skills/chimichanga/SKILL.md`). Para anotar algo nuevo, agregarlo en "Temas abiertos" con una línea de estado y el enlace a su documento. Cuando un tema se cierra, pasarlo a "Cerrado".
 
-Última actualización: 2026-10-19 (temas 24, 25 y 26: tarea movida con PRE en curso; duplicados y titular de viaje; "En curso" pegado y descarte de hojas).
+Última actualización: 2026-10-21 (tema 27: receta de equipo por pedido y faltante por técnico en BO4 Depósito).
 
 ## Temas abiertos
 
@@ -64,6 +64,16 @@ Este archivo lo lee la skill `chimichanga` (`~/.claude/skills/chimichanga/SKILL.
 - **Teléfono en "Cliente ausente":** mostrarlo, tocable para llamar, en esa pantalla del PRE y del POST.
 - **Modo "sin IMEI" automático:** activarlo solo cuando la orden trae únicamente sensores o módulos. Depende del mapeo del tema 1.
 - **Tipos de BO3** (`docs-bo3-adicionales.md`): falta confirmar `PRE` (probable CANbus, 68 filas). Sin eso no se arma el diccionario equipo/módulo/sensor en la API.
+
+### 27. BO4 Depósito: receta de qué equipo lleva cada pedido y faltante por técnico (nuevo, 2026-10-21)
+- **Dónde:** BO4 local (`C:UsersrostDesktopBO4o4`, puerto 3100), módulo Stock. Detalle en `docs/stock.md` de BO4 (pendiente "Consumo por visita y recetas").
+- **Hecho:** tipos reales (4G Full, GS12, ECO, pantallas 10" y 7") con prefijo de serie e IMEI obligatorio; buscador y reservado/disponible en Depósito; buscador y hojas cerradas plegadas en Transferencias.
+- **Qué trae cada familia (Excel "TIPOS DE CONEXIONES DE EQUIPOS" y diagrama de flujo de productos):** GS12 (Básico) solo VDD, GND, IGN, CDM y SOS: sirve para botón de pánico y corte. ECO (2210/2303/2404/2104) suma RS485, UART y alguna entrada, sin CAN, 1-Wire ni audio. Full (2006, 2102, 2112, 2505/2603) trae todo: CAN, 1-Wire (temperatura, iButton), audio, RS485. RS485 = pantallas, RFID, módulos WiFi y de giro. IN2/IN3 = pulsos (puertas, enganche).
+- **Regla que se desprende:** solo pánico/corte = GS12; pantalla o RFID = ECO o Full; CAN, temperatura, iButton o audio = Full (varilla y otros sensores = Full según el usuario).
+- **Prefijos de serie cargados en BO4:** Full 2603/2505/2112/2102/2006; ECO 2404/2303/2210/2104; GS12 2407/2408/2502/2506/2601; pantalla 10" 2504/2605; pantalla 7" A33. 3G (1911/1907/1905/1809/1802) y 2103 ("no utilizar") no se cargaron: falta saber si hay 3G en stock.
+- **Falta definir:** si pantalla y RFID pueden ir en ECO o siempre Full; por dónde va la varilla (RS485, AN2 u otro); pulsos de puertas en Full y GS12; si se puede reemplazar por un equipo superior cuando falta stock; qué módulos secundarios (CANbus, audio, giro, WiFi) son productos de stock propios; si el 3G entra al stock.
+- **Para qué sirve:** calcular el faltante de cada técnico (visitas asignadas + receta) y sugerir la carga en la hoja de entrega; verlo en la pestaña Técnicos.
+- **Pendiente de decidir:** quién edita lo de stock por técnico (permiso nuevo o `INVENTARIO_INGRESO`); el usuario lo está revisando. Confirmar también que los códigos de serie de la imagen son el comienzo de la serie y su largo real.
 
 ## Cuidados permanentes
 - **Odoo:** el 2026-10-06 la API de Render pasa a Odoo real. El staging se borra el 2026-10-25. Antes de escribir en Odoo, mirar qué bloque del `.env` está activo.
@@ -221,3 +231,10 @@ Este archivo lo lee la skill `chimichanga` (`~/.claude/skills/chimichanga/SKILL.
 - **Panel:** en "Visitas abiertas" se ve "Suspendida por el técnico: motivo".
 - **PWA (ajustes 2026-10-21):** la tarea suspendida figura en la agenda con la marca "Suspendida" (no "En curso", aunque tenga una hoja empezada), y el botón de actualizar sube para no quedar tapado por el banner. **Panel:** "Visitas abiertas" la muestra con la marca "Suspendida" y el motivo.
 - **A decidir:** si hay un máximo de tiempo o de suspensiones por visita.
+
+### 14. Sin IMEI en los servicios, y ubicación con dirección en la ficha (2026-10-21)
+- **IMEI:** ya no se tipea ni se exige en ningún servicio (instalación, desinstalación, intervención con cambio de equipo, cambio de equipo y acta de retiro/entrega). Se pide el **N° de equipo** (antes el campo se llamaba "Modelo"), siempre visible (se sacó "Cargar a mano"). Si el QR trae el IMEI se guarda igual (oculto) y sigue saliendo en el PDF y el panel; Atilio sigue buscando por IMEI. La verificación en vivo busca por IMEI si lo hay y, si no, por el N° de equipo; la liquidación cuenta el equipo GPS por N° de equipo (o IMEI) y no cuenta "no es un equipo con N° de equipo" (sensor/módulo). Las dos copias de `@wara/shared` cambian la etiqueta (también en los PDF de hojas viejas).
+- **Ubicación:** `GET /api/ubicacion/resolver?texto=` (cualquier usuario autenticado) expande el link de Maps (los cortos `maps.app.goo.gl` siguiendo la redirección, solo a hosts de Google), toma el pin exacto, el nombre del lugar y las coordenadas, y obtiene la dirección (calle y número, barrio, ciudad, provincia) con **Nominatim/OpenStreetMap** (servicio público, 1 pedido por segundo, identificado). Si el link nombra una dirección pero trae solo el centro del mapa, manda el nombre del link y de las coordenadas solo se toma la localidad. Caché en memoria + Mongo (`UbicacionCache`, 180 días); nunca falla (sin datos queda el link).
+- **PWA:** la ficha muestra la dirección y las coordenadas en vez de "Ver en Google Maps" (tocarla abre el mapa); se guarda en el teléfono y se precarga al cargar la agenda con señal, así se ve sin conexión; la primera vez sin señal queda el link de siempre. En la ficha de la tarea la lista de unidades **ya no es un desplegable**: cada unidad muestra su nombre, productos, ubicación y descripción siempre a la vista.
+- **A decidir:** si el volumen crece o se quiere más precisión, cambiar Nominatim por un geocodificador pago. BO4 (`lib/conformidad-datos.ts`) todavía rotula "Modelo".
+- **Firmante del POST (2026-10-22):** al llegar al paso de firma del POST se toman del PRE el nombre, el DNI y el cargo de quien firmó (una sola vez, solo lo que está vacío, siguen editables; la firma dibujada nunca se copia). Si el PRE fue "cliente ausente" no se toma nada. Mientras no se cambian, aparece el aviso "Datos tomados del PRE". Código: `src/utils/firmante.ts` de la PWA.

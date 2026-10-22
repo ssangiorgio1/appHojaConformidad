@@ -16,3 +16,15 @@ describe('trabajoDeHoja', () => {
     expect(t.casillas).toEqual({});
   });
 });
+
+describe('equipoGps sin IMEI', () => {
+  it('cuenta un equipo identificado solo por su N° de equipo', () => {
+    expect(trabajoDeHoja({ tipoServicio: 'instalacion', equipo: { modelo: '2408912' } as never }).equipoGps).toBe(true);
+  });
+  it('un sensor o módulo ("no es un equipo con N° de equipo") no es equipo GPS', () => {
+    expect(trabajoDeHoja({ tipoServicio: 'instalacion', equipo: { modelo: 'sensor', equipoInstaladoSinSerie: 'Sí' } as never }).equipoGps).toBe(false);
+  });
+  it('sin N° de equipo ni IMEI no hay equipo GPS', () => {
+    expect(trabajoDeHoja({ tipoServicio: 'instalacion', equipo: {} as never }).equipoGps).toBe(false);
+  });
+});

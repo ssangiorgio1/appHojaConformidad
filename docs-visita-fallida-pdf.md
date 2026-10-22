@@ -99,3 +99,33 @@ Son dos cosas distintas, con dos PDFs distintos al ticket:
 - **Panel:** mostrar el tipo sugerido y permitir cambiarlo al reprogramar (la API ya acepta `tipo`).
 - Probar contra el Odoo de pruebas.
 - Decidir si el aviso `VIS.003` se sugiere solo para `no_encontrada`.
+
+## Regla por rango horario (2026-10-21) — reemplaza la tolerancia de 15 minutos
+
+Las visitas se agendan por **rango** (ej. de 12:00 a 13:00): el técnico puede llegar en cualquier momento del rango sin que sea una demora. Ya no se compara la llegada con la hora de inicio.
+
+| Cuándo marcó "Llegué" el técnico | Qué es | PDF al ticket | Se cobra |
+|---|---|---|---|
+| Antes de que termine el rango (o justo al fin) | **Visita fallida** | Constancia de visita fallida | Sí (VIS.003) |
+| **Después** de que terminó el rango | En parte culpa de WARA | Reprogramación **sin cargo**, con el rango y la hora de llegada | No |
+
+- Vale para los tres reportes de la ficha: "No está en el lugar", "Reprogramar" (PRE cancelado) y "Lo pidió el cliente". En el último el PDF es el de siempre y solo agrega la leyenda "sin cargo" si llegó fuera del rango.
+- La PWA manda el rango (`horaAgendada` y `horaFinAgendada`); la API lo compara en `clasificarLlegada` y guarda `fueraDeRango` en la incidencia. **El tipo que reporta el técnico ya no se cambia solo.**
+- Sin el fin del rango o sin "Llegué" marcado no se decide: queda como visita fallida.
+- Coordinación puede corregirlo al resolver con `tipo` (`no_encontrada` = visita fallida, `llegada_tarde` = sin cargo); **el panel todavía no tiene el selector**. Las incidencias viejas con tipo `llegada_tarde` siguen siendo sin cargo.
+- Ya no aparece el texto "por demora del técnico": se dice "llegó fuera del rango horario agendado".
+- Un PRE cancelado dentro del rango ahora sale como constancia de visita fallida (antes salía como "reprogramación" sin cargo ni cobro).
+
+## La constancia sale al reportar (2026-10-21)
+
+Cuando el técnico confirma **"No está en el lugar"** y llegó dentro del rango horario, la constancia de visita fallida se genera y se adjunta al ticket **en ese momento**, sin esperar a coordinación: el ticket queda con la prueba de que el técnico fue al lugar.
+
+- Si llegó **fuera del rango**, no sale nada todavía: va la reprogramación sin cargo (necesita fecha nueva) cuando coordinación resuelve, como antes.
+- Si falla el envío (Odoo caído, etc.) la incidencia se guarda igual con el error, y **al resolver se reintenta**.
+- Cuando coordinación reprograma, **no sale un segundo PDF**: se deja una nota en el ticket con la fecha nueva. Marcar solo como resuelta, sin fecha, no manda nada más.
+- Sin ticket vinculado no hay dónde adjuntarla (no se manda nada).
+- "Reprogramar" (PRE cancelado) sigue esperando a coordinación; "Lo pidió el cliente" ya mandaba su PDF al reportar.
+- En pausa por decisión del 2026-10-21: ubicación (GPS), foto del lugar, firma de quien atendió y tipo de motivo en lista.
+- **Para probarlo**: usar la API y el panel locales (los dos con el Odoo de pruebas). Resolver desde Vercel una incidencia creada en local actúa sobre el Odoo de producción con ids de pruebas (ver el incidente del ticket 39091).
+
+**Estado (2026-10-22): el envío al reportar está APAGADO.** La constancia al reportar solo sale si la variable de entorno `CONSTANCIA_AL_REPORTAR=1` (en Render). Sin ella, reportar "No está en el lugar" no manda nada a Odoo y la constancia sigue saliendo cuando coordinación resuelve, como antes. La clasificación por rango horario sí se calcula y se guarda en la incidencia.

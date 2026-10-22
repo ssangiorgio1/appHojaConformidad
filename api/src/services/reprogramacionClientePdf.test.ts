@@ -38,3 +38,19 @@ describe('buildReprogramacionClienteHtml', () => {
     expect(html).not.toContain('Firma del cliente');
   });
 });
+
+describe('buildReprogramacionClienteHtml (rango horario)', () => {
+  const conRango = { ...data, horaAgendada: new Date('2026-10-08T15:00:00Z'), horaFinAgendada: new Date('2026-10-08T16:00:00Z') };
+
+  it('llegó dentro del rango: sin leyenda de sin cargo', () => {
+    const html = buildReprogramacionClienteHtml({ ...conRango, fueraDeRango: false });
+    expect(html).toContain('dentro del rango horario agendado (12:00 a 13:00)');
+    expect(html).not.toContain('sin cargo');
+  });
+
+  it('llegó después de que terminó el rango: sin cargo para el cliente', () => {
+    const html = buildReprogramacionClienteHtml({ ...conRango, fueraDeRango: true });
+    expect(html).toContain('fuera del rango horario agendado (12:00 a 13:00)');
+    expect(html).toContain('sin cargo para el cliente');
+  });
+});

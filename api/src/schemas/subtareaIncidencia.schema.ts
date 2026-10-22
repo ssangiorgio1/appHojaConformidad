@@ -24,6 +24,8 @@ export const createSubtareaIncidenciaSchema = z
   // Hora agendada de la visita (ISO). Con ella la API compara la llegada del técnico y sugiere si fue visita
   // fallida o llegada tarde (ver clasificarIncidencia.ts).
   horaAgendada: z.string().datetime().optional(),
+  // Fin del rango horario de la tarea: si el técnico llegó después, la visita es en parte culpa de WARA (sin cargo).
+  horaFinAgendada: z.string().datetime().optional(),
   // Propuesta de reprogramación para esta unidad (ISO). Opcional: sin ella la incidencia queda
   // pendiente_reprogramar como siempre; con ella queda propuesta_pendiente.
   propuestaInicio: z.string().datetime().optional(),
