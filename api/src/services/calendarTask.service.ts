@@ -6,6 +6,7 @@ import { elegirContacto, limpiarTelefono, type ContactoCliente } from './contact
 import { sugerirTipoServicio, marcarCambioUnidad, type SugerenciaTipoServicio } from './tipoServicioSugerido.js';
 import { aplicarEsperado, idsDeLineas, type DetalleLinea, type ProductoUnidad } from './productosUnidad.js';
 import { classify, many2oneName, withTimeout } from './odooErrors.js';
+import { unidadesAsignadas, unidadesPropias } from './unidadesPropias.js';
 
 // Campos reales descubiertos con scripts/discoverOdooTaskSchema.ts (de solo
 // lectura, corrido contra la Odoo real) — NO hay un campo "fin" dedicado en
@@ -49,6 +50,35 @@ const DEFAULT_TASK_DURATION_HOURS = 1;
 const MAX_DEADLINE_WINDOW_HOURS = 8;
 const AR_OFFSET_MS = 3 * 60 * 60 * 1000;
 
+import { companerosDeTarea, nombresCompaneros } from './companeros.js';
+
+// Nombre de cada usuario de Odoo, en memoria 30 min (los nombres casi no cambian): sirve para decir con quién se comparte
+// una tarea sin leer res.users en cada pedido de la agenda. Best-effort: si Odoo falla, esos ids quedan sin nombre.
+const nombresUsuarios = new Map<number, { nombre: string; at: number }>();
+const NOMBRES_TTL_MS = 30 * 60_000;
+
+async function nombresDeUsuarios(ids: number[]): Promise<Map<number, string>> {
+  const ahora = Date.now();
+  const faltan = ids.filter((id) => {
+    const c = nombresUsuarios.get(id);
+    return !c || ahora - c.at > NOMBRES_TTL_MS;
+  });
+  if (faltan.length) {
+    try {
+      const filas = (await withTimeout(executeKw('res.users', 'read', [faltan], { fields: ['name'] }), 'nombresDeUsuarios')) as Array<{ id: number; name: string }>;
+      for (const f of filas) nombresUsuarios.set(f.id, { nombre: f.name, at: ahora });
+    } catch (err) {
+      console.error('CALENDAR_NOMBRES_USUARIOS_FAILED', err);
+    }
+  }
+  const out = new Map<number, string>();
+  for (const id of ids) {
+    const c = nombresUsuarios.get(id);
+    if (c) out.set(id, c.nombre);
+  }
+  return out;
+}
+
 export interface CalendarSubtask {
   id: number;
   name: string;
@@ -58,6 +88,9 @@ export interface CalendarSubtask {
   // de este lote" (ver ALCANCE_BACKOFFICE.md §14), a diferencia de
   // technicianName (string, solo para mostrar).
   technicianIds: number[];
+  // Los otros técnicos asignados a esta unidad (nombres, sin el técnico que mira su agenda). Vacío si la unidad es solo suya,
+  // y siempre vacío en la vista de coordinación (sin técnico elegido).
+  companeros: string[];
   isClosed: boolean;
   description: string | null;
   // Campo "Ubicación de la unidad" de la subtarea en Odoo (x_studio_ubicacin_de_la_unidad). null si está vacío.
@@ -101,6 +134,9 @@ export interface CalendarTask {
   end: string | null;
   technicianId: number | null;
   technicianName: string | null;
+  // Con qué otros técnicos se comparte esta tarea (asignados al padre y a las unidades que ve este técnico, sin él mismo).
+  // Solo se completa cuando se pide la agenda de UN técnico; vacío para coordinación.
+  companeros: string[];
   partnerName: string | null;
   stage: string | null;
   description: string | null;
@@ -351,6 +387,8 @@ export async function listCalendarTasks(params: { from: string; to: string; tech
 
     const allParentIds = new Set<number>([...primaryParentIds, ...rawByParent.keys()]);
     const result: CalendarTask[] = [];
+    // A quién está asignado el padre de cada franja, para calcular con quién se comparte (ver más abajo).
+    const asignadosDelPadre = new Map<string, number[]>();
 
     for (const parentId of allParentIds) {
       const parentRow = parentRowsById.get(parentId);
@@ -410,6 +448,7 @@ export async function listCalendarTasks(params: { from: string; to: string; tech
         // unidad propia del técnico en ESTA franja, en cambio, no aporta nada.
         if (parentHasChildren && params.technicianIds?.length && !filtered.length) continue;
 
+        asignadosDelPadre.set(`${parentId}:${occStart}:${occEnd}`, (parentRow.user_ids as number[]) ?? []);
         result.push({
           id: parentId,
           occurrenceKey: `${parentId}:${occStart}:${occEnd}`,
@@ -421,6 +460,7 @@ export async function listCalendarTasks(params: { from: string; to: string; tech
           end: occEnd,
           technicianId: (parentRow.user_ids as number[])[0] ?? null,
           technicianName: (parentRow.user_names as string) || null,
+          companeros: [],
           partnerName: many2oneName(parentRow.partner_id),
           stage: many2oneName(parentRow.stage_id),
           description: stripHtml(parentRow.description as string | false),
@@ -437,6 +477,23 @@ export async function listCalendarTasks(params: { from: string; to: string; tech
           partnerId: many2oneRef(parentRow.partner_id)?.id ?? null,
           contactoCliente: null,
         });
+      }
+    }
+
+    // Con qué otros técnicos se comparte cada tarea y cada unidad: solo cuando se pide la agenda de UN técnico (la de
+    // coordinación no tiene un "yo").
+    const yo = params.technicianIds?.length === 1 ? params.technicianIds[0] : null;
+    if (yo !== null) {
+      const ids = new Set<number>();
+      for (const t of result) {
+        for (const id of asignadosDelPadre.get(t.occurrenceKey) ?? []) ids.add(id);
+        for (const u of t.subtasks) for (const id of u.technicianIds) ids.add(id);
+      }
+      ids.delete(yo);
+      const nombres = ids.size ? await nombresDeUsuarios([...ids]) : new Map<number, string>();
+      for (const t of result) {
+        for (const u of t.subtasks) u.companeros = nombresCompaneros(u.technicianIds, yo, nombres);
+        t.companeros = companerosDeTarea(asignadosDelPadre.get(t.occurrenceKey), t.subtasks, yo, nombres);
       }
     }
 
@@ -610,6 +667,7 @@ function toCalendarSubtask(g: GroupedSubtask): CalendarSubtask {
     stage: g.stage,
     technicianName: g.technicianName,
     technicianIds: g.technicianIds,
+    companeros: g.companeros,
     isClosed: g.isClosed,
     description: g.description,
     ubicacion: g.ubicacion,
@@ -673,6 +731,7 @@ function collapseDuplicateNames(subtasks: RawSubtask[], parentStart: string | nu
       // en listCalendarTasks), se toma el primero del grupo que sí lo tenga.
       technicianName: primary.technicianName ?? sorted.find((s) => s.technicianName)?.technicianName ?? null,
       technicianIds: Array.from(new Set(sorted.flatMap((s) => s.technicianIds))),
+      companeros: [],
       // Cerrada solo si TODAS las tareas reales del grupo lo están — si el
       // técnico ya instaló el GPS pero le falta el RFID, la unidad sigue
       // pendiente.
@@ -742,40 +801,23 @@ async function resolveDriftedChildrenRaw(
 // unidad reasignada a otro técnico a mitad de la visita). Un round-trip
 // puntual a Odoo (no cacheado) a propósito: esto solo corre cuando una unidad
 // se resuelve, no en cada carga de agenda.
-export async function getOwnSubtaskIds(parentTaskId: number, technicianOdooId: number): Promise<number[]> {
+export async function getOwnSubtaskIds(parentTaskId: number, technicianOdooId: number): Promise<{ asignadas: number[]; visibles: number[] }> {
   const parentRows = (await withTimeout(
     executeKw('project.task', 'read', [[parentTaskId]], { fields: ['id', 'child_ids'] }),
     'getOwnSubtaskIds:parent',
   )) as Array<{ child_ids?: number[] }>;
   const childIds = parentRows[0]?.child_ids ?? [];
-  if (!childIds.length) return [];
+  if (!childIds.length) return { asignadas: [], visibles: [] };
 
   const childRows = (await withTimeout(
     executeKw('project.task', 'read', [childIds], { fields: ['id', 'name', 'user_ids'] }),
     'getOwnSubtaskIds:children',
   )) as Array<{ id: number; name: string; user_ids?: number[] }>;
 
-  // Mismo colapso por `name` que collapseDuplicateNames — si "QEW233" son 2
-  // project.task reales, acá tienen que verse como UNA sola "propia" (el id
-  // primario, menor id del grupo), porque es ese único id el que termina
-  // guardado en Conformidad.subtareaOdoo.id. Sin esto, cerrarVisitaLoteSiTodoResuelto
-  // (ver loteVisita.service.ts) esperaría por siempre una "propia" (la que
-  // quedó fuera del grupo) que nunca va a tener su propia Conformidad.
-  const groups = new Map<string, Array<{ id: number; assigned: boolean }>>();
-  for (const c of childRows) {
-    const entry = { id: c.id, assigned: (c.user_ids ?? []).includes(technicianOdooId) };
-    const list = groups.get(c.name);
-    if (list) list.push(entry);
-    else groups.set(c.name, [entry]);
-  }
-
-  const ownPrimaryIds: number[] = [];
-  for (const group of groups.values()) {
-    if (!group.some((g) => g.assigned)) continue;
-    const primaryId = Math.min(...group.map((g) => g.id));
-    ownPrimaryIds.push(primaryId);
-  }
-  return ownPrimaryIds;
+  // `visibles`: las que la agenda le muestra en la pantalla (las asignadas a él y las que no tienen a nadie asignado); la visita
+  // no se cierra sola mientras alguna de esas siga sin resolver. `asignadas`: solo las asignadas a él, que siguen siendo la
+  // condición para que exista el cierre automático. Mismo colapso por `name` que collapseDuplicateNames: ver unidadesPropias.ts.
+  return { asignadas: unidadesAsignadas(childRows, technicianOdooId), visibles: unidadesPropias(childRows, technicianOdooId) };
 }
 
 // Todas las unidades (subtareas) de un lote, sin importar a quién estén asignadas — mismo colapso por `name` que

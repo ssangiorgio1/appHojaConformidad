@@ -1,5 +1,5 @@
 import { Types } from 'mongoose';
-import { cerrarSuspensionAbierta } from './suspensionVisita.js';
+import { cerrarSuspensionAbierta, debeAvisarAlCliente, entradaPorReapertura } from './suspensionVisita.js';
 import { env } from '../config/env.js';
 import { VisitaNotificacionModel } from '../models/VisitaNotificacion.js';
 
@@ -60,7 +60,10 @@ export async function notificarEstadoVisita(
   fecha: string,
   ocurrioAt?: string,
 ) {
-  const visita = await upsertViajeAbierto(tareaOdooId, estado, tecnicoId, fecha);
+  // Una tarea tiene UNA visita por técnico y día: si el técnico sigue en el lugar ('en_sitio') y su visita ya se había cerrado
+  // porque se sumaron unidades, se reabre esa misma visita en vez de crear otra (ver reabrirVisitaCerrada).
+  const reapertura = estado === 'en_sitio' ? await reabrirVisitaCerrada(tareaOdooId, tecnicoId, fecha, ocurrioAt) : null;
+  const visita = reapertura ?? (await upsertViajeAbierto(tareaOdooId, estado, tecnicoId, fecha));
 
   // Timestamp por transición, seteado una sola vez: un reintento o un PATCH
   // duplicado del mismo estado no debe correr el reloj de traslado/trabajo.
@@ -75,6 +78,12 @@ export async function notificarEstadoVisita(
   if (visita.suspendida) {
     visita.suspendida = false;
     cerrarSuspensionAbierta(visita.suspensiones, now);
+  }
+
+  // Reabierta o ya avisado "finalizado": no se le manda otro mensaje al cliente.
+  if (!debeAvisarAlCliente(estado, reapertura !== null, visita.ultimoEnvio)) {
+    await visita.save();
+    return visita;
   }
 
   if (!visita.chatId) {
@@ -94,6 +103,30 @@ export async function notificarEstadoVisita(
 
   await visita.save();
   return visita;
+}
+
+// Reabre la visita CERRADA ('completo') de este técnico para esta tarea y día, si no hay una abierta: sigue siendo la misma
+// visita (conserva cuándo salió y llegó), con el rato cerrada registrado como pausa. null si no hay nada que reabrir (primera
+// visita del día, o ya hay una abierta) y entonces se sigue con el flujo de siempre.
+async function reabrirVisitaCerrada(tareaOdooId: number, tecnicoId: Types.ObjectId | string, fecha: string, ocurrioAt?: string) {
+  if (await VisitaNotificacionModel.exists({ tareaOdooId, tecnicoId, fecha, abierta: true })) return null;
+  const cerrada = await VisitaNotificacionModel.findOne({ tareaOdooId, tecnicoId, fecha, abierta: false, estado: 'completo', completoAt: { $ne: null } }).sort({
+    completoAt: -1,
+  });
+  if (!cerrada?.completoAt) return null;
+
+  const momento = resolverMomento(ocurrioAt, cerrada.completoAt);
+  cerrada.suspensiones.push(entradaPorReapertura(cerrada.completoAt, momento));
+  cerrada.abierta = true;
+  cerrada.estado = 'en_sitio';
+  cerrada.completoAt = null;
+  try {
+    return await cerrada.save();
+  } catch (err) {
+    // Carrera con otro pedido que ya abrió una visita para este mismo día: se sigue con el flujo de siempre.
+    if (err && typeof err === 'object' && 'code' in err && (err as { code: number }).code === 11000) return null;
+    throw err;
+  }
 }
 
 export function resolverMomento(ocurrioAt: string | undefined, previo: Date | null | undefined): Date {

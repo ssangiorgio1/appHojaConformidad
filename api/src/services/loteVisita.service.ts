@@ -79,8 +79,11 @@ export async function cerrarVisitaLoteSiTodoResuelto(
     const usuario = await UsuarioModel.findById(tecnicoId).select('odooUserId');
     if (!usuario?.odooUserId) return; // sin vínculo a Odoo, no hay forma de scopear "propias"
 
-    const propias = await getOwnSubtaskIds(tareaOdooId, usuario.odooUserId);
-    if (propias.length === 0) return; // no es un lote, o ya no le queda ninguna unidad propia asignada
+    const { asignadas, visibles } = await getOwnSubtaskIds(tareaOdooId, usuario.odooUserId);
+    if (asignadas.length === 0) return; // no es un lote, o no tiene ninguna unidad asignada a él: el cierre es manual
+    // El cierre automático espera a TODAS las unidades que le muestra la pantalla (asignadas a él o sin asignar), no solo a las
+    // asignadas: si no, la visita se cerraba con unidades sin hacer a la vista y la ficha lo mandaba a "Salir hacia destino".
+    const propias = visibles;
 
     const [completadas, reportadas, retiradas] = await Promise.all([
       ConformidadModel.find({

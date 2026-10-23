@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cerrarSuspensionAbierta, minutosSuspendidosEn } from './suspensionVisita.js';
+import { cerrarSuspensionAbierta, debeAvisarAlCliente, entradaPorReapertura, minutosSuspendidosEn, MOTIVO_REAPERTURA } from './suspensionVisita.js';
 
 const t = (hhmm: string) => new Date(`2026-10-21T${hhmm}:00Z`);
 
@@ -57,5 +57,39 @@ describe('cerrarSuspensionAbierta', () => {
     const s = [{ desdeAt: t('11:00'), hastaAt: null as Date | null }];
     cerrarSuspensionAbierta(s, t('10:00'));
     expect(s[0].hastaAt).toEqual(t('11:00'));
+  });
+});
+
+describe('reabrir una visita cerrada', () => {
+  it('el rato entre el cierre y la reapertura queda como pausa y no cuenta como tiempo en sitio', () => {
+    const pausa = entradaPorReapertura(t('16:23'), t('16:38'));
+    expect(pausa).toEqual({ desdeAt: t('16:23'), hastaAt: t('16:38'), motivo: MOTIVO_REAPERTURA });
+    // Visita de 13:40 a 17:17: 3 h 37 min en total, menos los 15 min de pausa.
+    expect(minutosSuspendidosEn([pausa], t('13:40'), t('17:17'), t('17:17'))).toBe(15);
+  });
+
+  it('nunca deja la reapertura antes del cierre', () => {
+    expect(entradaPorReapertura(t('16:23'), t('16:00')).hastaAt).toEqual(t('16:23'));
+  });
+});
+
+describe('debeAvisarAlCliente', () => {
+  it('un cambio de estado normal se avisa', () => {
+    expect(debeAvisarAlCliente('en_camino', false, null)).toBe(true);
+    expect(debeAvisarAlCliente('en_sitio', false, { estado: 'en_camino', status: 'SENT' })).toBe(true);
+    expect(debeAvisarAlCliente('completo', false, { estado: 'en_sitio', status: 'SENT' })).toBe(true);
+  });
+
+  it('al reabrir la visita no se manda otro "llegó"', () => {
+    expect(debeAvisarAlCliente('en_sitio', true, { estado: 'completo', status: 'SENT' })).toBe(false);
+  });
+
+  it('si ya se le avisó que el trabajo terminó, no se le repite al volver a cerrar la misma visita', () => {
+    expect(debeAvisarAlCliente('completo', false, { estado: 'completo', status: 'SENT' })).toBe(false);
+  });
+
+  it('si el aviso de "finalizado" falló o no se mandó (sin chat), sí se intenta al volver a cerrar', () => {
+    expect(debeAvisarAlCliente('completo', false, { estado: 'completo', status: 'FAILED' })).toBe(true);
+    expect(debeAvisarAlCliente('completo', false, { estado: 'completo', status: 'SKIPPED_NO_CHAT' })).toBe(true);
   });
 });

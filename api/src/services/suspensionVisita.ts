@@ -37,3 +37,25 @@ export function cerrarSuspensionAbierta(suspensiones: SuspensionVisita[], moment
     }
   }
 }
+
+// Una tarea tiene UNA visita por técnico y día. Si la visita se cerró (todas las unidades que había estaban resueltas) y el
+// técnico sigue en el lugar porque se sumaron unidades, se reabre la misma visita en vez de crear otra. El rato entre el
+// cierre y la reapertura no fue trabajo en el lugar para esta tarea: queda registrado como una pausa, así los reportes no lo
+// cuentan como tiempo en sitio.
+export const MOTIVO_REAPERTURA = 'Visita reabierta: se sumaron unidades';
+
+export function entradaPorReapertura(completoAt: Date, momento: Date): SuspensionVisita {
+  return { desdeAt: completoAt, hastaAt: momento < completoAt ? completoAt : momento, motivo: MOTIVO_REAPERTURA };
+}
+
+// ¿Se avisa al cliente por Telegram? Al reabrir no se manda otro "llegó", y si ya se le avisó "trabajo finalizado" no se lo
+// repite cuando la misma visita se vuelve a cerrar.
+export function debeAvisarAlCliente(
+  estado: 'en_camino' | 'en_sitio' | 'completo',
+  reabierta: boolean,
+  ultimoEnvio: { estado?: string; status?: string } | null | undefined,
+): boolean {
+  if (reabierta) return false;
+  if (estado === 'completo' && ultimoEnvio?.estado === 'completo' && ultimoEnvio?.status === 'SENT') return false;
+  return true;
+}
