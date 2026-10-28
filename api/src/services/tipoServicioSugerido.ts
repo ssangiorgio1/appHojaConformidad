@@ -10,8 +10,9 @@ export type TipoServicioSugerido = 'instalacion' | 'desinstalacion' | 'reparacio
 
 export interface SugerenciaTipoServicio {
   tipo: TipoServicioSugerido;
-  // De dónde sale: el producto es más confiable que la etiqueta.
-  fuente: 'producto' | 'etiqueta';
+  // De dónde sale: el producto es más confiable que la etiqueta. 'odoo' es el campo "Tipo de servicio" de la tarea
+  // (ver tipoServicioDeOdoo): no es una sugerencia sino el tipo definido por coordinación, y el técnico no lo cambia.
+  fuente: 'producto' | 'etiqueta' | 'odoo';
   // Solo con tipo 'cambio_unidad' (ver marcarCambioUnidad): qué pata es esta unidad.
   rolCambioUnidad?: 'origen' | 'destino';
 }
@@ -40,6 +41,38 @@ export const ETIQUETAS_TIPO_SERVICIO: Record<number, TipoServicioSugerido> = {
   // 'retiro_entrega' por etiqueta: pendiente de crear una etiqueta propia en Odoo (hoy "RETIRAR EQUIPO GPS" no
   // distingue el retiro en mano de la desinstalación). Mientras tanto se sugiere por producto.
 };
+
+// Campo de Odoo Studio "Tipo de servicio" (selección, obligatorio, uno por tarea). Los valores no cambian: Instalación,
+// Desintalación (así, con el error de tipeo), Intervención y Cambio de Unidad. Se acepta también "Desinstalación" por si
+// algún día se corrige el texto en Odoo.
+export const TIPO_SERVICIO_ODOO_FIELD = 'x_studio_tipo_de_servicio';
+
+const TIPOS_ODOO = new Map<string, TipoServicioSugerido>([
+  ['instalacion', 'instalacion'],
+  ['desintalacion', 'desinstalacion'],
+  ['desinstalacion', 'desinstalacion'],
+  ['intervencion', 'reparacion'],
+  ['cambio de unidad', 'cambio_unidad'],
+]);
+
+// null = vacío (tareas viejas) o un valor que no se conoce: ahí no se fija nada y vale lo de siempre.
+export function tipoServicioDeOdoo(valor: unknown): TipoServicioSugerido | null {
+  if (typeof valor !== 'string') return null;
+  const clave = valor.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+  return TIPOS_ODOO.get(clave) ?? null;
+}
+
+// El tipo de Odoo manda sobre producto y etiqueta. Única excepción: el retiro/entrega de equipo por producto, que no es
+// un PRE y no tiene valor propio en el campo. En "Cambio de Unidad" se conserva qué pata es (origen/destino) si el
+// producto ya la dedujo; si no, la elige el técnico.
+export function fijarTipoOdoo(sugerencia: SugerenciaTipoServicio | null, tipoOdoo: TipoServicioSugerido | null): SugerenciaTipoServicio | null {
+  if (!tipoOdoo || sugerencia?.tipo === 'retiro_entrega') return sugerencia;
+  if (tipoOdoo === 'cambio_unidad') {
+    const rol = sugerencia?.tipo === 'cambio_unidad' ? sugerencia.rolCambioUnidad : undefined;
+    return { tipo: 'cambio_unidad', fuente: 'odoo', ...(rol ? { rolCambioUnidad: rol } : {}) };
+  }
+  return { tipo: tipoOdoo, fuente: 'odoo' };
+}
 
 export function sugerirTipoServicio(esperado: EsperadoUnidad | null, etiquetaIds: number[]): SugerenciaTipoServicio | null {
   if (esperado) {

@@ -108,8 +108,8 @@ const POST_PHOTO_SLOTS_CAMBIO_EQUIPO: PhotoSlotDef[] = [
   // Optional for now — see comment in POST_PHOTO_SLOTS_INSTALACION.
   { key: 'boton_panico', label: 'Botón de pánico (que se note la ubicación)', required: false },
   // Cambio de unidad completo: el equipo nuevo va en OTRA unidad. Opcionales, para que quede constancia de en qué unidad se instaló.
-  { key: 'unidad_destino_matricula', label: 'Unidad donde se instaló el equipo: matrícula', required: false },
-  { key: 'unidad_destino', label: 'Unidad donde se instaló el equipo: fotos de la unidad', required: false, multi: true },
+  { key: 'unidad_destino_matricula', label: 'Unidad nueva (donde quedó el equipo): matrícula', required: false, multi: true },
+  { key: 'unidad_destino', label: 'Unidad nueva (donde quedó el equipo): fotos de la unidad', required: false, multi: true },
   { key: 'lugar_vacio', label: 'Lugar donde estaba el equipo', required: false, multi: true },
   { key: 'cableado_retirado', label: 'Cableado retirado / puntas aisladas', required: false, multi: true },
 ];

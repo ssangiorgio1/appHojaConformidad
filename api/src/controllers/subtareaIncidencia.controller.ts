@@ -22,6 +22,7 @@ import {
   reopenParentIfVisitaFallida,
   reassignTaskTechnician,
   moveParentDateIfSafe,
+  verificarTareaCoincide,
 } from '../services/calendarTask.service.js';
 import type {
   CreateSubtareaIncidenciaInput,
@@ -376,6 +377,17 @@ export const resolveSubtareaIncidencia = asyncHandler(async (req: Request, res: 
     }
 
     const ids = [incidencia.subtareaOdooId, ...(incidencia.mergedTaskIds ?? [])];
+    // ANTES de escribir nada: cada tarea tiene que ser la que se reportó (mismo nombre y mismo padre) y no estar cerrada.
+    // Si el registro se creó contra otro Odoo (pruebas vs. producción) o la tarea cambió, el mismo id apunta a una tarea
+    // ajena: se rechaza con un aviso claro y no se toca nada en Odoo ni en la incidencia.
+    for (const id of ids) {
+      const verificacion = await verificarTareaCoincide(id, {
+        nombre: incidencia.subtareaNombre,
+        parentId: incidencia.tareaOdooId !== incidencia.subtareaOdooId ? incidencia.tareaOdooId : null,
+        ticketId: incidencia.ticketOdooId ?? null,
+      });
+      if (!verificacion.ok) throw new HttpError(409, verificacion.motivo);
+    }
     // Sin try/catch a propósito: si Odoo falla, el error se propaga como
     // error HTTP y la incidencia NO se marca reprogramada — a diferencia del
     // resto de este archivo (best-effort), acá marcarla resuelta sin que Odoo

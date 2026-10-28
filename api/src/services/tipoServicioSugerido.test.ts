@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { resolverEsperado } from '../config/productoMapeo.js';
-import { sugerirTipoServicio, marcarCambioUnidad, type SugerenciaTipoServicio } from './tipoServicioSugerido.js';
+import { sugerirTipoServicio, marcarCambioUnidad, fijarTipoOdoo, tipoServicioDeOdoo, type SugerenciaTipoServicio } from './tipoServicioSugerido.js';
 
 // Ids reales del catálogo (ver productoMapeo.ts): 503 = INS.001 (instala), 544 = DES.103 (retira).
 const INS001 = { productId: 503, cantidad: 1 };
@@ -59,5 +59,50 @@ describe('sugerirTipoServicio', () => {
       marcarCambioUnidad(unidades);
       expect(unidades[0].tipoServicioSugerido?.tipo).toBe('desinstalacion');
     });
+  });
+});
+
+describe('tipo de servicio de Odoo', () => {
+  it('mapea los cuatro valores del campo, incluido "Desintalación" con el error de tipeo', () => {
+    expect(tipoServicioDeOdoo('Instalación')).toBe('instalacion');
+    expect(tipoServicioDeOdoo('Desintalación')).toBe('desinstalacion');
+    expect(tipoServicioDeOdoo('Intervención')).toBe('reparacion');
+    expect(tipoServicioDeOdoo('Cambio de Unidad')).toBe('cambio_unidad');
+  });
+  it('acepta la ortografía corregida y mayúsculas', () => {
+    expect(tipoServicioDeOdoo('Desinstalación')).toBe('desinstalacion');
+    expect(tipoServicioDeOdoo('INTERVENCION')).toBe('reparacion');
+  });
+  it('vacío o desconocido no fija nada', () => {
+    expect(tipoServicioDeOdoo(false)).toBeNull();
+    expect(tipoServicioDeOdoo(null)).toBeNull();
+    expect(tipoServicioDeOdoo('')).toBeNull();
+    expect(tipoServicioDeOdoo('constructor')).toBeNull();
+    expect(tipoServicioDeOdoo('Otra cosa')).toBeNull();
+  });
+  it('manda sobre el producto y la etiqueta', () => {
+    expect(fijarTipoOdoo({ tipo: 'instalacion', fuente: 'producto' }, 'reparacion')).toEqual({ tipo: 'reparacion', fuente: 'odoo' });
+    expect(fijarTipoOdoo({ tipo: 'desinstalacion', fuente: 'etiqueta' }, 'instalacion')).toEqual({ tipo: 'instalacion', fuente: 'odoo' });
+    expect(fijarTipoOdoo(null, 'desinstalacion')).toEqual({ tipo: 'desinstalacion', fuente: 'odoo' });
+  });
+  it('sin valor en Odoo deja la sugerencia como estaba', () => {
+    const s: SugerenciaTipoServicio = { tipo: 'instalacion', fuente: 'producto' };
+    expect(fijarTipoOdoo(s, null)).toBe(s);
+    expect(fijarTipoOdoo(null, null)).toBeNull();
+  });
+  it('el retiro/entrega por producto no se pisa (no es un PRE)', () => {
+    const s: SugerenciaTipoServicio = { tipo: 'retiro_entrega', fuente: 'producto' };
+    expect(fijarTipoOdoo(s, 'instalacion')).toBe(s);
+  });
+  it('cambio de unidad conserva origen/destino deducido por producto; si no, queda sin pata', () => {
+    expect(fijarTipoOdoo({ tipo: 'cambio_unidad', fuente: 'producto', rolCambioUnidad: 'origen' }, 'cambio_unidad')).toEqual({
+      tipo: 'cambio_unidad',
+      fuente: 'odoo',
+      rolCambioUnidad: 'origen',
+    });
+    expect(fijarTipoOdoo({ tipo: 'instalacion', fuente: 'producto' }, 'cambio_unidad')).toEqual({ tipo: 'cambio_unidad', fuente: 'odoo' });
+  });
+  it('si Odoo dice otro tipo, la pata de cambio de unidad deducida por producto se descarta', () => {
+    expect(fijarTipoOdoo({ tipo: 'cambio_unidad', fuente: 'producto', rolCambioUnidad: 'destino' }, 'instalacion')).toEqual({ tipo: 'instalacion', fuente: 'odoo' });
   });
 });

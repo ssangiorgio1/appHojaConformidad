@@ -3,9 +3,18 @@ import { cached } from '../config/odooSchemaCache.js';
 import { env } from '../config/env.js';
 import type { EsperadoUnidad } from '../config/productoMapeo.js';
 import { elegirContacto, limpiarTelefono, type ContactoCliente } from './contactoCliente.js';
-import { sugerirTipoServicio, marcarCambioUnidad, type SugerenciaTipoServicio } from './tipoServicioSugerido.js';
+import {
+  sugerirTipoServicio,
+  marcarCambioUnidad,
+  fijarTipoOdoo,
+  tipoServicioDeOdoo,
+  TIPO_SERVICIO_ODOO_FIELD,
+  type SugerenciaTipoServicio,
+  type TipoServicioSugerido,
+} from './tipoServicioSugerido.js';
 import { aplicarEsperado, idsDeLineas, type DetalleLinea, type ProductoUnidad } from './productosUnidad.js';
 import { classify, many2oneName, withTimeout } from './odooErrors.js';
+import { evaluarTarea, type FilaTareaOdoo, type TareaEsperada, type VerificacionTarea } from './verificarTarea.js';
 import { unidadesAsignadas, unidadesPropias } from './unidadesPropias.js';
 
 // Campos reales descubiertos con scripts/discoverOdooTaskSchema.ts (de solo
@@ -20,24 +29,26 @@ const START_FIELD = 'planned_date_begin';
 // "Ubicación de la unidad": dónde está la unidad dentro del predio del cliente (campo de Odoo Studio, tipo char).
 const UBICACION_FIELD = 'x_studio_ubicacin_de_la_unidad';
 
-// El campo es de Odoo Studio: puede existir en una base (staging) y no en otra (producción). Pedirle a Odoo un campo que no
-// existe hace fallar TODA la lectura, así que antes se consulta una vez si existe y se agrega a la lista solo si está. El
-// resultado se recuerda unos minutos; si la consulta falla, se asume que no está (la agenda sigue funcionando sin ubicación).
+// Los campos son de Odoo Studio: pueden existir en una base (staging) y no en otra (producción). Pedirle a Odoo un campo que no
+// existe hace fallar TODA la lectura, así que antes se consulta una vez cuáles existen y se agregan a la lista solo los que
+// están. El resultado se recuerda unos minutos; si la consulta falla, se asume que no están (la agenda sigue funcionando sin
+// ubicación ni tipo de servicio de Odoo).
+const CAMPOS_STUDIO = [UBICACION_FIELD, TIPO_SERVICIO_ODOO_FIELD];
 const UBICACION_CACHE_MS = 10 * 60_000;
-let ubicacionDisponible: { valor: boolean; hasta: number } | null = null;
+let camposDisponibles: { valor: string[]; hasta: number } | null = null;
 
 async function conUbicacion(fields: string[]): Promise<string[]> {
-  if (!ubicacionDisponible || ubicacionDisponible.hasta < Date.now()) {
-    let valor = false;
+  if (!camposDisponibles || camposDisponibles.hasta < Date.now()) {
+    let valor: string[] = [];
     try {
-      const def = (await withTimeout(executeKw('project.task', 'fields_get', [[UBICACION_FIELD]], { attributes: ['type'] }), 'ubicacionFieldCheck')) as Record<string, unknown>;
-      valor = UBICACION_FIELD in def;
+      const def = (await withTimeout(executeKw('project.task', 'fields_get', [CAMPOS_STUDIO], { attributes: ['type'] }), 'ubicacionFieldCheck')) as Record<string, unknown>;
+      valor = CAMPOS_STUDIO.filter((c) => c in def);
     } catch (err) {
       console.error('UBICACION_FIELD_CHECK_FAILED', err);
     }
-    ubicacionDisponible = { valor, hasta: Date.now() + UBICACION_CACHE_MS };
+    camposDisponibles = { valor, hasta: Date.now() + UBICACION_CACHE_MS };
   }
-  return ubicacionDisponible.valor ? [...fields, UBICACION_FIELD] : fields;
+  return [...fields, ...camposDisponibles.valor];
 }
 // date_deadline es el campo que mejor calza como fin de la ventana agendada
 // en esta versión de Odoo — planned_date_end no existe en este modelo. Pero
@@ -159,6 +170,9 @@ export interface CalendarTask {
   // un lote cada unidad trae el suyo en `subtasks`; este vale para una tarea suelta.
   etiquetaIds: number[];
   tipoServicioSugerido: SugerenciaTipoServicio | null;
+  // Campo "Tipo de servicio" de la tarea en Odoo (uno por tarea, vale para todas sus unidades). null = vacío o sin el campo.
+  // Cuando está, el tipo del PRE queda fijo (ver fijarTipoOdoo).
+  tipoServicioOdoo: TipoServicioSugerido | null;
   // id del cliente (res.partner) de la tarea y su teléfono de contacto (del ticket o, si no hay, del cliente en Odoo):
   // para llamarlo si no está en el lugar. null = sin teléfono cargado en ninguno de los dos.
   partnerId: number | null;
@@ -474,6 +488,7 @@ export async function listCalendarTasks(params: { from: string; to: string; tech
           esperado: null,
           etiquetaIds: Array.isArray(parentRow.tag_ids) ? (parentRow.tag_ids as number[]) : [],
           tipoServicioSugerido: null,
+          tipoServicioOdoo: tipoServicioDeOdoo(parentRow[TIPO_SERVICIO_ODOO_FIELD]),
           partnerId: many2oneRef(parentRow.partner_id)?.id ?? null,
           contactoCliente: null,
         });
@@ -577,6 +592,9 @@ function completarTipoServicio(tareas: CalendarTask[]): void {
     t.tipoServicioSugerido = sugerirTipoServicio(t.esperado, t.etiquetaIds);
     for (const s of t.subtasks) s.tipoServicioSugerido = sugerirTipoServicio(s.esperado, t.etiquetaIds);
     marcarCambioUnidad(t.subtasks);
+    // Al final: el tipo de Odoo pisa lo deducido por producto/etiqueta (conservando origen/destino del cambio de unidad).
+    t.tipoServicioSugerido = fijarTipoOdoo(t.tipoServicioSugerido, t.tipoServicioOdoo);
+    for (const s of t.subtasks) s.tipoServicioSugerido = fijarTipoOdoo(s.tipoServicioSugerido, t.tipoServicioOdoo);
   }
 }
 
@@ -1039,6 +1057,28 @@ export async function markParentStageHechoIfAllChildrenResolved(parentTaskId: nu
 // note.
 export async function markParentStageVisitaFallidaIfAllChildrenFailed(parentTaskId: number): Promise<void> {
   await markParentStageIfAllChildrenInStage(parentTaskId, STAGE_ID_VISITA_FALLIDA, 'PARENT_LOTE_STAGE_VISITA_FALLIDA');
+}
+
+// SOLO LECTURA. Comprueba que la tarea que hay en ESTE Odoo es la que se reportó (mismo nombre, mismo padre) y que no está
+// cerrada, antes de mover su fecha, reabrirla o reasignarla. Sin esto, un id de otro Odoo (pruebas vs. producción) o una
+// tarea ya cerrada recibía las escrituras igual. Ver verificarTarea.ts.
+export async function verificarTareaCoincide(taskId: number, esperado: TareaEsperada): Promise<VerificacionTarea> {
+  try {
+    const campos = ['name', 'parent_id', 'is_closed', 'state', 'helpdesk_ticket_id'];
+    const rows = (await withTimeout(executeKw('project.task', 'read', [[taskId]], { fields: campos }), 'verificarTareaCoincide')) as FilaTareaOdoo[];
+    let filaPadre: FilaTareaOdoo | undefined;
+    // El ticket de un lote vive en la tarea padre: solo se lee si hay que compararlo.
+    if (esperado.ticketId && esperado.parentId != null) {
+      const padres = (await withTimeout(
+        executeKw('project.task', 'read', [[esperado.parentId]], { fields: ['helpdesk_ticket_id'] }),
+        'verificarTareaCoincide:padre',
+      )) as FilaTareaOdoo[];
+      filaPadre = padres[0];
+    }
+    return evaluarTarea(taskId, rows[0], esperado, filaPadre);
+  } catch (err) {
+    throw classify(err);
+  }
 }
 
 // Etapa "Nuevo" del Kanban — confirmada contra la instancia real
