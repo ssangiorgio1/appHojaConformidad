@@ -189,6 +189,8 @@ const CambioUnidadSchema = new Schema(
   {
     rol: { type: String, enum: ['origen', 'destino'], default: null },
     parejaId: { type: Schema.Types.ObjectId, ref: 'Conformidad', default: null },
+    // Cambio completo: las dos hojas son un solo trabajo (la liquidación no las paga como dos).
+    completo: { type: Boolean, default: false },
   },
   { _id: false },
 );

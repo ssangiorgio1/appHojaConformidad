@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import puppeteer, { type Browser } from 'puppeteer';
 import sharp from 'sharp';
-import { buildPrintHtml, type PrintableConformidad } from '@wara/shared';
+import { buildPrintHtml, buildPrintHtmlCambioCompleto, type PrintableConformidad } from '@wara/shared';
 import { buildObjectKey, uploadBuffer } from './r2.service.js';
 import { buildReprogramacionHtml, type ReprogramacionPdfData } from './reprogramacionPdf.js';
 import { buildReprogramacionClienteHtml, type ReprogramacionClienteData } from './reprogramacionClientePdf.js';
@@ -189,7 +189,7 @@ async function renderPdfBufferNow(html: string): Promise<Buffer> {
 // Sirve para "Ver PDF" repetido y para que el PDF que se generó al enviar a Odoo ya esté listo cuando el técnico
 // lo abre. En memoria y acotada por peso; se vacía sola al reiniciar el servicio (nada persistente).
 // Subir PDF_CACHE_VERSION si cambia el layout (buildPrintHtml) para no servir PDFs viejos tras un deploy sin reinicio.
-const PDF_CACHE_VERSION = 1;
+const PDF_CACHE_VERSION = 2;
 const PDF_CACHE_MAX_BYTES = 40 * 1024 * 1024;
 const pdfCache = new Map<string, Buffer>();
 let pdfCacheBytes = 0;
@@ -198,9 +198,10 @@ const pdfEnCurso = new Map<string, Promise<Buffer>>();
 // Campos que cambian sin que cambie lo que se imprime (estado del envío a Odoo, fechas de guardado).
 const CAMPOS_VOLATILES = new Set(['updatedAt', 'odooSync', 'preOdooSync', 'pdfReporte', '__v']);
 
-function contentKey(record: PrintableConformidad, soloPre: boolean): string {
+function contentKey(record: PrintableConformidad | PrintableConformidad[], soloPre: boolean): string {
   const json = JSON.stringify(record, (k, v) => (CAMPOS_VOLATILES.has(k) ? undefined : v));
-  return createHash('sha1').update(`${PDF_CACHE_VERSION}|${soloPre ? 'pre' : 'full'}|`).update(json).digest('hex');
+  const tipo = Array.isArray(record) ? 'cambio-completo' : soloPre ? 'pre' : 'full';
+  return createHash('sha1').update(`${PDF_CACHE_VERSION}|${tipo}|`).update(json).digest('hex');
 }
 
 function guardarPdf(key: string, buf: Buffer): void {
@@ -260,6 +261,36 @@ export async function buildConformidadPdfBuffer(
   const p = renderPdfBuffer(() =>
     buildPrintHtml(record, {
       soloPre: opts?.soloPre,
+      logoDataUri: LOGO_DATA_URI,
+      resolvePhotoSrc: async (foto) => {
+        if (!foto.url) return foto.dataUrl;
+        return (await resizePhotoForPdf(foto.url)) ?? foto.url;
+      },
+    }),
+  )
+    .then((buf) => {
+      guardarPdf(key, buf);
+      return buf;
+    })
+    .finally(() => pdfEnCurso.delete(key));
+  pdfEnCurso.set(key, p);
+  return p;
+}
+
+// Cambio de unidad completo: un solo PDF con las 2 hojas (vieja y nueva, cada una con su PRE y su POST), en ese orden.
+// Misma caché y mismo render que la hoja suelta.
+export async function buildCambioCompletoPdfBuffer(hojas: PrintableConformidad[]): Promise<Buffer> {
+  const key = contentKey(hojas, false);
+  const hit = pdfCache.get(key);
+  if (hit) {
+    pdfCache.delete(key);
+    pdfCache.set(key, hit);
+    return hit;
+  }
+  const enCurso = pdfEnCurso.get(key);
+  if (enCurso) return enCurso;
+  const p = renderPdfBuffer(() =>
+    buildPrintHtmlCambioCompleto(hojas, {
       logoDataUri: LOGO_DATA_URI,
       resolvePhotoSrc: async (foto) => {
         if (!foto.url) return foto.dataUrl;

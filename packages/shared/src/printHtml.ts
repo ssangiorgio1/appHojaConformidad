@@ -262,43 +262,8 @@ async function photosBlock(slots: PhotoSlotDef[], fotos: Foto[], titulo: string,
   return `<div class="keep-together"><div class="obs-label">${esc(titulo)}</div><div class="photo-grid">${cells.join('')}</div></div>`;
 }
 
-export async function buildPrintHtml(
-  record: PrintableConformidad,
-  opts?: {
-    logoDataUri?: string;
-    resolvePhotoSrc?: PhotoSrcResolver;
-    // Versión del PDF que se manda al ticket al terminar el PRE: estado en el
-    // que se encontró la unidad, sin las secciones de POST ni equipamiento.
-    soloPre?: boolean;
-  },
-): Promise<string> {
-  const resolvePhotoSrc = opts?.resolvePhotoSrc ?? defaultResolvePhotoSrc;
-  const soloPre = opts?.soloPre === true;
-  const statusLabel =
-    soloPre ? 'Revisión inicial (PRE)' : record.status === 'completo' ? 'Completo' : record.status === 'pendiente_post' ? 'Pendiente POST' : 'PRE en progreso';
-  const tipoServicioLabel = record.tipoServicio ? TIPO_SERVICIO_LABELS[record.tipoServicio] : null;
-  const cambioUnidadLabel =
-    record.tipoServicio === 'cambio_unidad' && record.cambioUnidad
-      ? record.cambioUnidad.rol === 'origen'
-        ? 'Unidad de origen (desinstalación)'
-        : 'Unidad de destino (instalación)'
-      : null;
-  const mode = getServiceMode(record);
-
-  const [prePhotos, postPhotos] = await Promise.all([
-    photosBlock(prePhotoSlotsFor(mode, record.tipoUnidad), record.pre.fotos, 'Fotos PRE', resolvePhotoSrc),
-    soloPre ? '' : photosBlock(postPhotoSlotsFor(mode, undefined, record.tipoUnidad), record.post.fotos, 'Fotos POST', resolvePhotoSrc),
-  ]);
-  // Lo que escribe el técnico en el paso "Observaciones" del PRE — lo ve el
-  // cliente. Foto.descripcion (qué encontró en la foto extra) es solo para el
-  // panel y no se imprime acá.
-  const preObservaciones = record.pre.observaciones?.trim()
-    ? `<div class="keep-together"><div class="obs-label">Observaciones encontradas (PRE)</div><div class="obs-box" style="white-space: pre-wrap;">${esc(record.pre.observaciones)}</div></div>`
-    : '';
-
-  return `<!DOCTYPE html>
-<html><head><meta charset="utf-8">
-<style>
+// Estilos de la hoja impresa: los comparte la hoja suelta y el documento de cambio completo (2 hojas).
+const PRINT_CSS = `
   :root {
     --primary: #AD1838;
     --secondary: #9D273C;
@@ -381,9 +346,58 @@ export async function buildPrintHtml(
      of one page and push the content to the next — plain page-break-after:
      avoid on the title alone is not reliably honored there. */
   .keep-together { display: flow-root; page-break-inside: avoid; break-inside: avoid; }
+`;
+
+function documentoHtml(cuerpo: string): string {
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>
+${PRINT_CSS}
 </style></head>
 <body>
-  <div class="header">
+${cuerpo}
+</body></html>`;
+}
+
+export async function buildPrintHtml(
+  record: PrintableConformidad,
+  opts?: {
+    logoDataUri?: string;
+    resolvePhotoSrc?: PhotoSrcResolver;
+    // Versión del PDF que se manda al ticket al terminar el PRE: estado en el
+    // que se encontró la unidad, sin las secciones de POST ni equipamiento.
+    soloPre?: boolean;
+    // Devuelve solo el cuerpo de la hoja (sin <html> ni estilos), para armar el documento de cambio completo.
+    soloCuerpo?: boolean;
+    // Rótulo extra en el título cuando la hoja es una parte de un documento mayor (ej. "Cambio completo · hoja 1 de 2").
+    parte?: string;
+  },
+): Promise<string> {
+  const resolvePhotoSrc = opts?.resolvePhotoSrc ?? defaultResolvePhotoSrc;
+  const soloPre = opts?.soloPre === true;
+  const statusLabel =
+    soloPre ? 'Revisión inicial (PRE)' : record.status === 'completo' ? 'Completo' : record.status === 'pendiente_post' ? 'Pendiente POST' : 'PRE en progreso';
+  const tipoServicioLabel = record.tipoServicio ? TIPO_SERVICIO_LABELS[record.tipoServicio] : null;
+  const cambioUnidadLabel =
+    record.tipoServicio === 'cambio_unidad' && record.cambioUnidad
+      ? record.cambioUnidad.rol === 'origen'
+        ? 'Unidad de origen (desinstalación)'
+        : 'Unidad de destino (instalación)'
+      : null;
+  const mode = getServiceMode(record);
+
+  const [prePhotos, postPhotos] = await Promise.all([
+    photosBlock(prePhotoSlotsFor(mode, record.tipoUnidad), record.pre.fotos, 'Fotos PRE', resolvePhotoSrc),
+    soloPre ? '' : photosBlock(postPhotoSlotsFor(mode, undefined, record.tipoUnidad), record.post.fotos, 'Fotos POST', resolvePhotoSrc),
+  ]);
+  // Lo que escribe el técnico en el paso "Observaciones" del PRE — lo ve el
+  // cliente. Foto.descripcion (qué encontró en la foto extra) es solo para el
+  // panel y no se imprime acá.
+  const preObservaciones = record.pre.observaciones?.trim()
+    ? `<div class="keep-together"><div class="obs-label">Observaciones encontradas (PRE)</div><div class="obs-box" style="white-space: pre-wrap;">${esc(record.pre.observaciones)}</div></div>`
+    : '';
+
+  const cuerpo = `<div class="header">
     ${opts?.logoDataUri ? `<img class="logo-img" src="${esc(opts.logoDataUri)}">` : '<div class="logo-fallback">WARA · Seguimiento y Control</div>'}
     <div class="header-badges">
       ${record.ticketOdoo?.numero ? `<div class="ticket-badge">Ticket Odoo: #${esc(record.ticketOdoo.numero)}</div>` : ''}
@@ -396,6 +410,7 @@ export async function buildPrintHtml(
       ${record.ticketOdoo?.numero ? `<span class="status-pill">Ticket #${esc(record.ticketOdoo.numero)}</span>` : ''}
       ${tipoServicioLabel ? `<span class="status-pill">${esc(tipoServicioLabel)}</span>` : ''}
       ${cambioUnidadLabel ? `<span class="status-pill">${esc(cambioUnidadLabel)}</span>` : ''}
+      ${opts?.parte ? `<span class="status-pill">${esc(opts.parte)}</span>` : ''}
       <span class="status-pill">${esc(statusLabel)}</span>
     </div>
   </div>
@@ -413,7 +428,7 @@ export async function buildPrintHtml(
   </div>
 
   <div class="keep-together">
-    <div class="section-banner">${record.tipoUnidad === 'otro_equipo' ? 'Revisión general del equipo antes de comenzar' : 'Revisión general del vehículo antes de comenzar la instalación'}</div>
+    <div class="section-banner">${record.tipoUnidad === 'otro_equipo' ? 'Revisión general del equipo antes de comenzar' : `Revisión general del vehículo antes de comenzar la ${mode === 'retiro' ? 'desinstalación' : 'instalación'}`}</div>
     ${checklistTable(record, soloPre)}
   </div>
 
@@ -453,6 +468,18 @@ export async function buildPrintHtml(
         }
       </div>
     </div>
-  </div>`}
-</body></html>`;
+  </div>`}`;
+  return opts?.soloCuerpo ? cuerpo : documentoHtml(cuerpo);
+}
+
+// Cambio de unidad completo: las 2 hojas (unidad vieja y unidad nueva, cada una con su PRE y su POST) en un solo documento,
+// una detrás de la otra y cada una empieza en una página nueva.
+export async function buildPrintHtmlCambioCompleto(
+  hojas: PrintableConformidad[],
+  opts?: { logoDataUri?: string; resolvePhotoSrc?: PhotoSrcResolver },
+): Promise<string> {
+  const cuerpos = await Promise.all(
+    hojas.map((h, i) => buildPrintHtml(h, { ...opts, soloCuerpo: true, parte: `Cambio completo · hoja ${i + 1} de ${hojas.length}` })),
+  );
+  return documentoHtml(cuerpos.join('<div style="break-before: page; page-break-before: always;"></div>'));
 }

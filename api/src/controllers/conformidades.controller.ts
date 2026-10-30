@@ -12,9 +12,9 @@ import { pushConformidadToTicket, verifyTicketExists, OdooError } from '../servi
 import { notificarEstadoVisita } from '../services/telegram.service.js';
 import { cerrarVisitaLoteSiTodoResuelto } from '../services/loteVisita.service.js';
 import { procesarDerivacion } from '../services/derivacion.service.js';
-import { buildConformidadPdfBuffer as renderConformidadPdf } from '../services/pdf.service.js';
+import { buildConformidadPdfBuffer as renderConformidadPdf, buildCambioCompletoPdfBuffer } from '../services/pdf.service.js';
 import { decryptSecret } from '../utils/secretBox.js';
-import { EQUIP_ITEM_PHOTO_LABEL } from '@wara/shared';
+import { EQUIP_ITEM_PHOTO_LABEL, type PrintableConformidad } from '@wara/shared';
 import {
   isSubtaskAssignedToTechnician,
   isTaskAssignedToTechnician,
@@ -189,7 +189,7 @@ export const createConformidad = asyncHandler(async (req: Request, res: Response
     tareaOdoo: body.tareaOdoo,
     subtareaOdoo: body.subtareaOdoo,
     cambioEquipo: body.cambioEquipo ? { rol: body.cambioEquipo.rol } : undefined,
-    cambioUnidad: body.cambioUnidad ? { rol: body.cambioUnidad.rol } : undefined,
+    cambioUnidad: body.cambioUnidad ? { rol: body.cambioUnidad.rol, completo: body.cambioUnidad.completo ?? false } : undefined,
   });
 
   // El emparejamiento en el momento de creación es "best effort": si la
@@ -582,6 +582,18 @@ export const getCambioEquipoPorSubtarea = asyncHandler(async (req: Request, res:
   res.json({ data: record });
 });
 
+// Cambio de unidad completo: la otra hoja del par (vinculada por parejaId), o null si esta no es de un cambio completo o
+// todavía no está vinculada.
+async function parejaCambioCompleto(record: { cambioUnidad?: { completo?: boolean | null; parejaId?: unknown } | null }) {
+  if (!record.cambioUnidad?.completo || !record.cambioUnidad.parejaId) return null;
+  return ConformidadModel.findOne({ _id: record.cambioUnidad.parejaId, deletedAt: null });
+}
+
+// El documento del cambio completo va siempre en el mismo orden: primero la unidad vieja (origen), después la nueva (destino).
+function ordenarOrigenDestino<T extends { cambioUnidad?: { rol?: string | null } | null }>(a: T, b: T): [T, T] {
+  return a.cambioUnidad?.rol === 'destino' ? [b, a] : [a, b];
+}
+
 // Genera el PDF de la conformidad en memoria con Puppeteer y lo devuelve como
 // stream binario (application/pdf). No se guarda en R2 ni en MongoDB — el PDF
 // se produce bajo demanda cada vez. Esto elimina el almacenamiento en R2 y
@@ -591,9 +603,23 @@ export const generateConformidadPdf = asyncHandler(async (req: Request, res: Res
   if (!record) throw new HttpError(404, 'Conformidad not found');
   await assertOwnedByRequester(req, record);
 
-  const pdfBuffer = await renderConformidadPdf(record.toObject() as unknown as Parameters<typeof renderConformidadPdf>[0]);
+  // Cambio de unidad completo: el PDF es el de las 2 hojas juntas (vieja y nueva), se pida por la que se pida.
+  const pareja = await parejaCambioCompleto(record);
+  let pareDelUsuario = false;
+  if (pareja) {
+    try {
+      await assertOwnedByRequester(req, pareja);
+      pareDelUsuario = true;
+    } catch {
+      // La otra hoja es de otro técnico y este usuario no la puede ver: se imprime solo la suya.
+    }
+  }
+  const hojas = pareja && pareDelUsuario ? ordenarOrigenDestino(record, pareja) : null;
+  const pdfBuffer = hojas
+    ? await buildCambioCompletoPdfBuffer(hojas.map((h) => h.toObject() as unknown as PrintableConformidad))
+    : await renderConformidadPdf(record.toObject() as unknown as Parameters<typeof renderConformidadPdf>[0]);
 
-  const filename = `Conformidad-${record.numero || record.id}.pdf`;
+  const filename = hojas ? `Conformidad-cambio-completo-${hojas[0].numero || hojas[0].id}.pdf` : `Conformidad-${record.numero || record.id}.pdf`;
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
   res.setHeader('Content-Length', pdfBuffer.length);
@@ -663,7 +689,36 @@ async function runSyncConformidadToOdoo(req: Request, res: Response, fase: 'pre'
   // odooSync de siempre sigue siendo el del PDF completo al cerrar el POST.
   if (fase === 'pre' && record.status === 'borrador_pre') throw new HttpError(400, 'El PRE todavía no se finalizó');
 
-  if (!record.ticketOdoo?.numero) throw new HttpError(400, 'This record has no ticket de Odoo linked');
+  // Cambio de unidad completo: las 2 hojas (vieja y nueva) viajan juntas en UN solo PDF, así que el ticket no se llena de
+  // adjuntos. No se manda el PDF solo-PRE de cada hoja (el PRE ya va dentro del documento), y el envío de la hoja que cierra
+  // primero espera a que cierre la otra: el que llega último manda el documento de las 2. `?solo=1` es la salida si la otra
+  // hoja no se va a hacer: manda esta sola, como una hoja suelta.
+  const esCambioCompleto = Boolean(record.cambioUnidad?.completo) && req.query.solo !== '1';
+  if (esCambioCompleto && fase === 'pre') {
+    record.preOdooSync = { status: 'SYNCED', attempts: record.preOdooSync?.attempts ?? 0, syncedAt: new Date(), lastError: '', lastAttemptAt: new Date() };
+    await record.save();
+    res.json({ preOdooSync: record.preOdooSync });
+    return;
+  }
+  let pareja: Awaited<ReturnType<typeof parejaCambioCompleto>> = null;
+  if (esCambioCompleto && fase === 'completo' && record.odooSync?.status !== 'SYNCED') {
+    pareja = await parejaCambioCompleto(record);
+    if (!pareja || pareja.status !== 'completo') {
+      record.odooSync = {
+        status: 'PENDING',
+        attempts: record.odooSync?.attempts ?? 0,
+        lastError: 'Cambio completo: se envía a Odoo, una sola vez, cuando también se cierre la hoja de la otra unidad.',
+        lastAttemptAt: new Date(),
+      };
+      await record.save();
+      res.json({ odooSync: record.odooSync });
+      return;
+    }
+  }
+
+  // Con las 2 hojas el ticket es el de la que lo tenga (la nueva lo hereda de la vieja, pero puede faltar en una).
+  const ticketOdoo = record.ticketOdoo?.numero ? record.ticketOdoo : pareja?.ticketOdoo;
+  if (!ticketOdoo?.numero) throw new HttpError(400, 'This record has no ticket de Odoo linked');
 
   // The PDF is posted to Odoo as the técnico, not a shared service account —
   // they must have linked their own Odoo login from the profile screen first.
@@ -690,7 +745,7 @@ async function runSyncConformidadToOdoo(req: Request, res: Response, fase: 'pre'
     return;
   }
 
-  const ticketId = record.ticketOdoo.odooId ?? Number(record.ticketOdoo.numero);
+  const ticketId = ticketOdoo.odooId ?? Number(ticketOdoo.numero);
   if (!Number.isFinite(ticketId)) {
     record[syncKey] = {
       status: 'FAILED',
@@ -752,8 +807,17 @@ async function runSyncConformidadToOdoo(req: Request, res: Response, fase: 'pre'
     fase !== 'pre' && record.derivacion?.requerida
       ? `<p><b>Requiere otra intervención de otro técnico:</b> ${esc(record.derivacion.motivo)}. Coordinación reprograma una nueva visita a la unidad (el ticket sigue abierto).</p>`
       : '';
-  const titulo = fase === 'pre' ? 'Revisión inicial (PRE) de la unidad' : 'Hoja de conformidad completada';
-  const resumenHtml = `<p><b>${titulo}</b> — ${esc(record.cliente)} (${esc(record.matricula)})</p>
+  const hojasCambioCompleto = pareja ? ordenarOrigenDestino(record, pareja) : null;
+  const titulo = hojasCambioCompleto
+    ? 'Cambio de unidad completo: hojas de conformidad completadas'
+    : fase === 'pre'
+      ? 'Revisión inicial (PRE) de la unidad'
+      : 'Hoja de conformidad completada';
+  const unidadesHtml = hojasCambioCompleto
+    ? `<p>Unidad vieja (se retira el equipo): ${esc(hojasCambioCompleto[0].matricula)}<br>Unidad nueva (se instala el equipo nuevo): ${esc(hojasCambioCompleto[1].matricula)}</p>`
+    : '';
+  const resumenHtml = `<p><b>${titulo}</b> — ${esc(record.cliente)}${hojasCambioCompleto ? '' : ` (${esc(record.matricula)})`}</p>
+    ${unidadesHtml}
     <p>Fecha: ${esc(formatFechaArg(record.fecha))} ${esc(record.hora)}<br>Técnico: ${esc(record.instalador)}</p>
     ${fase === 'pre' ? '' : satisfaccion ? `<p>Estado de firma: ${esc(SATISFACCION_LABELS[satisfaccion] ?? satisfaccion)}</p>` : ''}
     ${fase === 'pre' ? '' : motivo ? `<p>Motivo: ${esc(motivo)}</p>` : ''}
@@ -779,11 +843,17 @@ async function runSyncConformidadToOdoo(req: Request, res: Response, fase: 'pre'
 
   try {
     // Generar el PDF en memoria para adjuntarlo a Odoo — no se guarda en R2.
-    const pdfBuffer = await renderConformidadPdf(record.toObject() as unknown as Parameters<typeof renderConformidadPdf>[0], { soloPre: fase === 'pre' });
+    const pdfBuffer = hojasCambioCompleto
+      ? await buildCambioCompletoPdfBuffer(hojasCambioCompleto.map((h) => h.toObject() as unknown as PrintableConformidad))
+      : await renderConformidadPdf(record.toObject() as unknown as Parameters<typeof renderConformidadPdf>[0], { soloPre: fase === 'pre' });
     await pushConformidadToTicket({
       ticketId,
       pdfBuffer,
-      fileName: fase === 'pre' ? `pre_conformidad_${record.codigoActa}.pdf` : `hoja_conformidad_${record.codigoActa}.pdf`,
+      fileName: hojasCambioCompleto
+        ? `hoja_conformidad_cambio_completo_${hojasCambioCompleto[0].codigoActa}_${hojasCambioCompleto[1].codigoActa}.pdf`
+        : fase === 'pre'
+          ? `pre_conformidad_${record.codigoActa}.pdf`
+          : `hoja_conformidad_${record.codigoActa}.pdf`,
       resumenHtml,
       as: { login: usuario.odoo.login, password: decryptSecret(usuario.odoo.passwordEnc) },
     });
@@ -794,6 +864,13 @@ async function runSyncConformidadToOdoo(req: Request, res: Response, fase: 'pre'
       lastError: '',
       lastAttemptAt: new Date(),
     };
+    // El documento ya incluye la otra hoja: queda enviada también, así no se vuelve a mandar cuando reintente.
+    if (pareja) {
+      await ConformidadModel.updateOne(
+        { _id: pareja._id },
+        { $set: { odooSync: { status: 'SYNCED', attempts: (pareja.odooSync?.attempts ?? 0) + 1, syncedAt: new Date(), lastError: '', lastAttemptAt: new Date() } } },
+      );
+    }
   } catch (err) {
     const message = err instanceof OdooError ? `${err.code}: ${err.message}` : err instanceof Error ? err.message : String(err);
     console.error('ODOO_SYNC_FAILURE', record.id, message);

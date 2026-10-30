@@ -207,6 +207,8 @@ export interface CambioEquipoRef {
 export interface CambioUnidadRef {
   rol: 'origen' | 'destino';
   parejaId?: string | null;
+  // Cambio completo: las dos hojas son un solo trabajo (la liquidación no las paga como dos).
+  completo?: boolean;
 }
 
 export interface TicketOdooRef {
@@ -279,6 +281,8 @@ export interface ConformidadRecord {
   equipo: Equipo;
   cambioEquipo?: CambioEquipoRef | null;
   cambioUnidad?: CambioUnidadRef | null;
+  // Solo local de la PWA (no viaja a la API): ver ConformidadRecord.parejaLocalId en la copia de la PWA.
+  parejaLocalId?: string;
 
   ticketOdoo: TicketOdooRef | null;
   odooSync: OdooSync;

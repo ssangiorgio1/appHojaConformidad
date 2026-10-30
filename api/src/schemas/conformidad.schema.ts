@@ -149,6 +149,8 @@ const cambioUnidadSchema = z
   .object({
     rol: z.enum(['origen', 'destino']),
     parejaId: z.string().min(1).nullable().optional(),
+    // Cambio completo: las dos hojas son un solo trabajo (la liquidación no las paga como dos).
+    completo: z.boolean().optional(),
   })
   .nullable();
 

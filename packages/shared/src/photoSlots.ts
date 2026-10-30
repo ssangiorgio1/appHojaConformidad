@@ -12,8 +12,8 @@ export interface PhotoSlotDef {
 // Fixed, ordered capture guide for PRE — common to the 3 service modes.
 const PRE_PHOTO_SLOTS_BASE: PhotoSlotDef[] = [
   { key: 'matricula', label: 'Matrícula', required: true },
-  { key: 'lateral_izq', label: 'Lateral externo izquierdo (conductor)', required: true },
-  { key: 'lateral_der', label: 'Lateral externo derecho', required: true },
+  { key: 'lateral_izq', label: 'Lateral externo izquierdo (conductor)', required: false },
+  { key: 'lateral_der', label: 'Lateral externo derecho', required: false },
   { key: 'frente', label: 'Frente de la unidad', required: true },
   { key: 'interior', label: 'Interior de la unidad', required: true },
   { key: 'torpedo', label: 'Torpedo (tablero encendido, luces de check y estado general)', required: true },

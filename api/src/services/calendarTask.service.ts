@@ -774,8 +774,10 @@ async function resolveSubtasksRaw(childIds: number[]): Promise<RawSubtask[]> {
   const uniqueIds = Array.from(new Set(childIds));
   if (!uniqueIds.length) return [];
 
+  // search_read (no read): `read` devuelve por id, y search_read usa el orden propio de Odoo para las tareas (el del
+  // listado de subtareas que ve coordinación: prioridad, secuencia arrastrable), que es el que tiene que ver el técnico.
   const subtasksRaw = (await withTimeout(
-    executeKw('project.task', 'read', [uniqueIds], { fields: await conUbicacion(SUBTASK_FIELDS) }),
+    executeKw('project.task', 'search_read', [[['id', 'in', uniqueIds]]], { fields: await conUbicacion(SUBTASK_FIELDS) }),
     'listCalendarTasks:subtasks',
   )) as Array<Record<string, unknown>>;
 

@@ -246,6 +246,23 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
           <VerificacionEquipoAviso c={c} />
         </div>
 
+        {/* Por qué se intervino o reparó el equipo, y otros datos que carga el técnico y no salen en el PDF. */}
+        {[
+          { fase: 'PRE', texto: c.pre.observacionesInternas },
+          { fase: 'POST', texto: c.post.observacionesInternas },
+        ]
+          .filter((o) => o.texto?.trim())
+          .map((o) => (
+            <div key={o.fase}>
+              <div className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">
+                Observaciones internas ({o.fase}) · no figuran en el PDF
+              </div>
+              <div className="whitespace-pre-wrap rounded-md bg-surface p-3 text-[12.5px] font-medium leading-relaxed shadow-inset">
+                {o.texto}
+              </div>
+            </div>
+          ))}
+
         <div>
           <div className="mb-1.5 flex items-center justify-between">
             <div className="text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Todas las fotos (PRE + POST)</div>
