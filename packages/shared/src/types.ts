@@ -15,7 +15,7 @@ export type TipoServicio = 'instalacion' | 'desinstalacion' | 'reparacion' | 'ca
 export const TIPO_SERVICIO_LABELS: Record<TipoServicio, string> = {
   instalacion: 'Instalación',
   desinstalacion: 'Desinstalación',
-  reparacion: 'Reparación',
+  reparacion: 'Intervención',
   cambio_equipo: 'Cambio de equipo',
   cambio_unidad: 'Cambio de unidad',
 };
