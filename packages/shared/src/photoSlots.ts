@@ -30,7 +30,7 @@ const PRE_EXTRA_SLOT: PhotoSlotDef = { key: 'extra', label: 'Extra', required: f
 // (see POST_PHOTO_SLOTS_RETIRO / POST_PHOTO_SLOTS_CAMBIO_EQUIPO below) — once
 // it's actually been taken out and can be photographed properly.
 const PRE_MODE_SLOT: Partial<Record<ServiceMode, PhotoSlotDef>> = {
-  reparacion: { key: 'estado_equipo_prereparacion', label: 'Estado del equipo antes de reparar', required: true },
+  reparacion: { key: 'estado_equipo_prereparacion', label: 'Estado del equipo/unidad antes de intervenir', required: true },
 };
 
 // Otro equipo (surtidor, generador, etc.): no hay patente, laterales ni tablero. Se pide el lugar donde va el equipo

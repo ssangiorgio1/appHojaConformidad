@@ -21,7 +21,7 @@ export function textoDerivacion(p: {
 }): string {
   return (
     `<p><b>Hay que enviar a otro técnico</b> — ${esc(p.cliente)} (${esc(p.matricula)}).</p>` +
-    `<p>${esc(p.tecnico)} hizo la visita y el diagnóstico el ${esc(p.fecha)}, pero la reparación le corresponde a otro técnico.</p>` +
+    `<p>${esc(p.tecnico)} hizo la visita y el diagnóstico el ${esc(p.fecha)}, pero la intervención le corresponde a otro técnico.</p>` +
     `<p><b>Por qué:</b> ${esc(p.motivo)}</p>` +
     (p.diagnostico ? `<p><b>Diagnóstico de la visita:</b> ${esc(p.diagnostico)}</p>` : '')
   );
