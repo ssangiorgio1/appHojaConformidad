@@ -428,39 +428,58 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
     // (lote) ve una unidad sin resolver y no pasa a Hecho. Nunca tira (ver procesarDerivacion).
     await procesarDerivacion(record);
 
-    if (record.cambioEquipo?.rol !== 'retiro') {
-      const taskId = record.subtareaOdoo?.id ?? record.tareaOdoo.id;
-      await markTaskStageHecho(taskId);
-      await markTaskStateHecho(taskId);
-      // Unidad colapsada de 2+ project.task reales (§15.9b) — cada una
-      // necesita su propio `stage_id`/`state`, Odoo no sabe que son "la
-      // misma unidad".
-      for (const mergedId of record.subtareaOdoo?.mergedTaskIds ?? []) {
-        await markTaskStageHecho(mergedId);
-        await markTaskStateHecho(mergedId);
+    // La visita se cierra ANTES de tocar Odoo y sin esperarlo: marcar las tareas "Hecho" son varias llamadas seguidas
+    // que, con Odoo lento o caído, tardaban más que la paciencia de la PWA (10 s). El PATCH se cortaba, la hoja no
+    // figuraba como sincronizada y la visita quedaba abierta hasta el reintento. Un fallo acá se registra y no corta el
+    // resto: lo de Odoo sigue igual después de responder.
+    try {
+      if (!record.subtareaOdoo) {
+        if (record.tecnicoId) await notificarEstadoVisita(record.tareaOdoo.id, 'completo', record.tecnicoId, record.fecha, body.completadoAt);
+      } else {
+        // req.user!.usuarioId, no record.tecnicoId: en un handoff cross-técnico
+        // (ver isAssignedToPendingSwap) quien está cerrando esta unidad ahora
+        // es quien tiene la visita abierta y las subtareas propias en curso —
+        // no el técnico original que dejó la hoja en pendiente_post.
+        await cerrarVisitaLoteSiTodoResuelto(record.tareaOdoo.id, req.user!.usuarioId, record.fecha, body.completadoAt);
       }
-      // Si esta era la última subtarea del lote sin resolver, la tarea padre
-      // (el lote en sí) también pasa a Hecho — ver
-      // markParentStageHechoIfAllChildrenResolved. No aplica a una hoja
-      // suelta (sin subtareaOdoo): ahí taskId ya ES la tarea, no tiene hijos.
-      if (record.subtareaOdoo) {
-        await markParentStageHechoIfAllChildrenResolved(record.tareaOdoo.id);
-      }
+    } catch (err) {
+      console.error('VISITA_CIERRE_FAILED', record.tareaOdoo.id, err);
     }
 
-    if (!record.subtareaOdoo) {
-      if (record.tecnicoId) await notificarEstadoVisita(record.tareaOdoo.id, 'completo', record.tecnicoId, record.fecha, body.completadoAt);
-    } else {
-      // req.user!.usuarioId, no record.tecnicoId: en un handoff cross-técnico
-      // (ver isAssignedToPendingSwap) quien está cerrando esta unidad ahora
-      // es quien tiene la visita abierta y las subtareas propias en curso —
-      // no el técnico original que dejó la hoja en pendiente_post.
-      await cerrarVisitaLoteSiTodoResuelto(record.tareaOdoo.id, req.user!.usuarioId, record.fecha, body.completadoAt);
+    // Se responde ya: la PWA tiene confirmada la hoja y la visita cerrada, y lo de Odoo sigue sin que nadie espere.
+    res.json(record);
+    if (record.cambioEquipo?.rol !== 'retiro') {
+      await marcarHechoEnOdoo(record.tareaOdoo.id, record.subtareaOdoo ?? null);
     }
+    return;
   }
 
   res.json(record);
 });
+
+// Mueve a "Hecho" en Odoo la subtarea (o la tarea, si no hay lote) y, si era la última del lote, también la tarea padre.
+// Nunca tira: corre después de haber respondido al técnico, así que un error solo se registra.
+async function marcarHechoEnOdoo(tareaOdooId: number, subtarea: { id: number; mergedTaskIds?: number[] | null } | null): Promise<void> {
+  try {
+    const taskId = subtarea?.id ?? tareaOdooId;
+    await markTaskStageHecho(taskId);
+    await markTaskStateHecho(taskId);
+    // Unidad colapsada de 2+ project.task reales (§15.9b) — cada una
+    // necesita su propio `stage_id`/`state`, Odoo no sabe que son "la
+    // misma unidad".
+    for (const mergedId of subtarea?.mergedTaskIds ?? []) {
+      await markTaskStageHecho(mergedId);
+      await markTaskStateHecho(mergedId);
+    }
+    // Si esta era la última subtarea del lote sin resolver, la tarea padre
+    // (el lote en sí) también pasa a Hecho — ver
+    // markParentStageHechoIfAllChildrenResolved. No aplica a una hoja
+    // suelta (sin subtareaOdoo): ahí taskId ya ES la tarea, no tiene hijos.
+    if (subtarea) await markParentStageHechoIfAllChildrenResolved(tareaOdooId);
+  } catch (err) {
+    console.error('ODOO_MARCAR_HECHO_FAILED', tareaOdooId, err);
+  }
+}
 
 // Separate from patchConformidad on purpose — this writes audit fields
 // (quién y cuándo) as a side effect and is gated by area-vs-role, not by

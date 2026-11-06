@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { EQUIP_CHECK_FIELDS, EQUIP_GROUPS, EQUIP_ITEM_PHOTO_LABEL, isEquipoFieldVisible } from '@wara/shared/src/equipo';
 import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY, VIDEO_SERVICIO_KEY } from '@wara/shared/src/photoSlots';
 import type { ServiceMode } from '@wara/shared/src/serviceMode';
-import { TIPO_SERVICIO_LABELS, formatSeries, isEquipoSwap } from '@wara/shared';
+import { TIPO_SERVICIO_LABELS, MOTIVO_INTERVENCION_LABELS, formatSeries, isEquipoSwap } from '@wara/shared';
 import { Badge } from '@/components/ui/Badge';
 import { IconAlertTriangle } from '@/components/ui/Icons';
 import { formatIsoDateTime } from '@/lib/format';
@@ -185,6 +185,12 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
       <div className="flex min-h-0 flex-col gap-4">
         <div className="flex flex-wrap gap-x-8 gap-y-3">
           <InfoField label="Tipo de servicio">{tipoServicioLabel}</InfoField>
+          {c.tipoServicio === 'reparacion' && c.motivoIntervencion && (
+            <InfoField label="Acción tomada">
+              {MOTIVO_INTERVENCION_LABELS[c.motivoIntervencion]}
+              {c.motivoIntervencion === 'otro' && c.motivoIntervencionDetalle?.trim() ? `: ${c.motivoIntervencionDetalle.trim()}` : ''}
+            </InfoField>
+          )}
           <InfoField label={`Modelo${equipoLabelSuffix}`}>{c.equipo.modelo || '—'}</InfoField>
           <InfoField label={`IMEI${equipoLabelSuffix}`}>{c.equipo.imei || '—'}</InfoField>
           {esSwap && (
@@ -245,6 +251,38 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
           </div>
           <VerificacionEquipoAviso c={c} />
         </div>
+
+        {/* Reparación: lo que contó el técnico en "¿Qué se hizo?" (no figura en el PDF) y si pidió otra intervención. */}
+        {c.tipoServicio === 'reparacion' && c.post.observaciones?.trim() && (
+          <div>
+            <div className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">
+              Intervención realizada · no figura en el PDF
+            </div>
+            <div className="whitespace-pre-wrap rounded-md bg-surface p-3 text-[12.5px] font-medium leading-relaxed shadow-inset">
+              {c.post.observaciones}
+            </div>
+          </div>
+        )}
+        {c.derivacion?.requerida && (
+          <div>
+            <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">
+              Requiere otra intervención de otro técnico
+              {c.derivacion.error ? (
+                <Badge tone="bad">No se pudo crear la tarea en Odoo</Badge>
+              ) : c.derivacion.procesadaAt ? (
+                <Badge tone="ok">Tarea nueva creada{c.derivacion.subtareaNuevaOdooId ? ` (#${c.derivacion.subtareaNuevaOdooId})` : ''}</Badge>
+              ) : (
+                <Badge tone="neutral">Pendiente de procesar</Badge>
+              )}
+            </div>
+            <div className="whitespace-pre-wrap rounded-md bg-surface p-3 text-[12.5px] font-medium leading-relaxed shadow-inset">
+              {c.derivacion.motivo || '—'}
+              {c.derivacion.error ? `
+
+Error: ${c.derivacion.error}` : ''}
+            </div>
+          </div>
+        )}
 
         {/* Por qué se intervino o reparó el equipo, y otros datos que carga el técnico y no salen en el PDF. */}
         {[

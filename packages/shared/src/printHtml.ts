@@ -2,7 +2,7 @@ import { checklistItemsFor, DETAIL_FIELD_BY_KEY, type ChecklistValue } from './c
 import { EQUIP_GROUPS, EQUIP_CHECK_FIELDS, EQUIP_ITEM_PHOTO_LABEL, formatSeries, isEquipoFieldVisible } from './equipo.js';
 import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY, EXTRA_RETIRO_PHOTOS_KEY, VIDEO_SERVICIO_KEY, type PhotoSlotDef } from './photoSlots.js';
 import { getServiceMode } from './serviceMode.js';
-import { SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, isEquipoSwap, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
+import { CAMBIO_EQUIPO_RAZON_LABELS, MOTIVO_INTERVENCION_LABELS, SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, isEquipoSwap, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
 
 // The fields buildPrintHtml actually reads — deliberately narrower than the
 // full ConformidadRecord so both the mobile app's local record and the
@@ -24,6 +24,8 @@ export type PrintableConformidad = Pick<
   | 'equipo'
   | 'tipoServicio'
   | 'motivoIntervencion'
+  | 'cambioEquipoRazon'
+  | 'cambioEquipoTemporal'
   | 'cambioEquipo'
   | 'cambioUnidad'
   | 'ticketOdoo'
@@ -385,10 +387,12 @@ export async function buildPrintHtml(
         : 'Unidad de destino (instalación)'
       : null;
   const mode = getServiceMode(record);
+  const motivoIntervencionLabel = record.motivoIntervencion ? MOTIVO_INTERVENCION_LABELS[record.motivoIntervencion] : null;
+  const cambioEquipoRazonLabel = record.cambioEquipoRazon ? CAMBIO_EQUIPO_RAZON_LABELS[record.cambioEquipoRazon] : null;
 
   const [prePhotos, postPhotos] = await Promise.all([
     photosBlock(prePhotoSlotsFor(mode, record.tipoUnidad), record.pre.fotos, 'Fotos PRE', resolvePhotoSrc),
-    soloPre ? '' : photosBlock(postPhotoSlotsFor(mode, undefined, record.tipoUnidad), record.post.fotos, 'Fotos POST', resolvePhotoSrc),
+    soloPre ? '' : photosBlock(postPhotoSlotsFor(mode, record.motivoIntervencion, record.tipoUnidad), record.post.fotos, 'Fotos POST', resolvePhotoSrc),
   ]);
   // Lo que escribe el técnico en el paso "Observaciones" del PRE — lo ve el
   // cliente. Foto.descripcion (qué encontró en la foto extra) es solo para el
@@ -410,6 +414,9 @@ export async function buildPrintHtml(
       ${record.ticketOdoo?.numero ? `<span class="status-pill">Ticket #${esc(record.ticketOdoo.numero)}</span>` : ''}
       ${tipoServicioLabel ? `<span class="status-pill">${esc(tipoServicioLabel)}</span>` : ''}
       ${cambioUnidadLabel ? `<span class="status-pill">${esc(cambioUnidadLabel)}</span>` : ''}
+      ${motivoIntervencionLabel ? `<span class="status-pill">${esc(motivoIntervencionLabel)}</span>` : ''}
+      ${cambioEquipoRazonLabel ? `<span class="status-pill">${esc(cambioEquipoRazonLabel)}</span>` : ''}
+      ${record.cambioEquipoTemporal ? '<span class="status-pill">Reemplazo temporal</span>' : ''}
       ${opts?.parte ? `<span class="status-pill">${esc(opts.parte)}</span>` : ''}
       <span class="status-pill">${esc(statusLabel)}</span>
     </div>

@@ -1,10 +1,9 @@
 // Qué unidades (subtareas) de un lote cuentan como "de este técnico" para decidir si ya terminó y se cierra la visita.
 //
 // Tiene que ser EXACTAMENTE el mismo criterio con que la agenda se las muestra en la pantalla (ver listCalendarTasks): las
-// asignadas a él, y también las que no tienen ningún técnico asignado (heredan el acceso del lote). Si el servidor contara
-// solo las asignadas, la visita se cerraba sola cuando terminaba esas aunque en la pantalla le quedaran unidades sin hacer, y
-// la ficha lo mandaba a "Salir hacia destino" de nuevo. Una unidad asignada solo a otro técnico no cuenta, igual que en la
-// pantalla.
+// asignadas a él en la propia subtarea. Lo que figure asignado en la tarea general NO cuenta (ni las subtareas sin nadie
+// asignado heredan el acceso del lote): si un técnico está en la tarea y en su subtarea, no tiene que ver las de los demás.
+// Una unidad asignada solo a otro técnico, o a nadie, no cuenta, igual que en la pantalla.
 
 export interface FilaUnidad {
   id: number;
@@ -25,8 +24,8 @@ export function unidadesPropias(unidades: FilaUnidad[], technicianOdooId: number
   const propias: number[] = [];
   for (const grupo of grupos.values()) {
     const asignados = new Set(grupo.flatMap((u) => u.user_ids ?? []));
-    // Visible para él: está asignado a la unidad, o la unidad no tiene a nadie asignado.
-    if (asignados.size === 0 || asignados.has(technicianOdooId)) {
+    // Visible para él: está asignado a la unidad (una unidad sin nadie asignado no es de nadie todavía).
+    if (asignados.has(technicianOdooId)) {
       propias.push(Math.min(...grupo.map((u) => u.id)));
     }
   }

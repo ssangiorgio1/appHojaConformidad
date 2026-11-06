@@ -161,7 +161,7 @@ async function tareaAsignada(tareaOdooId: number, odooUserId: number): Promise<b
   return ok;
 }
 
-async function adoptarViajeDeCompanero(
+export async function adoptarViajeDeCompanero(
   usuarioId: string,
   acotar?: { tareaOdooId: number; fecha: string },
 ): Promise<InstanceType<typeof VisitaNotificacionModel> | null> {

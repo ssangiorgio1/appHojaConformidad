@@ -248,10 +248,12 @@ export interface ConformidadRecord {
   motivoIntervencion?: MotivoIntervencion | null;
   // Obligatorio solo cuando motivoIntervencion es 'otro'.
   motivoIntervencionDetalle?: string;
-  // Los 2 campos siguientes solo aplican cuando motivoIntervencion es 'cambio_equipo'.
+  // Los 3 campos siguientes solo aplican cuando motivoIntervencion es 'cambio_equipo'.
   cambioEquipoRazon?: CambioEquipoRazon | null;
   // Obligatorio solo cuando cambioEquipoRazon es 'otro'.
   cambioEquipoRazonDetalle?: string;
+  // El equipo instalado es un backup provisorio y el original vuelve después del laboratorio (pastilla "Reemplazo temporal" del PDF).
+  cambioEquipoTemporal?: boolean;
 
   numero: string;
   cliente: string;

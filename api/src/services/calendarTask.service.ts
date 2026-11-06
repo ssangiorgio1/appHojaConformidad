@@ -356,8 +356,16 @@ export async function listCalendarTasks(params: { from: string; to: string; tech
     // (ver ALCANCE_BACKOFFICE.md §14). Pendiente de verificar que Odoo
     // resuelve bien este dominio con notación de punto sobre un one2many
     // (child_ids) encadenado con un many2many (user_ids).
+    // Con subtareas manda SOLO la asignación de las subtareas (la de la tarea general se ignora: estar en la tarea y en
+    // una subtarea no tiene que traer las demás); la tarea suelta, sin subtareas, sigue por su propia asignación.
     if (params.technicianIds?.length) {
-      domain.push('|', ['user_ids', 'in', params.technicianIds], ['child_ids.user_ids', 'in', params.technicianIds]);
+      domain.push(
+        '|',
+        ['child_ids.user_ids', 'in', params.technicianIds],
+        '&',
+        ['child_ids', '=', false],
+        ['user_ids', 'in', params.technicianIds],
+      );
     }
 
     const primaryRows = (await withTimeout(
@@ -448,13 +456,10 @@ export async function listCalendarTasks(params: { from: string; to: string; tech
         const [occStart, occEnd] = key.split('|');
         if (!(occStart >= params.from && occStart < params.to)) continue; // fuera del rango pedido
 
-        // Mismo criterio de "técnico asignado a la unidad, o sin reparto
-        // propio así que hereda el acceso del lote" que ya existía — ver
-        // comentario largo debajo, en resolveDriftedChildrenRaw.
+        // Solo las unidades asignadas al técnico en la propia subtarea: ni la asignación de la tarea general ni las
+        // subtareas sin nadie asignado le dan acceso (ver unidadesPropias.ts).
         const filtered = params.technicianIds?.length
-          ? subtasksForOccurrence.filter(
-              (s) => s.technicianIds.length === 0 || s.technicianIds.some((id) => params.technicianIds!.includes(id)),
-            )
+          ? subtasksForOccurrence.filter((s) => s.technicianIds.some((id) => params.technicianIds!.includes(id)))
           : subtasksForOccurrence;
         // Una tarea suelta (parentHasChildren=false) sigue mostrándose aunque
         // filtered quede vacío — nunca tuvo subtareas que filtrar, y ya pasó
@@ -834,7 +839,7 @@ export async function getOwnSubtaskIds(parentTaskId: number, technicianOdooId: n
     'getOwnSubtaskIds:children',
   )) as Array<{ id: number; name: string; user_ids?: number[] }>;
 
-  // `visibles`: las que la agenda le muestra en la pantalla (las asignadas a él y las que no tienen a nadie asignado); la visita
+  // `visibles`: las que la agenda le muestra en la pantalla (hoy, las mismas asignadas a él en la subtarea); la visita
   // no se cierra sola mientras alguna de esas siga sin resolver. `asignadas`: solo las asignadas a él, que siguen siendo la
   // condición para que exista el cierre automático. Mismo colapso por `name` que collapseDuplicateNames: ver unidadesPropias.ts.
   return { asignadas: unidadesAsignadas(childRows, technicianOdooId), visibles: unidadesPropias(childRows, technicianOdooId) };
@@ -874,8 +879,8 @@ export async function isTaskAssignedToTechnician(taskId: number, technicianOdooI
 
     const task = rows[0];
     if (!task) return false;
-    if (task.user_ids.includes(technicianOdooId)) return true;
-    if (!task.child_ids.length) return false;
+    // Con subtareas manda solo la asignación de las subtareas; la tarea suelta, la suya.
+    if (!task.child_ids.length) return task.user_ids.includes(technicianOdooId);
 
     const children = (await withTimeout(
       executeKw('project.task', 'read', [task.child_ids], { fields: ['user_ids'] }),

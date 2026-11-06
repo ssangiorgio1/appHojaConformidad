@@ -345,7 +345,7 @@ export default function ConformidadDetailPage() {
             )}
 
             <div className="mt-4">
-              <div className="mb-2 text-xs font-extrabold text-muted">Observaciones</div>
+              <div className="mb-2 text-xs font-extrabold text-muted">{c?.tipoServicio === 'reparacion' && fase === 'post' ? 'Intervención realizada (no figura en el PDF)' : 'Observaciones'}</div>
               <div className="rounded-md bg-surface p-3.5 text-[12.5px] font-medium leading-relaxed shadow-inset">
                 {phase?.observaciones || 'Sin observaciones.'}
               </div>

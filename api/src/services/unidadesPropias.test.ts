@@ -9,8 +9,8 @@ describe('unidadesPropias (qué unidades cuentan para cerrar la visita)', () => 
     expect(unidadesPropias([{ id: 1, name: 'AA', user_ids: [YO] }], YO)).toEqual([1]);
   });
 
-  it('cuenta también las que no tienen técnico asignado: en la pantalla le aparecen y le quedan por hacer', () => {
-    expect(unidadesPropias([{ id: 1, name: 'AA', user_ids: [YO] }, { id: 2, name: 'BB', user_ids: [] }, { id: 3, name: 'CC' }], YO)).toEqual([1, 2, 3]);
+  it('no cuenta las que no tienen técnico asignado: solo importa la asignación en la propia subtarea', () => {
+    expect(unidadesPropias([{ id: 1, name: 'AA', user_ids: [YO] }, { id: 2, name: 'BB', user_ids: [] }, { id: 3, name: 'CC' }], YO)).toEqual([1]);
   });
 
   it('no cuenta las asignadas solo a otro técnico', () => {
@@ -30,7 +30,7 @@ describe('unidadesPropias (qué unidades cuentan para cerrar la visita)', () => 
         ],
         YO,
       ),
-    ).toEqual([5]);
+    ).toEqual([5]); // el grupo es suyo porque una de las dos está asignada a él; el id primario es el menor
   });
 
   it('si una de las tareas del grupo es de otro y la otra no tiene a nadie, el grupo es de otro (igual que en la pantalla)', () => {
@@ -49,12 +49,12 @@ describe('unidadesPropias (qué unidades cuentan para cerrar la visita)', () => 
     expect(unidadesPropias([], YO)).toEqual([]);
   });
 
-  it('lo que sumó coordinación sin asignar mientras trabajaba mantiene la visita abierta', () => {
+  it('lo que sumó coordinación asignado a él mientras trabajaba mantiene la visita abierta', () => {
     const resueltas = new Set([1, 2]);
     const unidades = [
       { id: 1, name: 'AA', user_ids: [YO] },
       { id: 2, name: 'BB', user_ids: [YO] },
-      { id: 3, name: 'CC', user_ids: [] },
+      { id: 3, name: 'CC', user_ids: [YO] },
     ];
     const propias = unidadesPropias(unidades, YO);
     expect(propias.every((id) => resueltas.has(id))).toBe(false);
@@ -69,12 +69,12 @@ describe('unidadesAsignadas (condición para el cierre automático)', () => {
       { id: 3, name: 'CC', user_ids: [OTRO] },
     ];
     expect(unidadesAsignadas(unidades, YO)).toEqual([1]);
-    expect(unidadesPropias(unidades, YO)).toEqual([1, 2]);
+    expect(unidadesPropias(unidades, YO)).toEqual([1]);
   });
 
   it('un lote donde todas las unidades están sin asignar no tiene "asignadas": el cierre sigue siendo manual', () => {
     const unidades = [{ id: 1, name: 'AA' }, { id: 2, name: 'BB', user_ids: [] }];
     expect(unidadesAsignadas(unidades, YO)).toEqual([]);
-    expect(unidadesPropias(unidades, YO)).toEqual([1, 2]);
+    expect(unidadesPropias(unidades, YO)).toEqual([]);
   });
 });

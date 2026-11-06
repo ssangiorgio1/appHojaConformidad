@@ -189,7 +189,7 @@ async function renderPdfBufferNow(html: string): Promise<Buffer> {
 // Sirve para "Ver PDF" repetido y para que el PDF que se generó al enviar a Odoo ya esté listo cuando el técnico
 // lo abre. En memoria y acotada por peso; se vacía sola al reiniciar el servicio (nada persistente).
 // Subir PDF_CACHE_VERSION si cambia el layout (buildPrintHtml) para no servir PDFs viejos tras un deploy sin reinicio.
-const PDF_CACHE_VERSION = 2;
+const PDF_CACHE_VERSION = 3;
 const PDF_CACHE_MAX_BYTES = 40 * 1024 * 1024;
 const pdfCache = new Map<string, Buffer>();
 let pdfCacheBytes = 0;

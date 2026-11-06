@@ -154,6 +154,8 @@ export interface ConformidadDoc {
   motivoIntervencionDetalle?: string;
   cambioEquipoRazon?: CambioEquipoRazon | null;
   cambioEquipoRazonDetalle?: string;
+  // Intervención que requiere otro técnico; procesadaAt/subtareaNuevaOdooId/error los completa la API al crear la subtarea en Odoo.
+  derivacion?: { requerida: boolean; motivo: string; procesadaAt?: string | null; subtareaNuevaOdooId?: number | null; error?: string } | null;
   numero: string;
   cliente: string;
   fecha: string;

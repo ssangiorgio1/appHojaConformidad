@@ -58,10 +58,10 @@ export function prePhotoSlotsFor(mode: ServiceMode, tipoUnidad?: TipoUnidad | nu
 const POST_PHOTO_SLOTS_INSTALACION: PhotoSlotDef[] = [
   { key: 'equipo_serie', label: 'Equipo a colocar (N° de serie)', required: true, multi: true },
   { key: 'precintos', label: 'N° de precintos a usar', required: false, multi: true },
-  { key: 'ubicacion_equipo', label: 'Ubicación y colocación del equipo', required: true, multi: true },
+  { key: 'ubicacion_equipo', label: 'Ubicación y colocación del equipo (o sensor/módulo)', required: true, multi: true },
   { key: 'ramales', label: 'Ramales', required: false, multi: true },
   { key: 'torpedo', label: 'Torpedo (tablero encendido, luces de check y estado general)', required: true },
-  { key: 'odometro', label: 'Odómetro', required: true },
+  { key: 'odometro', label: 'Odómetro / horómetro', required: true },
   // Optional for now — not every service has a panic button. Once the
   // product catalog exists this should depend on whether the install order
   // includes one (see post/[id]/page.tsx in the PWA: meanwhile, if the
@@ -82,7 +82,7 @@ const POST_PHOTO_SLOTS_INSTALACION: PhotoSlotDef[] = [
 const POST_PHOTO_SLOTS_RETIRO: PhotoSlotDef[] = [
   { key: 'equipo_a_retirar', label: 'Equipo/elemento retirado', required: true, multi: true },
   { key: 'torpedo', label: 'Torpedo (tablero encendido, luces de check y estado general)', required: true },
-  { key: 'odometro', label: 'Odómetro', required: true },
+  { key: 'odometro', label: 'Odómetro / horómetro', required: true },
   { key: 'lugar_vacio', label: 'Lugar donde estaba el equipo', required: true, multi: true },
   { key: 'cableado_retirado', label: 'Cableado retirado / puntas aisladas', required: false, multi: true },
 ];
@@ -101,10 +101,10 @@ const POST_PHOTO_SLOTS_CAMBIO_EQUIPO: PhotoSlotDef[] = [
   { key: 'equipo_a_retirar', label: 'Equipo a retirar (N° de serie)', required: true, multi: true },
   { key: 'equipo_serie', label: 'Equipo a colocar (N° de serie)', required: true, multi: true },
   { key: 'precintos', label: 'N° de precintos a usar', required: false, multi: true },
-  { key: 'ubicacion_equipo', label: 'Ubicación y colocación del equipo', required: true, multi: true },
+  { key: 'ubicacion_equipo', label: 'Ubicación y colocación del equipo (o sensor/módulo)', required: true, multi: true },
   { key: 'ramales', label: 'Ramales', required: false, multi: true },
   { key: 'torpedo', label: 'Torpedo (tablero encendido, luces de check y estado general)', required: true },
-  { key: 'odometro', label: 'Odómetro', required: true },
+  { key: 'odometro', label: 'Odómetro / horómetro', required: true },
   // Optional for now — see comment in POST_PHOTO_SLOTS_INSTALACION.
   { key: 'boton_panico', label: 'Botón de pánico (que se note la ubicación)', required: false },
   // Cambio de unidad completo: el equipo nuevo va en OTRA unidad. Opcionales, para que quede constancia de en qué unidad se instaló.
@@ -114,15 +114,25 @@ const POST_PHOTO_SLOTS_CAMBIO_EQUIPO: PhotoSlotDef[] = [
   { key: 'cableado_retirado', label: 'Cableado retirado / puntas aisladas', required: false, multi: true },
 ];
 
-function postSlotsBase(mode: ServiceMode): PhotoSlotDef[] {
+// POST de una intervención (modo 'reparacion') que NO terminó en cambio de equipo (reinicio manual, batería, mala tensión,
+// etc.): no hay equipo nuevo que documentar con serie/precintos/ubicación como en una instalación desde cero, alcanza con
+// confirmar que la unidad quedó funcionando. Lo que se hizo queda en la galería libre del paso "Intervención realizada".
+const POST_PHOTO_SLOTS_REPARACION: PhotoSlotDef[] = [
+  { key: 'torpedo', label: 'Torpedo (tablero encendido, luces de check y estado general)', required: true },
+  { key: 'odometro', label: 'Odómetro / horómetro', required: true },
+];
+
+function postSlotsBase(mode: ServiceMode, motivoIntervencion?: MotivoIntervencion | null): PhotoSlotDef[] {
   if (mode === 'retiro') return POST_PHOTO_SLOTS_RETIRO;
   if (mode === 'cambio_equipo') return POST_PHOTO_SLOTS_CAMBIO_EQUIPO;
+  // Una intervención que terminó en cambio de equipo documenta lo mismo que un cambio de equipo (retiro + instalación).
+  if (mode === 'reparacion') return motivoIntervencion === 'cambio_equipo' ? POST_PHOTO_SLOTS_CAMBIO_EQUIPO : POST_PHOTO_SLOTS_REPARACION;
   return POST_PHOTO_SLOTS_INSTALACION;
 }
 
 // Un equipo que no es un vehículo no tiene tablero ni odómetro: se sacan torpedo y odómetro/horómetro.
-export function postPhotoSlotsFor(mode: ServiceMode, _motivoIntervencion?: unknown, tipoUnidad?: TipoUnidad | null): PhotoSlotDef[] {
-  const slots = postSlotsBase(mode);
+export function postPhotoSlotsFor(mode: ServiceMode, motivoIntervencion?: MotivoIntervencion | null, tipoUnidad?: TipoUnidad | null): PhotoSlotDef[] {
+  const slots = postSlotsBase(mode, motivoIntervencion);
   return tipoUnidad === 'otro_equipo' ? slots.filter((s) => s.key !== 'torpedo' && s.key !== 'odometro') : slots;
 }
 
