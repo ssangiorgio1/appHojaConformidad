@@ -1,6 +1,20 @@
 import { checklistItemsFor, DETAIL_FIELD_BY_KEY, type ChecklistValue } from './checklist.js';
 import { EQUIP_GROUPS, EQUIP_CHECK_FIELDS, EQUIP_ITEM_PHOTO_LABEL, formatSeries, isEquipoFieldVisible } from './equipo.js';
-import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY, EXTRA_RETIRO_PHOTOS_KEY, VIDEO_SERVICIO_KEY, type PhotoSlotDef } from './photoSlots.js';
+import {
+  prePhotoSlotsFor,
+  postPhotoSlotsFor,
+  INTERVENCION_GROUP_KEY,
+  EXTRA_POST_PHOTOS_KEY,
+  EXTRA_RETIRO_PHOTOS_KEY,
+  EXTRA_PRE_PHOTOS_KEY,
+  EXTRA_EQUIPO_PHOTOS_KEY,
+  EXTRA_UBICACION_PHOTOS_KEY,
+  EXTRA_EQUIPO_RETIRAR_PHOTOS_KEY,
+  EXTRA_RETIRO_VIEJO_PHOTOS_KEY,
+  EXTRA_RETIRO_FINAL_PHOTOS_KEY,
+  VIDEO_SERVICIO_KEY,
+  type PhotoSlotDef,
+} from './photoSlots.js';
 import { getServiceMode } from './serviceMode.js';
 import { CAMBIO_EQUIPO_RAZON_LABELS, MOTIVO_INTERVENCION_LABELS, SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, isEquipoSwap, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
 
@@ -212,6 +226,12 @@ const GALLERY_LABELS: Record<string, string> = {
   [INTERVENCION_GROUP_KEY]: 'Intervención realizada',
   [EXTRA_POST_PHOTOS_KEY]: 'Otras fotos',
   [EXTRA_RETIRO_PHOTOS_KEY]: 'Otras fotos de lo desinstalado',
+  [EXTRA_PRE_PHOTOS_KEY]: 'Otras fotos del estado inicial',
+  [EXTRA_EQUIPO_PHOTOS_KEY]: 'Otras fotos del equipo',
+  [EXTRA_UBICACION_PHOTOS_KEY]: 'Otras fotos de ubicación y sujeción',
+  [EXTRA_EQUIPO_RETIRAR_PHOTOS_KEY]: 'Otras fotos del equipo retirado',
+  [EXTRA_RETIRO_VIEJO_PHOTOS_KEY]: 'Otras fotos del retiro',
+  [EXTRA_RETIRO_FINAL_PHOTOS_KEY]: 'Otras fotos del retiro',
   [VIDEO_SERVICIO_KEY]: 'Video del servicio',
 };
 

@@ -33,6 +33,9 @@ export const EQUIP_GROUPS = [
       { key: 'trabaRobusta', label: 'Traba robusta', checkbox: true },
       { key: 'medComb', label: 'Varilla de combustible', checkbox: true },
       { key: 'medCombCantidad', label: 'Cantidad', dependsOn: 'medComb', cantidad: true },
+      // Uno por unidad (sin cantidad). El número que trae el anillo se escribe a mano; la foto va en "Ubicación y sujeción".
+      { key: 'anilloCombustible', label: 'Anillo de combustible', checkbox: true },
+      { key: 'anilloCombustibleNumero', label: 'N° del anillo de combustible', dependsOn: 'anilloCombustible' },
       { key: 'desAcopSemi', label: 'Desacople / semi', checkbox: true },
     ],
   },

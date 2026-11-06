@@ -162,3 +162,12 @@ export const VIDEO_SERVICIO_KEY = 'video_servicio';
 // Galería libre y opcional en los pasos de desinstalación donde se tilda lo
 // retirado (sensores/módulos): fotos adicionales a las de cada ítem.
 export const EXTRA_RETIRO_PHOTOS_KEY = 'extra_retiro';
+
+// Galerías libres y opcionales, una por paso, debajo de las fotos fijas de cada uno: algo que no encaja en ningún slot pero
+// vale la pena documentar. Clave propia por paso para que en el PDF y el panel se vea de dónde viene cada foto.
+export const EXTRA_PRE_PHOTOS_KEY = 'extra_pre';
+export const EXTRA_EQUIPO_PHOTOS_KEY = 'extra_equipo';
+export const EXTRA_UBICACION_PHOTOS_KEY = 'extra_ubicacion';
+export const EXTRA_EQUIPO_RETIRAR_PHOTOS_KEY = 'extra_equipo_retirar';
+export const EXTRA_RETIRO_VIEJO_PHOTOS_KEY = 'extra_retiro_viejo';
+export const EXTRA_RETIRO_FINAL_PHOTOS_KEY = 'extra_retiro_final';
