@@ -273,35 +273,53 @@ function textoOpcional(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v.trim() : null;
 }
 
+// Une listas de usuarios por id (sin repetir) y las ordena por nombre.
+export function unirUsuarios(...listas: Array<Array<{ id: number; name: string }>>): OdooTechnician[] {
+  const porId = new Map<number, OdooTechnician>();
+  for (const lista of listas) for (const u of lista) if (!porId.has(u.id)) porId.set(u.id, { id: u.id, name: u.name });
+  return [...porId.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // Cacheado ~5min — es un filtro de dropdown, no necesita estar al segundo.
-// Se deriva de quién tiene tareas asignadas en los proyectos de Field
-// Service (no de todo res.users, que incluye miles de clientes/portal users)
-// — mismo criterio que usa el dashboard de reportes con su lista de nombres,
-// pero acá resuelto por asignación real en vez de una lista hardcodeada.
+// Trae TODOS los usuarios internos de Odoo (share=false descarta portal/clientes), no solo a quien ya tiene tareas
+// asignadas: antes salía solo de las tareas padre con técnico, así que un usuario recién dado de alta (o asignado solo en
+// subtareas) no aparecía ni en el calendario ni para vincularlo con su usuario del panel (Alex Lima, 2026-11-10).
+// A eso se suman los que figuran en tareas de Field Service aunque estén archivados, para no perderlos del filtro.
 export async function listTechnicians(): Promise<OdooTechnician[]> {
   return cached('calendar:technicians', 5 * 60 * 1000, async () => {
     try {
-      const { projectIds } = await getFieldServiceContext();
-      if (!projectIds.length) return [];
-
-      const tasks = (await withTimeout(
-        executeKw('project.task', 'search_read', [[['project_id', 'in', projectIds], ['parent_id', '=', false]]], {
-          fields: ['user_ids'],
-          limit: 2000,
-          order: 'write_date desc',
-        }),
-        'listTechnicians:tasks',
-      )) as Array<{ user_ids: number[] }>;
-
-      const ids = Array.from(new Set(tasks.flatMap((t) => t.user_ids)));
-      if (!ids.length) return [];
-
-      const users = (await withTimeout(
-        executeKw('res.users', 'read', [ids], { fields: ['id', 'name'] }),
-        'listTechnicians:users',
+      const internos = (await withTimeout(
+        executeKw('res.users', 'search_read', [[['share', '=', false]]], { fields: ['id', 'name'], limit: 1000, order: 'name' }),
+        'listTechnicians:internos',
       )) as Array<{ id: number; name: string }>;
 
-      return users.sort((a, b) => a.name.localeCompare(b.name));
+      // Best-effort: si falla esta parte, igual se devuelven los usuarios internos.
+      let asignados: Array<{ id: number; name: string }> = [];
+      try {
+        const { projectIds } = await getFieldServiceContext();
+        if (projectIds.length) {
+          const tasks = (await withTimeout(
+            executeKw('project.task', 'search_read', [[['project_id', 'in', projectIds]]], {
+              fields: ['user_ids'],
+              limit: 2000,
+              order: 'write_date desc',
+            }),
+            'listTechnicians:tasks',
+          )) as Array<{ user_ids: number[] }>;
+          const conocidos = new Set(internos.map((u) => u.id));
+          const faltan = Array.from(new Set(tasks.flatMap((t) => t.user_ids))).filter((id) => !conocidos.has(id));
+          if (faltan.length) {
+            asignados = (await withTimeout(
+              executeKw('res.users', 'read', [faltan], { fields: ['id', 'name'], context: { active_test: false } }),
+              'listTechnicians:users',
+            )) as Array<{ id: number; name: string }>;
+          }
+        }
+      } catch (err) {
+        console.error('listTechnicians: no se pudieron sumar los usuarios con tareas asignadas', err);
+      }
+
+      return unirUsuarios(internos, asignados);
     } catch (err) {
       throw classify(err);
     }
