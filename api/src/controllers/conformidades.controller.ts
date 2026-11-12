@@ -822,10 +822,6 @@ async function runSyncConformidadToOdoo(req: Request, res: Response, fase: 'pre'
           .map(([k, motivo]) => `<li>${esc(EQUIP_ITEM_PHOTO_LABEL[k] ?? k)} — ${esc(motivo)}</li>`)
           .join('')}</ul>`
       : '';
-  const derivacionHtml =
-    fase !== 'pre' && record.derivacion?.requerida
-      ? `<p><b>Requiere otra intervención de otro técnico:</b> ${esc(record.derivacion.motivo)}. Coordinación reprograma una nueva visita a la unidad (el ticket sigue abierto).</p>`
-      : '';
   const hojasCambioCompleto = pareja ? ordenarOrigenDestino(record, pareja) : null;
   const titulo = hojasCambioCompleto
     ? 'Cambio de unidad completo: hojas de conformidad completadas'
@@ -858,7 +854,7 @@ async function runSyncConformidadToOdoo(req: Request, res: Response, fase: 'pre'
     ${preItem8}
     ${fase === 'pre' ? '' : postItem8}
     ${noInstaladosHtml}
-    ${derivacionHtml}`;
+    `;
 
   try {
     // Generar el PDF en memoria para adjuntarlo a Odoo — no se guarda en R2.

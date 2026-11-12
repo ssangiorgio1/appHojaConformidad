@@ -34,9 +34,10 @@ export const MOTIVO_INTERVENCION_LABELS: Record<MotivoIntervencion, string> = {
 };
 
 // Por qué se cambia el equipo — solo aplica cuando motivoIntervencion es 'cambio_equipo'.
-export type CambioEquipoRazon = 'pantalla_danada' | 'otro';
+export type CambioEquipoRazon = 'equipo_danado' | 'pantalla_danada' | 'otro';
 
 export const CAMBIO_EQUIPO_RAZON_LABELS: Record<CambioEquipoRazon, string> = {
+  equipo_danado: 'Equipo dañado',
   pantalla_danada: 'Pantalla dañada (táctil / trizada)',
   otro: 'Otro',
 };

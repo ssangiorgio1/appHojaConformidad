@@ -125,7 +125,7 @@ const tipoServicioSchema = z.enum(['instalacion', 'desinstalacion', 'reparacion'
 
 // Ver nota en models/Conformidad.ts — solo aplican a tipoServicio 'reparacion'.
 const motivoIntervencionSchema = z.enum(['cambio_equipo', 'reinicio_manual', 'revisar_ramales', 'otro']).nullable();
-const cambioEquipoRazonSchema = z.enum(['pantalla_danada', 'otro']).nullable();
+const cambioEquipoRazonSchema = z.enum(['equipo_danado', 'pantalla_danada', 'otro']).nullable();
 
 // Ver nota en models/Conformidad.ts — solo aplica al esquema nuevo de 2 hojas
 // vinculadas para cambio_equipo. `parejaId` es opcional: si el técnico de

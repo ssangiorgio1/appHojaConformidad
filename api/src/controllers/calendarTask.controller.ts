@@ -3,6 +3,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { HttpError } from '../middleware/error.middleware.js';
 import { listCalendarTasks, listTechnicians, moveCalendarTask } from '../services/calendarTask.service.js';
 import { getTaskNotes } from '../services/taskNotes.service.js';
+import { guardarAgendaCompartida } from '../services/agendaCompartida.service.js';
 import { OdooError } from '../services/odooErrors.js';
 import { UsuarioModel } from '../models/Usuario.js';
 import type { ListCalendarTasksQuery, MoveCalendarTaskInput, TaskNotesQuery } from '../schemas/calendarTask.schema.js';
@@ -33,6 +34,8 @@ export const getCalendarTasks = asyncHandler(async (req: Request, res: Response)
 
   try {
     const data = await listCalendarTasks(query);
+    // Con quién viaja en cada tarea (ya viene de Odoo): los avisos de compañeros lo leen de acá, sin volver a consultar Odoo.
+    if (req.user!.role === 'tecnico') await guardarAgendaCompartida(String(req.user!.usuarioId), data);
     res.json({ data });
   } catch (err) {
     throw toHttpError(err);

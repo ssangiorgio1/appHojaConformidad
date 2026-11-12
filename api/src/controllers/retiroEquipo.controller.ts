@@ -84,7 +84,7 @@ export const createRetiroEquipo = asyncHandler(async (req: Request, res: Respons
       await pushReprogramacionToTicket({
         ticketId: acta.ticketOdooId,
         pdfBuffer,
-        fileName: `retiro_equipo_${nombre}.pdf`,
+        fileName: `${acta.modalidad === 'entrega' ? 'retiro' : 'entrega'}_equipo_${nombre}.pdf`,
         resumenHtml: `<p><b>${acta.modalidad === 'entrega' ? 'Retiro de equipo (lo entregó el cliente)' : 'Entrega de equipo (lo dejó el técnico)'}</b> — ${esc(acta.subtareaNombre)} (${esc(acta.clienteNombre)}).</p><p>${esc(formatoFechaHora(fechaHora))}. Se adjunta el acta.</p>`,
         as: tecnico?.odoo ? { login: tecnico.odoo.login, password: decryptSecret(tecnico.odoo.passwordEnc) } : undefined,
       });
@@ -159,6 +159,6 @@ export const getRetiroEquipoPdf = asyncHandler(async (req: Request, res: Respons
     fotos: acta.fotos,
   });
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename="retiro_equipo_${acta.id}.pdf"`);
+  res.setHeader('Content-Disposition', `inline; filename="${acta.modalidad === 'entrega' ? 'retiro' : 'entrega'}_equipo_${acta.id}.pdf"`);
   res.send(pdf);
 });

@@ -16,7 +16,7 @@ import {
   type PhotoSlotDef,
 } from './photoSlots.js';
 import { getServiceMode } from './serviceMode.js';
-import { CAMBIO_EQUIPO_RAZON_LABELS, MOTIVO_INTERVENCION_LABELS, SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, isEquipoSwap, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
+import { MOTIVO_INTERVENCION_LABELS, SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, isEquipoSwap, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
 
 // The fields buildPrintHtml actually reads — deliberately narrower than the
 // full ConformidadRecord so both the mobile app's local record and the
@@ -178,25 +178,12 @@ function equipoGrid(record: PrintableConformidad): string {
       )
     : '';
 
-  // Los detalles de IO1/IO2/AO1/AO2 (dependsOn) no se imprimen cuando
-  // su checkbox no está tildado — mismo criterio que el wizard POST y
-  // el resumen del panel, para no mostrar texto viejo de un campo que
-  // el técnico llegó a tipear y después destildó.
-  const ioRows = fieldRows(
-    equipo,
-    byTitle['Entradas / Salidas'].fields.filter((f) => isEquipoFieldVisible(f, record.equipo)),
-    tipoServicio,
-  );
-
   const cards = [
     equipCard(datosEquipoTitle, fieldRows(equipo, datosEquipoFields, tipoServicio), "equip-card-wide"),
     equipCard('Sensores', fieldRows(equipo, byTitle['Sensores'].fields, tipoServicio)),
-    equipCard(
-      'Módulos',
-      fieldRows(equipo, byTitle['Módulos'].fields, tipoServicio) +
-        (ioRows ? `<tr><td colspan="2" class="mini-sub">Entradas / Salidas</td></tr>` : '') +
-        ioRows,
-    ),
+    // "Entradas / Salidas" (IO/AO y sus detalles) NO se imprime en la hoja: ni el SI/NO ni el detalle. Se ven solo en el
+    // resumen del panel (ConformidadResumen, que lee EQUIP_GROUPS).
+    equipCard('Módulos', fieldRows(equipo, byTitle['Módulos'].fields, tipoServicio)),
     equipCard(
       'Elementos adicionales instalados',
       fieldRows(
@@ -407,8 +394,9 @@ export async function buildPrintHtml(
         : 'Unidad de destino (instalación)'
       : null;
   const mode = getServiceMode(record);
-  const motivoIntervencionLabel = record.motivoIntervencion ? MOTIVO_INTERVENCION_LABELS[record.motivoIntervencion] : null;
-  const cambioEquipoRazonLabel = record.cambioEquipoRazon ? CAMBIO_EQUIPO_RAZON_LABELS[record.cambioEquipoRazon] : null;
+  // En el PDF solo va "Cambio de equipo": el resto de los motivos (reinicio manual, ramales, otro) y la razón del cambio son
+  // datos internos y llenaban el encabezado de etiquetas.
+  const motivoIntervencionLabel = record.motivoIntervencion === 'cambio_equipo' ? MOTIVO_INTERVENCION_LABELS.cambio_equipo : null;
 
   const [prePhotos, postPhotos] = await Promise.all([
     photosBlock(prePhotoSlotsFor(mode, record.tipoUnidad), record.pre.fotos, 'Fotos PRE', resolvePhotoSrc),
@@ -435,8 +423,6 @@ export async function buildPrintHtml(
       ${tipoServicioLabel ? `<span class="status-pill">${esc(tipoServicioLabel)}</span>` : ''}
       ${cambioUnidadLabel ? `<span class="status-pill">${esc(cambioUnidadLabel)}</span>` : ''}
       ${motivoIntervencionLabel ? `<span class="status-pill">${esc(motivoIntervencionLabel)}</span>` : ''}
-      ${cambioEquipoRazonLabel ? `<span class="status-pill">${esc(cambioEquipoRazonLabel)}</span>` : ''}
-      ${record.cambioEquipoTemporal ? '<span class="status-pill">Reemplazo temporal</span>' : ''}
       ${opts?.parte ? `<span class="status-pill">${esc(opts.parte)}</span>` : ''}
       <span class="status-pill">${esc(statusLabel)}</span>
     </div>

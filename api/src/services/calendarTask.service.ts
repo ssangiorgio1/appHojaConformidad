@@ -61,7 +61,7 @@ const DEFAULT_TASK_DURATION_HOURS = 1;
 const MAX_DEADLINE_WINDOW_HOURS = 8;
 const AR_OFFSET_MS = 3 * 60 * 60 * 1000;
 
-import { companerosDeTarea, nombresCompaneros } from './companeros.js';
+import { companerosDeTarea, idsCompanerosDeTarea, nombresCompaneros } from './companeros.js';
 
 // Nombre de cada usuario de Odoo, en memoria 30 min (los nombres casi no cambian): sirve para decir con quién se comparte
 // una tarea sin leer res.users en cada pedido de la agenda. Best-effort: si Odoo falla, esos ids quedan sin nombre.
@@ -145,9 +145,13 @@ export interface CalendarTask {
   end: string | null;
   technicianId: number | null;
   technicianName: string | null;
-  // Con qué otros técnicos se comparte esta tarea (asignados al padre y a las unidades que ve este técnico, sin él mismo).
-  // Solo se completa cuando se pide la agenda de UN técnico; vacío para coordinación.
+  // Con qué otros técnicos se comparte esta tarea = con quién se viaja: los que comparten al menos una unidad con este técnico
+  // (sin subtareas, los asignados a la tarea). Estar los dos en la tarea padre con unidades distintas NO es compartir (ver
+  // companeros.ts). Solo se completa cuando se pide la agenda de UN técnico; vacío para coordinación.
   companeros: string[];
+  // Los mismos, como ids de usuario de Odoo: la API los guarda al servir la agenda (ver agendaCompartida.service.ts) para
+  // decidir banners y viajes de compañeros sin volver a consultar Odoo.
+  companerosIds: number[];
   partnerName: string | null;
   stage: string | null;
   description: string | null;
@@ -498,6 +502,7 @@ export async function listCalendarTasks(params: { from: string; to: string; tech
           technicianId: (parentRow.user_ids as number[])[0] ?? null,
           technicianName: (parentRow.user_names as string) || null,
           companeros: [],
+          companerosIds: [],
           partnerName: many2oneName(parentRow.partner_id),
           stage: many2oneName(parentRow.stage_id),
           description: stripHtml(parentRow.description as string | false),
@@ -532,6 +537,7 @@ export async function listCalendarTasks(params: { from: string; to: string; tech
       for (const t of result) {
         for (const u of t.subtasks) u.companeros = nombresCompaneros(u.technicianIds, yo, nombres);
         t.companeros = companerosDeTarea(asignadosDelPadre.get(t.occurrenceKey), t.subtasks, yo, nombres);
+        t.companerosIds = idsCompanerosDeTarea(asignadosDelPadre.get(t.occurrenceKey), t.subtasks, yo);
       }
     }
 
@@ -905,6 +911,31 @@ export async function isTaskAssignedToTechnician(taskId: number, technicianOdooI
       'isTaskAssignedToTechnician:children',
     )) as Array<{ user_ids: number[] }>;
     return children.some((c) => c.user_ids.includes(technicianOdooId));
+  } catch (err) {
+    throw classify(err);
+  }
+}
+
+// Quién está asignado a la tarea y a cada una de sus unidades, en vivo desde Odoo (2 lecturas). Solo se usa al tocar
+// "Salir hacia destino" (poco frecuente), para saber con quién viaja cada técnico aunque alguno no haya actualizado su agenda
+// desde que coordinación cambió la asignación. Nunca en los refrescos del banner.
+export async function asignacionDeTareaEnOdoo(taskId: number): Promise<{ asignadosDelPadre: number[]; unidades: Array<{ name: string; technicianIds: number[] }> } | null> {
+  try {
+    const rows = (await withTimeout(
+      executeKw('project.task', 'read', [[taskId]], { fields: ['user_ids', 'child_ids'] }),
+      'asignacionDeTareaEnOdoo:task',
+    )) as Array<{ user_ids: number[]; child_ids: number[] }>;
+    const task = rows[0];
+    if (!task) return null;
+    if (!task.child_ids.length) return { asignadosDelPadre: task.user_ids ?? [], unidades: [] };
+    const children = (await withTimeout(
+      executeKw('project.task', 'read', [task.child_ids], { fields: ['name', 'user_ids'] }),
+      'asignacionDeTareaEnOdoo:children',
+    )) as Array<{ name: string; user_ids: number[] }>;
+    return {
+      asignadosDelPadre: task.user_ids ?? [],
+      unidades: children.map((c) => ({ name: c.name, technicianIds: c.user_ids ?? [] })),
+    };
   } catch (err) {
     throw classify(err);
   }

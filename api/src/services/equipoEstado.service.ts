@@ -1,4 +1,5 @@
 import { VisionbloError, visionbloPostJson } from '../config/visionblo.js';
+import { ultimoReporteApi, visionbloApiConfigurada, type EventoApi, type UltimoReporteApi } from '../config/visionbloApi.js';
 import { FlotaUnidadModel } from '../models/FlotaUnidad.js';
 import { matriculaRegex } from './historialUnidad.service.js';
 
@@ -247,15 +248,25 @@ export interface EstadoEquipo {
   // chequeo de GPS necesita saber SI hay posición y cuándo — sin esto un técnico veía siempre "sin posición".
   posicionFecha: string | null;
   eventosRecientes: EventoCrudo[];
+  // De dónde salieron los datos. 'api+cookie': reporte de la API de preinstalación + identificadores/SIM/firmware/cliente
+  // del diagnóstico de bo3. 'api': la cookie no respondió, el estado es parcial (`aviso` dice qué falta). 'cookie': solo bo3
+  // (la API no está configurada o no respondió).
+  origen: { fuente: 'api+cookie' | 'api' | 'cookie'; aviso: string | null };
 }
 
-async function consultarEstado(equipoId: number): Promise<EstadoEquipo> {
+// Camino completo por cookie (bo3): diagnóstico + módulos + historial. Es el respaldo cuando la API de preinstalación no
+// está configurada o falla. `dgPrevio` evita repetir el diagnóstico si ya se pidió en paralelo.
+async function consultarEstadoCookie(equipoId: number, dgPrevio?: DiagnosticoCrudo): Promise<EstadoEquipo> {
   const hoy = new Date();
   const ayer = new Date(hoy.getTime() - 86_400_000);
   const dia = (d: Date) => d.toISOString().slice(0, 10);
 
-  const [dg, modulos, historial, matricula] = await Promise.all([
-    visionbloPostJson<DiagnosticoCrudo>('equipo/diagnostico', { equipo_id: String(equipoId) }),
+  // El historial es lo más pesado y solo aporta señal/batería/satélites y los eventos recientes: si ÉL es lo único que no
+  // llega (connect timeout, timeout, HTTP) se devuelve igual lo del diagnóstico y los módulos, con un aviso, en vez de
+  // fallar toda la consulta. Una sesión vencida o sin configurar sí corta (también afecta al resto).
+  let historialFallo = false;
+  const [dg, modulos, historialCrudo, matricula] = await Promise.all([
+    dgPrevio ?? visionbloPostJson<DiagnosticoCrudo>('equipo/diagnostico', { equipo_id: String(equipoId) }),
     visionbloPostJson<{ modulos: string[]; fecha: string | null } | null>('equipo/modulos', { equipo_id: String(equipoId) }),
     visionbloPostJson<EventoCrudo[]>('equipo/historial', {
       equipo_id: String(equipoId),
@@ -265,9 +276,17 @@ async function consultarEstado(equipoId: number): Promise<EstadoEquipo> {
       geocerca_id: null,
       utc: true,
       fecha_recepcion: false,
+    }).catch((err: unknown) => {
+      if (err instanceof VisionbloError && (err.code === 'NETWORK' || err.code === 'TIMEOUT' || err.code === 'HTTP')) {
+        console.warn('VISIONBLO_HISTORIAL_FAILED', err.message);
+        historialFallo = true;
+        return [] as EventoCrudo[];
+      }
+      throw err;
     }),
     matriculaDeEquipo(equipoId).catch(() => null),
   ]);
+  const historial = historialCrudo;
 
   const desde = hoy.getTime() - EVENTOS_RECIENTES_HORAS * 3_600_000;
   const recientes = historial.filter((e) => e.evento !== 'posicion' && e.evento !== 'debug' && new Date(e.fecha).getTime() >= desde);
@@ -319,7 +338,135 @@ async function consultarEstado(equipoId: number): Promise<EstadoEquipo> {
       ? { satelites: numOrNull(ultimaPosicion.datos.satelites), hdop: numOrNull(ultimaPosicion.datos.hdop), fecha: ultimaPosicion.fecha }
       : null,
     eventosRecientes: recientes.slice(-EVENTOS_RECIENTES_MAX).reverse(),
+    origen: {
+      fuente: 'cookie',
+      aviso: historialFallo ? 'Datos parciales: no se pudo leer el historial del equipo. Faltan señal, batería, satélites y eventos recientes.' : null,
+    },
   };
+}
+
+function datosDe(e: EventoApi | undefined): Record<string, unknown> {
+  return e && e.datos && !Array.isArray(e.datos) ? e.datos : {};
+}
+
+// Arma el estado desde la API de preinstalación (`ultimo_reporte`) y le suma lo que solo trae el diagnóstico de bo3 (`dg`):
+// IMEI/serie/nombre, teléfono y operador de la SIM, versión de firmware, cliente/baja/corte de servicio. Con `dg` en null (la
+// cookie no respondió) esos campos quedan en null y `origen.aviso` lo explica. Es pura: no toca la red.
+//
+// Diferencias con el camino por cookie: la API da el ÚLTIMO reporte de cada tipo de evento, no el historial completo, así que
+// `eventosRecientes` trae a lo sumo un evento por tipo; y batería/dBm salen del último `estado_general` (el camino por cookie
+// buscaba el último valor no nulo en 24 h).
+export function estadoDesdeApi(
+  equipoId: number,
+  api: UltimoReporteApi,
+  dg: DiagnosticoCrudo | null,
+  matricula: string | null,
+  avisoSinCookie: string | null,
+  ahora: Date = new Date(),
+): EstadoEquipo {
+  const u = api.ultimo_reporte ?? {};
+  const eq = dg?.equipo ?? null;
+  const pos = datosDe(u.posicion);
+  const est = datosDe(u.estado_general);
+  const ign = datosDe(u.ignicion);
+  const mod = datosDe(u.modulos);
+  const simEv = datosDe(u.sim);
+  const lat = numOrNull(pos.latitud);
+  const lon = numOrNull(pos.longitud);
+  const tienePosicion = !!(lat && lon);
+  const desde = ahora.getTime() - EVENTOS_RECIENTES_HORAS * 3_600_000;
+
+  const eventosRecientes: EventoCrudo[] = Object.entries(u)
+    .filter(([evento, e]) => evento !== 'posicion' && evento !== 'debug' && new Date(e.fecha).getTime() >= desde)
+    .sort(([, a], [, b]) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+    .slice(0, EVENTOS_RECIENTES_MAX)
+    .map(([evento, e]) => ({ fecha: e.fecha, evento, datos: datosDe(e) }));
+
+  return {
+    consultadoAt: ahora.toISOString(),
+    equipoId,
+    nombre: eq?.nombre?.trim() || null,
+    serie: eq?.serie ?? null,
+    imei: eq?.imei ?? null,
+    // Sin diagnóstico, el ICCID se rescata del último evento `sim`.
+    iccid: eq?.iccid ?? (typeof simEv.iccid === 'string' ? simEv.iccid : null),
+    simTelefono: dg?.sim ? (dg.sim.telefono ?? null) : null,
+    simOperador: dg?.sim ? (dg.sim.info?.operator?.name ?? null) : null,
+    ultimoReporte: api.ultima_recepcion || null,
+    posicion: tienePosicion ? { latitud: (lat as number) / 1e7, longitud: (lon as number) / 1e7, fecha: u.posicion?.fecha ?? null } : null,
+    posicionFecha: tienePosicion ? (u.posicion?.fecha ?? null) : null,
+    ignicion: typeof ign.presente === 'boolean' ? { encendida: ign.presente, fecha: u.ignicion?.fecha ?? null } : null,
+    voltajeCargador: numOrNull(est.voltaje_cargador),
+    bateriaInterna: numOrNull(est.voltaje_bateria),
+    senalDbm: numOrNull(est.dbm_modem),
+    firmware: {
+      version: eq ? formatoFirmware(eq.firmware) : null,
+      // El evento `firmware_actualizado` coincide con la fecha de firmware de bo3.
+      fecha: eq?.fecha_firmware ?? u.firmware_actualizado?.fecha ?? null,
+      actualizacionDisponible: dg?.actualizar_firmware?.ok === true,
+      detalleActualizacion: dg?.actualizar_firmware?.error ?? null,
+    },
+    // Con diagnóstico, sus banderas mandan (son las que ya usaba la PWA); sin él, se deducen de si el equipo reportó alguna
+    // vez ese evento. Para el corte de motor se mira el estado actual del último evento `corte_de_motor`.
+    senalesVistas: {
+      pantalla: dg ? !!dg.pantalla : !!u.pantalla,
+      rfid: dg ? !!dg.rfid : !!u.rfid,
+      fuel: dg ? !!dg.fuel : !!(u.fuel ?? u.combustible),
+      sim: dg ? !!dg.sim : !!u.sim,
+      corteMotor: dg ? !!dg.corte_motor : datosDe(u.corte_de_motor).corte === true,
+      panico: u.panico?.fecha ?? (dg?.panico ? (dg.panico.fecha ?? null) : null),
+    },
+    movil: dg?.movil
+      ? { cliente: dg.movil.cliente, movil: dg.movil.movil, matricula, baja: dg.movil.baja, bajaCliente: dg.movil.baja_cliente, corteDeServicio: dg.movil.corte_de_servicio }
+      : null,
+    modulos: {
+      fecha: u.modulos?.fecha ?? null,
+      detectados: (Array.isArray(mod.modulos) ? (mod.modulos as string[]) : []).map(decodificarModulo),
+    },
+    gps: u.posicion
+      ? { satelites: numOrNull(pos.satelites), hdop: numOrNull(pos.hdop), fecha: u.posicion.fecha }
+      : null,
+    eventosRecientes,
+    origen: { fuente: dg ? 'api+cookie' : 'api', aviso: avisoSinCookie },
+  };
+}
+
+function motivoSinCookie(err: unknown): string {
+  if (err instanceof VisionbloError) {
+    if (err.code === 'SESSION_EXPIRED') return 'la sesión de VisionBLO venció';
+    if (err.code === 'NOT_CONFIGURED') return 'la sesión de VisionBLO no está configurada';
+  }
+  return 'VisionBLO no respondió';
+}
+
+// La API de preinstalación manda; la cookie suma lo que la API no trae. Si la API no está configurada o falla, se cae al
+// camino completo por cookie. Si fallan las dos, se informa el error de la cookie (con el de la API anexado).
+async function consultarEstado(equipoId: number): Promise<EstadoEquipo> {
+  if (!visionbloApiConfigurada()) return consultarEstadoCookie(equipoId);
+
+  const [api, dg] = await Promise.allSettled([
+    ultimoReporteApi(equipoId),
+    visionbloPostJson<DiagnosticoCrudo>('equipo/diagnostico', { equipo_id: String(equipoId) }),
+  ]);
+
+  if (api.status === 'rejected') {
+    console.warn('VISIONBLO_API_FAILED', api.reason instanceof Error ? api.reason.message : api.reason);
+    if (dg.status === 'fulfilled') return consultarEstadoCookie(equipoId, dg.value);
+    if (dg.reason instanceof VisionbloError) {
+      const apiMsg = api.reason instanceof Error ? api.reason.message : String(api.reason);
+      throw new VisionbloError(dg.reason.code, `${dg.reason.message} Tampoco respondió la API de preinstalación (${apiMsg}).`);
+    }
+    throw dg.reason;
+  }
+
+  let matricula: string | null = null;
+  if (dg.status === 'fulfilled' && dg.value.movil) matricula = await matriculaDeEquipo(equipoId).catch(() => null);
+  let aviso: string | null = null;
+  if (dg.status === 'rejected') {
+    console.warn('VISIONBLO_COOKIE_FAILED', dg.reason instanceof Error ? dg.reason.message : dg.reason);
+    aviso = `Datos parciales: ${motivoSinCookie(dg.reason)}. Faltan cliente, SIM, firmware e identificadores del equipo.`;
+  }
+  return estadoDesdeApi(equipoId, api.value, dg.status === 'fulfilled' ? dg.value : null, matricula, aviso);
 }
 
 // Cache corto + dedupe de consultas simultáneas: varios usuarios mirando el mismo equipo no

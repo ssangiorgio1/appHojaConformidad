@@ -5,8 +5,10 @@ import { VisitaNotificacionModel } from '../models/VisitaNotificacion.js';
 import { UsuarioModel } from '../models/Usuario.js';
 import { notificarEstadoVisita, buildOptInLink, resolverMomento } from '../services/telegram.service.js';
 import { isTaskAssignedToTechnician } from '../services/calendarTask.service.js';
+import { compartenViaje, refrescarCompartidaDeTarea, tareasCompartidasDe } from '../services/agendaCompartida.service.js';
 import { cerrarVisitasAjenasSiTodoResuelto } from '../services/loteVisita.service.js';
 import { cerrarSuspensionAbierta } from '../services/suspensionVisita.js';
+import { estadosUnidadesDeTarea, type EstadoUnidad } from '../services/unidadesResueltas.service.js';
 import { postNotaInternaTarea } from '../services/odoo.service.js';
 import { decryptSecret } from '../utils/secretBox.js';
 import type {
@@ -110,8 +112,13 @@ async function assertSinViajeDeCompanero(tareaOdooId: number, fecha: string, req
   const yaAbierta = await VisitaNotificacionModel.exists({ tareaOdooId, tecnicoId, fecha, abierta: true });
   if (yaAbierta) return;
 
+  // Antes de abrir el viaje se relee en Odoo quién comparte unidad con quién en esta tarea y se actualiza lo guardado de
+  // todos sus técnicos: si coordinación cambió la asignación y alguno no actualizó su agenda, el banner y los avisos del
+  // compañero no siguen con la asignación vieja. Con tope de tiempo: si Odoo tarda, el viaje sale igual con lo guardado.
+  const asignacion = await refrescoConTope(tareaOdooId, fecha);
+
   const desde = new Date(Date.now() - VISITA_VENCE_HORAS * 3_600_000);
-  const companero = await VisitaNotificacionModel.findOne({
+  const otros = await VisitaNotificacionModel.find({
     tareaOdooId,
     fecha,
     abierta: true,
@@ -120,7 +127,24 @@ async function assertSinViajeDeCompanero(tareaOdooId: number, fecha: string, req
     updatedAt: { $gte: desde },
   })
     .sort({ enCaminoAt: 1 })
-    .populate<{ tecnicoId: { nombre: string } | null }>('tecnicoId', 'nombre');
+    .limit(5)
+    .populate<{ tecnicoId: { nombre: string; odooUserId?: number | null } | null }>('tecnicoId', 'nombre odooUserId');
+  if (!otros.length) return;
+  // Solo bloquea si de verdad viajan juntos: comparten al menos una unidad. Dos técnicos en la misma tarea padre con unidades
+  // distintas hacen cada uno su viaje. Manda la asignación recién leída de Odoo; si Odoo no respondió, lo que quedó guardado
+  // de la agenda; sin ninguno de los dos, no se bloquea (que pueda trabajar).
+  const yo = await UsuarioModel.findById(tecnicoId).select('odooUserId');
+  let companero: (typeof otros)[number] | null = null;
+  for (const o of otros) {
+    const suOdoo = o.tecnicoId?.odooUserId;
+    let comparten: boolean | null = null;
+    if (asignacion && yo?.odooUserId && typeof suOdoo === 'number') comparten = (asignacion.get(yo.odooUserId) ?? []).includes(suOdoo);
+    if (comparten === null) comparten = await compartenViaje(String(tecnicoId), tareaOdooId, fecha, suOdoo);
+    if (comparten) {
+      companero = o;
+      break;
+    }
+  }
   if (companero) {
     if (salioAntes(ocurrioAt, companero.enCaminoAt)) return;
     const nombre = companero.tecnicoId?.nombre || 'Tu compañero';
@@ -130,6 +154,26 @@ async function assertSinViajeDeCompanero(tareaOdooId: number, fecha: string, req
         ? `${nombre} ya llegó al lugar: actualizá la ficha y trabajá desde ahí, sin registrar un viaje propio.`
         : `${nombre} ya salió hacia destino con esta tarea: actualizá la ficha, el viaje lo gestiona él.`,
     );
+  }
+}
+
+const REFRESCO_ASIGNACION_MAX_MS = 4_000;
+
+// refrescarCompartidaDeTarea sin trabar "Salir hacia destino": si Odoo no contesta a tiempo (o falla) se sigue sin la
+// asignación en vivo; si contesta tarde, lo guardado se actualiza igual en segundo plano.
+async function refrescoConTope(tareaOdooId: number, fecha: string): Promise<Map<number, number[]> | null> {
+  const refresco = refrescarCompartidaDeTarea(tareaOdooId, fecha).catch((err) => {
+    console.error('VISITA_ASIGNACION_ODOO_FAILED', tareaOdooId, err);
+    return null;
+  });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const tope = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), REFRESCO_ASIGNACION_MAX_MS);
+  });
+  try {
+    return await Promise.race([refresco, tope]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -149,16 +193,35 @@ export function salioAntes(ocurrioAt: string | undefined, enCaminoCompanero: Dat
   return valida && t < enCaminoCompanero.getTime();
 }
 
-const ASIGNADA_TTL_MS = 5 * 60_000;
-const asignadaCache = new Map<string, { ok: boolean; at: number }>();
-
-async function tareaAsignada(tareaOdooId: number, odooUserId: number): Promise<boolean> {
-  const key = `${tareaOdooId}|${odooUserId}`;
-  const hit = asignadaCache.get(key);
-  if (hit && Date.now() - hit.at < ASIGNADA_TTL_MS) return hit.ok;
-  const ok = await isTaskAssignedToTechnician(tareaOdooId, odooUserId);
-  asignadaCache.set(key, { ok, at: Date.now() });
-  return ok;
+// Con quién viaja este técnico en cada tarea+fecha, según lo guardado al servirle la agenda (ver agendaCompartida.service.ts,
+// viene de Odoo). Solo Mongo: los banners y avisos de compañeros se consultan cada minuto y no pueden cargar a Odoo.
+// Devuelve las visitas candidatas que son de un compañero de viaje (comparte al menos una unidad con él).
+async function visitasDeCompaneros(
+  usuarioId: string,
+  estado: 'en_camino' | 'en_sitio',
+  acotar?: { tareaOdooId: number; fecha: string },
+): Promise<Array<InstanceType<typeof VisitaNotificacionModel>>> {
+  const compartidas = await tareasCompartidasDe(usuarioId, acotar);
+  if (!compartidas.length) return [];
+  const desde = new Date(Date.now() - VISITA_VENCE_HORAS * 3_600_000);
+  const candidatas = await VisitaNotificacionModel.find({
+    $or: compartidas.map((c) => ({ tareaOdooId: c.tareaOdooId, fecha: c.fecha })),
+    tecnicoId: { $ne: usuarioId },
+    abierta: true,
+    suspendida: { $ne: true },
+    estado,
+    updatedAt: { $gte: desde },
+  })
+    .sort(estado === 'en_sitio' ? { enSitioAt: 1 } : { enCaminoAt: 1 })
+    .limit(10);
+  if (!candidatas.length) return [];
+  const usuarios = await UsuarioModel.find({ _id: { $in: candidatas.map((c) => c.tecnicoId) } }).select('odooUserId');
+  const odooDe = new Map(usuarios.map((u) => [String(u._id), u.odooUserId]));
+  return candidatas.filter((c) => {
+    const fila = compartidas.find((x) => x.tareaOdooId === c.tareaOdooId && x.fecha === c.fecha);
+    const suOdoo = odooDe.get(String(c.tecnicoId));
+    return !!fila && typeof suOdoo === 'number' && fila.companerosOdooIds.includes(suOdoo);
+  });
 }
 
 export async function adoptarViajeDeCompanero(
@@ -166,23 +229,18 @@ export async function adoptarViajeDeCompanero(
   acotar?: { tareaOdooId: number; fecha: string },
 ): Promise<InstanceType<typeof VisitaNotificacionModel> | null> {
   try {
-    const usuario = await UsuarioModel.findById(usuarioId).select('odooUserId');
-    if (!usuario?.odooUserId) return null;
-    const desde = new Date(Date.now() - VISITA_VENCE_HORAS * 3_600_000);
-    const candidatas = await VisitaNotificacionModel.find({
-      ...(acotar ?? {}),
-      tecnicoId: { $ne: usuarioId },
-      abierta: true,
-      suspendida: { $ne: true },
-      estado: 'en_sitio',
-      updatedAt: { $gte: desde },
-    })
-      .sort({ enSitioAt: 1 })
-      .limit(10);
+    const candidatas = await visitasDeCompaneros(usuarioId, 'en_sitio', acotar);
     for (const c of candidatas) {
-      // Ya tiene visita propia (abierta, cerrada o cancelada) para esa tarea y fecha: no se le inventa otra.
-      if (await VisitaNotificacionModel.exists({ tareaOdooId: c.tareaOdooId, fecha: c.fecha, tecnicoId: usuarioId })) continue;
-      if (!(await tareaAsignada(c.tareaOdooId, usuario.odooUserId))) continue;
+      // Ya tiene visita propia para esa tarea y fecha que manda sobre la del compañero: abierta, terminada, o cerrada DESPUÉS
+      // de que el compañero llegó (avisó que no está). Un viaje propio que salió y se canceló ANTES de que el compañero
+      // llegara no cuenta: si no, quedaba sin banner ni "En curso" aunque estuvieran trabajando juntos.
+      const propiaQueManda = await VisitaNotificacionModel.exists({
+        tareaOdooId: c.tareaOdooId,
+        fecha: c.fecha,
+        tecnicoId: usuarioId,
+        $or: [{ abierta: true }, { estado: 'completo' }, c.enSitioAt ? { updatedAt: { $gte: c.enSitioAt } } : {}],
+      });
+      if (propiaQueManda) continue;
       try {
         return await VisitaNotificacionModel.create({
           tareaOdooId: c.tareaOdooId,
@@ -201,8 +259,38 @@ export async function adoptarViajeDeCompanero(
       }
     }
   } catch (err) {
-    // Best-effort (Odoo caído, etc.): el técnico sigue pudiendo marcar su propia llegada a mano.
+    // Best-effort: el técnico sigue pudiendo marcar su propia llegada a mano.
     console.error('VISITA_ADOPTAR_COMPANERO_FAILED', err);
+  }
+  return null;
+}
+
+// El compañero que NO salió todavía ve que el titular ya está en camino con una tarea que también es suya: franja
+// informativa en toda la app ("Pablo salió hacia destino"). No se le crea ninguna visita (cuando el titular llegue, la
+// adopción de arriba le registra la suya en sitio) ni se manda nada al cliente. Solo Mongo (ver visitasDeCompaneros).
+export interface ViajeDeCompanero {
+  tareaOdooId: number;
+  fecha: string;
+  estado: 'en_camino';
+  enCaminoAt: Date | null;
+  nombre: string;
+}
+
+export async function viajeEnCaminoDeCompanero(usuarioId: string): Promise<ViajeDeCompanero | null> {
+  try {
+    const candidatas = await visitasDeCompaneros(usuarioId, 'en_camino');
+    for (const c of candidatas) {
+      const titular = await UsuarioModel.findById(c.tecnicoId).select('nombre');
+      return {
+        tareaOdooId: c.tareaOdooId,
+        fecha: c.fecha,
+        estado: 'en_camino',
+        enCaminoAt: c.enCaminoAt ?? null,
+        nombre: titular?.nombre?.trim() || 'Tu compañero',
+      };
+    }
+  } catch (err) {
+    console.error('VISITA_VIAJE_COMPANERO_FAILED', err);
   }
   return null;
 }
@@ -242,7 +330,9 @@ export const getVisita = asyncHandler(async (req: Request, res: Response) => {
   if (req.user!.role === 'tecnico') filter.tecnicoId = req.user!.usuarioId;
   let visita = await VisitaNotificacionModel.findOne(filter).sort({ createdAt: -1 });
   // El titular ya llegó y yo (que viajo con él) todavía no tengo visita propia: se me registra en sitio.
-  if (!visita && req.user!.role === 'tecnico') visita = await adoptarViajeDeCompanero(String(req.user!.usuarioId), { tareaOdooId, fecha });
+  if (!visita && req.user!.role === 'tecnico') {
+    visita = await adoptarViajeDeCompanero(String(req.user!.usuarioId), { tareaOdooId, fecha });
+  }
 
   // "Titular" = el técnico que primero marcó salida hacia destino para este
   // (tarea, fecha), sin importar de quién es `visita` de arriba (que sigue
@@ -256,16 +346,27 @@ export const getVisita = asyncHandler(async (req: Request, res: Response) => {
   // excluyen los viajes cancelados a mitad de camino (abierta:false y nunca
   // llegaron a 'completo', ver cancelarVisita) para no dejar a alguien que
   // canceló su intento marcado como titular para siempre.
+  // Solo cuentan el propio técnico y sus compañeros de viaje (comparten al menos una unidad, según lo guardado de su
+  // agenda): otro técnico en la misma tarea padre con unidades distintas hace su propio viaje y no es "titular" de nadie.
   let titular = null;
   if (req.user!.role === 'tecnico') {
-    const titularDoc = await VisitaNotificacionModel.findOne({
+    const yo = String(req.user!.usuarioId);
+    const [compartida] = await tareasCompartidasDe(yo, { tareaOdooId, fecha });
+    const docs = await VisitaNotificacionModel.find({
       tareaOdooId,
       fecha,
       enCaminoAt: { $ne: null },
       $or: [{ abierta: true }, { estado: 'completo' }],
     })
       .sort({ enCaminoAt: 1 })
-      .populate<{ tecnicoId: { _id: unknown; nombre: string } | null }>('tecnicoId', 'nombre');
+      .limit(10)
+      .populate<{ tecnicoId: { _id: unknown; nombre: string; odooUserId?: number | null } | null }>('tecnicoId', 'nombre odooUserId');
+    const titularDoc = docs.find((d) => {
+      if (!d.tecnicoId) return false;
+      if (String(d.tecnicoId._id) === yo) return true;
+      const suOdoo = d.tecnicoId.odooUserId;
+      return !!compartida && typeof suOdoo === 'number' && compartida.companerosOdooIds.includes(suOdoo);
+    });
     if (titularDoc?.tecnicoId) {
       titular = {
         tecnicoId: String(titularDoc.tecnicoId._id),
@@ -278,8 +379,16 @@ export const getVisita = asyncHandler(async (req: Request, res: Response) => {
     }
   }
 
+  // Quién hizo o está haciendo cada unidad (él o su compañero). Solo Mongo: se da cuando el técnico ya tiene visita propia en
+  // esta tarea o alguien ya salió con ella (sin viaje de nadie todavía no hay unidades hechas que mostrar).
+  let unidades: EstadoUnidad[] = [];
+  if (req.user!.role === 'tecnico' && (visita || titular)) {
+    unidades = await estadosUnidadesDeTarea(tareaOdooId, String(req.user!.usuarioId));
+  }
+
   res.json({
     tareaOdooId,
+    unidades,
     estado: visita?.estado ?? 'pendiente',
     // Si el viaje devuelto ya está cerrado (abierta:false) y no llegó a
     // 'completo' — se canceló a mitad de camino, ver cancelarVisita — el
@@ -333,7 +442,9 @@ export const getVisitaActiva = asyncHandler(async (req: Request, res: Response) 
   ).map((v) => ({ tareaOdooId: v.tareaOdooId, fecha: v.fecha, motivo: v.suspensiones.at(-1)?.motivo ?? '' }));
 
   if (!visita) {
-    res.json({ visita: null, suspendidas });
+    // Sin visita propia: si un compañero ya salió con una tarea compartida, la PWA lo avisa (franja informativa).
+    const viajeCompanero = req.user!.role === 'tecnico' ? await viajeEnCaminoDeCompanero(String(req.user!.usuarioId)) : null;
+    res.json({ visita: null, suspendidas, viajeCompanero });
     return;
   }
 

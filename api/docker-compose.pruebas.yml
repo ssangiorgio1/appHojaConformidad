@@ -1,0 +1,14 @@
+# Mongo local solo para pruebas (`pnpm mongo:pruebas`). Puerto 27018 para no chocar con un Mongo instalado en el 27017.
+# Los datos quedan en el volumen `wara-pruebas-data`: `pnpm mongo:pruebas:borrar` lo elimina y se arranca de cero.
+services:
+  mongo-pruebas:
+    image: mongo:7
+    container_name: wara-mongo-pruebas
+    ports:
+      - '127.0.0.1:27018:27017'
+    volumes:
+      - wara-pruebas-data:/data/db
+    restart: unless-stopped
+
+volumes:
+  wara-pruebas-data:

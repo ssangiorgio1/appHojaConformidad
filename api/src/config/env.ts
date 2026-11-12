@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { z } from 'zod';
+import { motivosDeBloqueo } from './entornoPruebas.js';
 
 const envSchema = z.object({
   PORT: z.coerce.number().default(4000),
@@ -35,6 +36,11 @@ const envSchema = z.object({
   // Opcional: sin esto, /api/flota/refrescar responde 503 y el resto de la API sigue igual.
   VISIONBLO_SESSION_COOKIE: z.string().optional(),
 
+  // Token Bearer de la API de preinstalación de VisionBLO (config/visionbloApi.ts). Opcional: sin esto, el estado de equipo
+  // usa solo la cookie, como antes. Por ahora solo local — todavía no está cargado en Render.
+  VISIONBLO_API_TOKEN: z.string().optional(),
+  VISIONBLO_API_URL: z.string().url().default('http://apps4.visionblo.com:8001'),
+
   // Firma de los crons de QStash (routes/internal.routes.ts). Opcionales: sin ellas, /api/internal responde 503.
   QSTASH_CURRENT_SIGNING_KEY: z.string().optional(),
   QSTASH_NEXT_SIGNING_KEY: z.string().optional(),
@@ -49,6 +55,13 @@ const envSchema = z.object({
   CONSTANCIA_AL_REPORTAR: z.enum(['0', '1']).optional(),
 
   CORS_ORIGINS: z.string().default(''),
+
+  // 'pruebas' (lo pone .env.pruebas, ver `pnpm dev:pruebas`) activa el freno de config/entornoPruebas.ts: la API solo
+  // arranca con Mongo local y Odoo de desarrollo. Sin esto, no cambia nada.
+  WARA_ENTORNO: z.string().optional(),
+  // '1' permite que un script o la API local usen una Mongo remota (Atlas, la que usa Render). Por defecto, fuera de
+  // Render la API se niega: ver config/entornoPruebas.ts. Nunca va en Render.
+  PERMITIR_BASE_REAL: z.string().optional(),
 
   // Alertas al cliente por Telegram (seguimiento de visita) — opcionales:
   // sin configurar, notificarEstadoVisita loguea y sigue sin mandar nada, no
@@ -66,6 +79,15 @@ if (!parsed.success) {
   process.exit(1);
 }
 
+// RENDER=true lo pone Render en todos sus servicios: ahí no se frena nada. En cualquier otro lado (la compu) sí.
+const bloqueos = motivosDeBloqueo({ ...parsed.data, EN_RENDER: Boolean(process.env.RENDER) });
+if (bloqueos.length) {
+  console.error('Arranque bloqueado: la configuración local tocaría datos reales.');
+  for (const m of bloqueos) console.error(`  - ${m}`);
+  console.error('Usá `pnpm dev` (Mongo local, .env.pruebas) y revisá el bloque de Odoo activo de .env.');
+  process.exit(1);
+}
+
 export const env = {
   ...parsed.data,
   CORS_ORIGINS_LIST: parsed.data.CORS_ORIGINS.split(',')
@@ -75,5 +97,6 @@ export const env = {
   FIREBASE_PRIVATE_KEY: parsed.data.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
   ODOO_URL: parsed.data.ODOO_URL.replace(/\/+$/, ''),
   ROUTING_URL: parsed.data.ROUTING_URL?.replace(/\/+$/, ''),
+  VISIONBLO_API_URL: parsed.data.VISIONBLO_API_URL.replace(/\/+$/, ''),
   CONSTANCIA_AL_REPORTAR: parsed.data.CONSTANCIA_AL_REPORTAR === '1',
 };

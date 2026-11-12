@@ -229,7 +229,7 @@ const ConformidadSchema = new Schema(
       default: null,
     },
     motivoIntervencionDetalle: { type: String, default: '' },
-    cambioEquipoRazon: { type: String, enum: ['pantalla_danada', 'otro'], default: null },
+    cambioEquipoRazon: { type: String, enum: ['equipo_danado', 'pantalla_danada', 'otro'], default: null },
     cambioEquipoRazonDetalle: { type: String, default: '' },
 
     numero: { type: String, default: '', index: true },
