@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { EQUIP_CHECK_FIELDS, EQUIP_GROUPS, EQUIP_ITEM_PHOTO_LABEL, isEquipoFieldVisible } from '@wara/shared/src/equipo';
 import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY, VIDEO_SERVICIO_KEY } from '@wara/shared/src/photoSlots';
 import type { ServiceMode } from '@wara/shared/src/serviceMode';
-import { TIPO_SERVICIO_LABELS, MOTIVO_INTERVENCION_LABELS, formatSeries, isEquipoSwap } from '@wara/shared';
+import { TIPO_SERVICIO_LABELS, MOTIVO_INTERVENCION_LABELS, CAMBIO_EQUIPO_RAZON_LABELS, formatSeries, isEquipoSwap, ocultaCambioEquipoEnPdf } from '@wara/shared';
 import { Badge } from '@/components/ui/Badge';
 import { IconAlertTriangle } from '@/components/ui/Icons';
 import { formatIsoDateTime } from '@/lib/format';
@@ -191,6 +191,13 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
               {c.motivoIntervencion === 'otro' && c.motivoIntervencionDetalle?.trim() ? `: ${c.motivoIntervencionDetalle.trim()}` : ''}
             </InfoField>
           )}
+          {c.tipoServicio === 'reparacion' && c.motivoIntervencion === 'cambio_equipo' && c.cambioEquipoRazon && (
+            <InfoField label="Razón del cambio de equipo">
+              {CAMBIO_EQUIPO_RAZON_LABELS[c.cambioEquipoRazon]}
+              {c.cambioEquipoRazonDetalle?.trim() ? `: ${c.cambioEquipoRazonDetalle.trim()}` : ''}
+            </InfoField>
+          )}
+          {c.instalaSensorModulo && <InfoField label="Además se instaló">Sensor o módulo (ver abajo)</InfoField>}
           <InfoField label={`Modelo${equipoLabelSuffix}`}>{c.equipo.modelo || '—'}</InfoField>
           <InfoField label={`IMEI${equipoLabelSuffix}`}>{c.equipo.imei || '—'}</InfoField>
           {esSwap && (
@@ -200,6 +207,13 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
             </>
           )}
         </div>
+
+        {ocultaCambioEquipoEnPdf(c) && (
+          <div className="rounded-md border border-line bg-bg px-3 py-2 text-[12.5px] font-semibold text-muted">
+            En la hoja del cliente (y en el ticket de Odoo) solo figura la instalación del sensor o módulo: el cambio de equipo por orden
+            interna, el equipo retirado y sus fotos se ven únicamente acá.
+          </div>
+        )}
 
         <div>
           <div className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">

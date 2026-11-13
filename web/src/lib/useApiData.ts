@@ -11,7 +11,8 @@ import { useAuth } from '@/auth/AuthContext';
 // so the effect's array can stay a genuine literal — eslint-plugin-react-hooks
 // (React Compiler-era) requires that statically, and this hook's whole point
 // is to accept a caller-supplied deps array, which it can't otherwise satisfy.
-export function useApiData<T>(fn: (idToken: string) => Promise<T>, deps: unknown[]) {
+// `enabled: false` pospone la primera carga (p. ej. hasta restaurar los filtros guardados) para no pedir dos veces.
+export function useApiData<T>(fn: (idToken: string) => Promise<T>, deps: unknown[], enabled = true) {
   const { getIdToken } = useAuth();
   const fnRef = useRef(fn);
   const getIdTokenRef = useRef(getIdToken);
@@ -44,9 +45,10 @@ export function useApiData<T>(fn: (idToken: string) => Promise<T>, deps: unknown
     }
   }, []);
 
-  const depsKey = JSON.stringify(deps);
+  const depsKey = JSON.stringify([enabled, deps]);
 
   useEffect(() => {
+    if (!enabled) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- this IS the fetch-on-deps-change effect
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `depsKey` stands in for the caller's own deps array

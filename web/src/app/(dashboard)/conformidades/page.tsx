@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { TIPO_SERVICIO_LABELS } from '@wara/shared';
+import { TIPO_SERVICIO_LABELS, type TipoServicio } from '@wara/shared';
+import { servicioLabel } from '@/lib/servicioLabel';
 import { Card } from '@/components/ui/Card';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
@@ -31,6 +32,42 @@ const ESTADO_TONE: Record<EstadoConformidad, BadgeTone> = {
 
 const PAGE_SIZE = 20;
 
+// Vista del listado (filtros, página, filas desplegadas y scroll) guardada al entrar a una hoja, para que al volver
+// (botón "Volver" o atrás del navegador) siga todo como estaba. Solo se restaura si se salió hacia una hoja hace poco:
+// entrando desde el menú el listado arranca limpio.
+const VISTA_KEY = 'wara.panel.conformidades.vista';
+const VISTA_VIGENCIA_MS = 30 * 60_000;
+
+interface VistaGuardada {
+  search: string;
+  status: EstadoConformidad | '';
+  tipoServicio: TipoServicio | '';
+  tecnicoId: string;
+  altaMesaAyuda: 'pendiente' | 'hecho' | '';
+  altaCoordinacion: 'pendiente' | 'hecho' | '';
+  cambioEquipoPendiente: boolean;
+  verificacion: string;
+  page: number;
+  showFiltros: boolean;
+  expanded: string[];
+  scrollY: number;
+  // Se marca al entrar a una hoja: sin esto (o vencida) no se restaura nada.
+  saleAHojaAt?: number;
+}
+
+function leerVista(): VistaGuardada | null {
+  try {
+    const raw = sessionStorage.getItem(VISTA_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as VistaGuardada;
+    sessionStorage.removeItem(VISTA_KEY);
+    if (!v.saleAHojaAt || Date.now() - v.saleAHojaAt > VISTA_VIGENCIA_MS) return null;
+    return v;
+  } catch {
+    return null;
+  }
+}
+
 type FiltroVerificacion = NonNullable<import('@/lib/types').ListConformidadesQuery['verificacionEquipo']>;
 const VERIFICACION_LABEL: Record<FiltroVerificacion, string> = {
   bajo_responsabilidad: 'Avanzó bajo responsabilidad',
@@ -58,6 +95,7 @@ export default function ConformidadesPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [status, setStatus] = useState<EstadoConformidad | ''>('');
+  const [tipoServicio, setTipoServicio] = useState<TipoServicio | ''>('');
   const [tecnicoId, setTecnicoId] = useState('');
   const [altaMesaAyuda, setAltaMesaAyuda] = useState<'pendiente' | 'hecho' | ''>('');
   const [altaCoordinacion, setAltaCoordinacion] = useState<'pendiente' | 'hecho' | ''>('');
@@ -81,6 +119,56 @@ export default function ConformidadesPage() {
     });
   }
 
+  // Al volver de una hoja se repone la vista guardada. La primera carga espera a esto para no pedir dos veces.
+  const [restaurado, setRestaurado] = useState(false);
+  const scrollPendiente = useRef<number | null>(null);
+
+  // Se llama al tocar "ver detalle": deja guardado cómo está el listado para reponerlo al volver.
+  function guardarVista() {
+    const vista: VistaGuardada = {
+      search,
+      status,
+      tipoServicio,
+      tecnicoId,
+      altaMesaAyuda,
+      altaCoordinacion,
+      cambioEquipoPendiente,
+      verificacion,
+      page,
+      showFiltros,
+      expanded: [...expandedIds],
+      scrollY: window.scrollY,
+      saleAHojaAt: Date.now(),
+    };
+    try {
+      sessionStorage.setItem(VISTA_KEY, JSON.stringify(vista));
+    } catch {
+      /* sin storage (modo privado): simplemente no se repone */
+    }
+  }
+
+  useEffect(() => {
+    const v = leerVista();
+    /* eslint-disable react-hooks/set-state-in-effect -- restaurar el estado guardado una sola vez al montar (sessionStorage no existe en el servidor) */
+    if (v) {
+      setSearch(v.search);
+      setDebouncedSearch(v.search);
+      setStatus(v.status);
+      setTipoServicio(v.tipoServicio);
+      setTecnicoId(v.tecnicoId);
+      setAltaMesaAyuda(v.altaMesaAyuda);
+      setAltaCoordinacion(v.altaCoordinacion);
+      setCambioEquipoPendiente(v.cambioEquipoPendiente);
+      setVerificacion(v.verificacion as FiltroVerificacion | '');
+      setPage(v.page);
+      setShowFiltros(v.showFiltros);
+      setExpandedIds(new Set(v.expanded));
+      scrollPendiente.current = v.scrollY;
+    }
+    setRestaurado(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
+
   // Wait for a pause in typing before hitting the API — avoids firing a
   // request on every keystroke.
   useEffect(() => {
@@ -102,14 +190,23 @@ export default function ConformidadesPage() {
         pageSize: PAGE_SIZE,
         search: debouncedSearch || undefined,
         status: status || undefined,
+        tipoServicio: tipoServicio || undefined,
         tecnicoId: tecnicoId || undefined,
         altaMesaAyuda: altaMesaAyuda || undefined,
         altaCoordinacion: altaCoordinacion || undefined,
         cambioEquipoPendiente: cambioEquipoPendiente || undefined,
         verificacionEquipo: verificacion || undefined,
       }),
-    [page, debouncedSearch, status, tecnicoId, altaMesaAyuda, altaCoordinacion, cambioEquipoPendiente, verificacion],
+    [page, debouncedSearch, status, tipoServicio, tecnicoId, altaMesaAyuda, altaCoordinacion, cambioEquipoPendiente, verificacion],
+    restaurado,
   );
+
+  // Con la lista ya cargada (las filas desplegadas ya tienen su alto), vuelve al punto donde se estaba.
+  useEffect(() => {
+    if (!data || scrollPendiente.current === null) return;
+    window.scrollTo(0, scrollPendiente.current);
+    scrollPendiente.current = null;
+  }, [data]);
 
   // Reemplaza solo la fila tocada con la respuesta del servidor — evita el
   // refetch de toda la página (que atenuaba la tabla entera con opacity-60
@@ -128,6 +225,7 @@ export default function ConformidadesPage() {
       [
         search && { key: 'search', label: `Buscar: "${search}"`, onRemove: () => setSearch('') },
         tecnicoId && { key: 'tecnico', label: `Técnico: ${tecnicoNombre(tecnicoId)}`, onRemove: () => setTecnicoId('') },
+        tipoServicio && { key: 'tipoServicio', label: `Servicio: ${TIPO_SERVICIO_LABELS[tipoServicio]}`, onRemove: () => setTipoServicio('') },
         status && { key: 'status', label: `Estado: ${ESTADO_LABEL[status]}`, onRemove: () => setStatus('') },
         altaMesaAyuda && {
           key: 'altaMA',
@@ -150,7 +248,7 @@ export default function ConformidadesPage() {
           onRemove: () => setVerificacion(''),
         },
       ].filter((f): f is { key: string; label: string; onRemove: () => void } => Boolean(f)),
-    [search, tecnicoId, status, altaMesaAyuda, altaCoordinacion, cambioEquipoPendiente, verificacion, tecnicoNombre],
+    [search, tecnicoId, status, tipoServicio, altaMesaAyuda, altaCoordinacion, cambioEquipoPendiente, verificacion, tecnicoNombre],
   );
 
   function clearAllFilters() {
@@ -158,6 +256,7 @@ export default function ConformidadesPage() {
     setSearch('');
     setTecnicoId('');
     setStatus('');
+    setTipoServicio('');
     setAltaMesaAyuda('');
     setAltaCoordinacion('');
     setCambioEquipoPendiente(false);
@@ -245,6 +344,24 @@ export default function ConformidadesPage() {
               <option value="borrador_pre">Borrador PRE</option>
               <option value="pendiente_post">Pendiente POST</option>
               <option value="completo">Completo</option>
+            </Select>
+          </div>
+
+          <div>
+            <div className="mb-1 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Tipo de servicio</div>
+            <Select
+              value={tipoServicio}
+              onChange={(e) => {
+                setPage(1);
+                setTipoServicio(e.target.value as TipoServicio | '');
+              }}
+            >
+              <option value="">Todos</option>
+              {(Object.keys(TIPO_SERVICIO_LABELS) as TipoServicio[]).map((t) => (
+                <option key={t} value={t}>
+                  {TIPO_SERVICIO_LABELS[t]}
+                </option>
+              ))}
             </Select>
           </div>
 
@@ -353,7 +470,7 @@ export default function ConformidadesPage() {
                 <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[12px] font-semibold">
                   <div className="truncate text-muted">Unidad: <span className="text-text">{c.matricula || '—'}</span></div>
                   <div className="truncate text-muted">Ticket: <span className="text-text">{c.ticketOdoo?.numero || '—'}</span></div>
-                  <div className="truncate text-muted">Servicio: <span className="text-text">{TIPO_SERVICIO_LABELS[c.tipoServicio ?? 'instalacion']}</span></div>
+                  <div className="truncate text-muted">Servicio: <span className="text-text">{servicioLabel(c)}</span></div>
                   <div className="truncate text-muted">Téc.: <span className="text-text">{tecnicoNombre(c.tecnicoId)}</span></div>
                   <div className="truncate text-muted">{formatFechaHora(c.fecha, c.hora)}</div>
                 </div>
@@ -369,6 +486,7 @@ export default function ConformidadesPage() {
                   </button>
                   <Link
                     href={`/conformidades/${c._id}`}
+                    onClick={guardarVista}
                     aria-label="Ver detalle"
                     className="flex h-10 w-10 items-center justify-center rounded-md bg-surface shadow-soft-sm"
                   >
@@ -465,7 +583,7 @@ export default function ConformidadesPage() {
                       <div className="p-3.5 text-[13px] font-semibold text-muted">{tecnicoNombre(c.tecnicoId)}</div>
                       <div className="p-3.5 text-[13px] font-semibold">{c.matricula || '—'}</div>
                       <div className="p-3.5 text-[13px] font-semibold text-muted">{c.ticketOdoo?.numero || '—'}</div>
-                      <div className="p-3.5 text-[13px] font-semibold">{TIPO_SERVICIO_LABELS[c.tipoServicio ?? 'instalacion']}</div>
+                      <div className="p-3.5 text-[13px] font-semibold">{servicioLabel(c)}</div>
                       <div className="p-3.5 text-[13px] font-semibold text-muted">{formatFechaHora(c.fecha, c.hora)}</div>
                       <div className="p-3.5">
                         <Badge tone={ESTADO_TONE[c.status]}>{ESTADO_LABEL[c.status]}</Badge>
@@ -496,6 +614,7 @@ export default function ConformidadesPage() {
                       <div className="p-3.5">
                         <Link
                           href={`/conformidades/${c._id}`}
+                          onClick={guardarVista}
                           className="flex h-[34px] w-[34px] items-center justify-center rounded-md bg-surface shadow-soft-sm"
                         >
                           <IconEye />

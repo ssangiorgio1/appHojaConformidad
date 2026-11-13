@@ -154,6 +154,8 @@ export interface ConformidadDoc {
   motivoIntervencionDetalle?: string;
   cambioEquipoRazon?: CambioEquipoRazon | null;
   cambioEquipoRazonDetalle?: string;
+  // Intervención que además instala un sensor o módulo (ver ocultaCambioEquipoEnPdf en @wara/shared).
+  instalaSensorModulo?: boolean;
   // Intervención que requiere otro técnico; procesadaAt/subtareaNuevaOdooId/error los completa la API al crear la subtarea en Odoo.
   derivacion?: { requerida: boolean; motivo: string; procesadaAt?: string | null; subtareaNuevaOdooId?: number | null; error?: string } | null;
   numero: string;
@@ -262,6 +264,7 @@ export interface ListConformidadesQuery {
   page?: number;
   pageSize?: number;
   status?: EstadoConformidad;
+  tipoServicio?: TipoServicio;
   tecnicoId?: string;
   matricula?: string;
   imei?: string;
