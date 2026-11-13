@@ -517,7 +517,8 @@ export const listConformidades = asyncHandler(async (req: Request, res: Response
   }
 
   if (query.status) filter.status = query.status;
-  if (query.tipoServicio) filter.tipoServicio = query.tipoServicio;
+  // Las hojas viejas no tienen tipoServicio (null) y el panel las muestra como "Instalación": el filtro las incluye.
+  if (query.tipoServicio) filter.tipoServicio = query.tipoServicio === 'instalacion' ? { $in: ['instalacion', null] } : query.tipoServicio;
   if (query.cambioEquipoPendiente) {
     filter.tipoServicio = 'cambio_equipo';
     filter['cambioEquipo.rol'] = { $ne: null };
