@@ -60,10 +60,19 @@ export interface EquipoCoincidencia {
 
 const MAX_COINCIDENCIAS = 15;
 
-// Patente completa dentro de un texto ("217 - AB 054 AQ" → "AB054AQ"): vieja (ABC123) o Mercosur (AB123CD).
+// Patentes completas dentro de un texto, sin espacios ("217 - AB 054 AQ" → ["AB054AQ"]): vieja (ABC123) o Mercosur
+// (AB123CD). Se buscan sobre el texto ORIGINAL, como palabra aparte (letras y números pegados solo por espacios o guion
+// dentro de la propia patente): compactar todo el texto primero inventa patentes que cruzan palabras
+// ("CASE SR220 (EFW 042)" daba "ESR220", y la patente real, EFW 042, nunca se buscaba).
+const PATENTE_EN_TEXTO_RE = /(?<![A-Z0-9])(?:[A-Z]{2}[ -]?\d{3}[ -]?[A-Z]{2}|[A-Z]{3}[ -]?\d{3})(?![A-Z0-9])/g;
+
+export function patentesDeTexto(texto: string): string[] {
+  const encontradas = texto.toUpperCase().match(PATENTE_EN_TEXTO_RE) ?? [];
+  return [...new Set(encontradas.map((p) => p.replace(/[^A-Z0-9]/g, '')))];
+}
+
 export function patenteDeTexto(texto: string): string | null {
-  const compacta = texto.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  return compacta.match(/[A-Z]{2}\d{3}[A-Z]{2}|[A-Z]{3}\d{3}/)?.[0] ?? null;
+  return patentesDeTexto(texto)[0] ?? null;
 }
 
 // Una patente se cruza SOLO con el campo `matricula` de la unidad (movil/mapa, el mismo que muestra
@@ -97,8 +106,9 @@ async function matriculaDeEquipo(equipoId: number): Promise<string | null> {
 // Cuando lo buscado trae una patente, primero se resuelve por matrícula; equipo/buscar queda para IMEI, serie, número
 // de equipo y para las patentes que la flota todavía no conoce.
 export async function buscarEquipos(texto: string): Promise<EquipoCoincidencia[]> {
-  const patente = patenteDeTexto(texto);
-  if (patente) {
+  // El texto puede traer un interno junto a la patente ("CASE SR220 (EFW 042)"): se prueba cada patente que contenga.
+  const patentes = patentesDeTexto(texto);
+  for (const patente of patentes) {
     try {
       const porMatricula = await buscarPorMatricula(patente);
       if (porMatricula.length > 0) return porMatricula.slice(0, MAX_COINCIDENCIAS);
@@ -106,11 +116,17 @@ export async function buscarEquipos(texto: string): Promise<EquipoCoincidencia[]
       console.error('BUSCAR_POR_MATRICULA_FAILED', err);
     }
   }
-  const res = await visionbloPostJson<Record<string, string>>('equipo/buscar', { texto });
-  return Object.entries(res)
-    .filter(([, descripcion]) => !esOtraPatente(texto, descripcion))
-    .slice(0, MAX_COINCIDENCIAS)
-    .map(([id, descripcion]) => ({ equipoId: Number(id), descripcion }));
+  // equipo/buscar: primero el texto tal cual (IMEI, serie, N° de equipo, nombre); si no devuelve nada y el texto traía una
+  // patente, se reintenta con la patente sola, que es lo que VisionBLO sí indexa.
+  for (const consulta of [texto, ...patentes]) {
+    const res = await visionbloPostJson<Record<string, string>>('equipo/buscar', { texto: consulta });
+    const coincidencias = Object.entries(res)
+      .filter(([, descripcion]) => !esOtraPatente(consulta, descripcion))
+      .slice(0, MAX_COINCIDENCIAS)
+      .map(([id, descripcion]) => ({ equipoId: Number(id), descripcion }));
+    if (coincidencias.length > 0) return coincidencias;
+  }
+  return [];
 }
 
 // Patente argentina vieja (ABC123) o Mercosur (AB123CD), sin espacios.
