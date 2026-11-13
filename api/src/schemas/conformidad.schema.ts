@@ -125,7 +125,7 @@ const tipoServicioSchema = z.enum(['instalacion', 'desinstalacion', 'reparacion'
 
 // Ver nota en models/Conformidad.ts — solo aplican a tipoServicio 'reparacion'.
 const motivoIntervencionSchema = z.enum(['cambio_equipo', 'reinicio_manual', 'revisar_ramales', 'otro']).nullable();
-const cambioEquipoRazonSchema = z.enum(['equipo_danado', 'pantalla_danada', 'otro']).nullable();
+const cambioEquipoRazonSchema = z.enum(['equipo_danado', 'pantalla_danada', 'actualizacion_4g', 'orden_interna', 'otro']).nullable();
 
 // Ver nota en models/Conformidad.ts — solo aplica al esquema nuevo de 2 hojas
 // vinculadas para cambio_equipo. `parejaId` es opcional: si el técnico de
@@ -187,6 +187,7 @@ export const createConformidadSchema = topLevelSchema
     motivoIntervencionDetalle: z.string().optional(),
     cambioEquipoRazon: cambioEquipoRazonSchema.optional(),
     cambioEquipoRazonDetalle: z.string().optional(),
+    instalaSensorModulo: z.boolean().optional(),
     cambioEquipo: cambioEquipoSchema.optional(),
     cambioUnidad: cambioUnidadSchema.optional(),
   });
@@ -223,6 +224,7 @@ export const patchConformidadSchema = topLevelSchema.partial().extend({
   motivoIntervencionDetalle: z.string().optional(),
   cambioEquipoRazon: cambioEquipoRazonSchema.optional(),
   cambioEquipoRazonDetalle: z.string().optional(),
+  instalaSensorModulo: z.boolean().optional(),
   // Hora real de la firma del POST en el dispositivo (ver resolverMomento en telegram.service.ts).
   completadoAt: z.string().datetime().optional(),
   // odooSync is intentionally NOT accepted here — it's written only by the

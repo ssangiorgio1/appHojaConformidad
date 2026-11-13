@@ -16,7 +16,7 @@ import {
   type PhotoSlotDef,
 } from './photoSlots.js';
 import { getServiceMode } from './serviceMode.js';
-import { MOTIVO_INTERVENCION_LABELS, SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, isEquipoSwap, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
+import { MOTIVO_INTERVENCION_LABELS, SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, isEquipoSwap, ocultaCambioEquipoEnPdf, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
 
 // The fields buildPrintHtml actually reads — deliberately narrower than the
 // full ConformidadRecord so both the mobile app's local record and the
@@ -39,6 +39,7 @@ export type PrintableConformidad = Pick<
   | 'tipoServicio'
   | 'motivoIntervencion'
   | 'cambioEquipoRazon'
+  | 'instalaSensorModulo'
   | 'cambioEquipoTemporal'
   | 'cambioEquipo'
   | 'cambioUnidad'
@@ -368,8 +369,36 @@ ${cuerpo}
 </body></html>`;
 }
 
+// Fotos del POST que sí van al PDF del cliente cuando el cambio de equipo no figura (ver ocultaCambioEquipoEnPdf): las de
+// cada sensor o módulo tildado (slotKey = key del campo de Equipo) y las de estado general de la unidad. Todo lo demás del
+// cambio (serie del equipo retirado y del nuevo, precintos, ramales, ubicación, lugar vacío, cableado, unidad nueva…)
+// se guarda igual y se ve completo en el panel, pero no se imprime.
+const FOTOS_GENERALES_EN_PDF = new Set(['torpedo', 'odometro']);
+
+// La hoja tal como la ve el cliente cuando el cambio de equipo no figura: se imprime como una intervención común que
+// instaló un sensor o módulo. modelo/imei pasan a ser los del equipo que quedó instalado (en un cambio son los del retirado).
+function sinCambioDeEquipo(record: PrintableConformidad): PrintableConformidad {
+  return {
+    ...record,
+    motivoIntervencion: null,
+    cambioEquipoRazon: null,
+    cambioEquipoTemporal: false,
+    equipo: {
+      ...record.equipo,
+      modelo: record.equipo.modeloInstalado ?? '',
+      imei: record.equipo.imeiInstalado ?? '',
+      modeloInstalado: '',
+      imeiInstalado: '',
+    },
+    post: {
+      ...record.post,
+      fotos: record.post.fotos.filter((f) => FOTOS_GENERALES_EN_PDF.has(f.slotKey ?? '') || (f.slotKey ?? '') in EQUIP_ITEM_PHOTO_LABEL),
+    },
+  };
+}
+
 export async function buildPrintHtml(
-  record: PrintableConformidad,
+  registro: PrintableConformidad,
   opts?: {
     logoDataUri?: string;
     resolvePhotoSrc?: PhotoSrcResolver;
@@ -382,6 +411,7 @@ export async function buildPrintHtml(
     parte?: string;
   },
 ): Promise<string> {
+  const record = ocultaCambioEquipoEnPdf(registro) ? sinCambioDeEquipo(registro) : registro;
   const resolvePhotoSrc = opts?.resolvePhotoSrc ?? defaultResolvePhotoSrc;
   const soloPre = opts?.soloPre === true;
   const statusLabel =
@@ -421,6 +451,7 @@ export async function buildPrintHtml(
     <div class="banner-pills">
       ${record.ticketOdoo?.numero ? `<span class="status-pill">Ticket #${esc(record.ticketOdoo.numero)}</span>` : ''}
       ${tipoServicioLabel ? `<span class="status-pill">${esc(tipoServicioLabel)}</span>` : ''}
+      ${record.instalaSensorModulo ? `<span class="status-pill">Instalación de sensor o módulo</span>` : ''}
       ${cambioUnidadLabel ? `<span class="status-pill">${esc(cambioUnidadLabel)}</span>` : ''}
       ${motivoIntervencionLabel ? `<span class="status-pill">${esc(motivoIntervencionLabel)}</span>` : ''}
       ${opts?.parte ? `<span class="status-pill">${esc(opts.parte)}</span>` : ''}

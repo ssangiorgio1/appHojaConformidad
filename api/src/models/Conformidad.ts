@@ -229,8 +229,10 @@ const ConformidadSchema = new Schema(
       default: null,
     },
     motivoIntervencionDetalle: { type: String, default: '' },
-    cambioEquipoRazon: { type: String, enum: ['equipo_danado', 'pantalla_danada', 'otro'], default: null },
+    cambioEquipoRazon: { type: String, enum: ['equipo_danado', 'pantalla_danada', 'actualizacion_4g', 'orden_interna', 'otro'], default: null },
     cambioEquipoRazonDetalle: { type: String, default: '' },
+    // Intervención que además instala un sensor o módulo (ver ocultaCambioEquipoEnPdf en @wara/shared).
+    instalaSensorModulo: { type: Boolean, default: false },
 
     numero: { type: String, default: '', index: true },
     cliente: { type: String, default: '' },

@@ -34,13 +34,35 @@ export const MOTIVO_INTERVENCION_LABELS: Record<MotivoIntervencion, string> = {
 };
 
 // Por qué se cambia el equipo — solo aplica cuando motivoIntervencion es 'cambio_equipo'.
-export type CambioEquipoRazon = 'equipo_danado' | 'pantalla_danada' | 'otro';
+// 'actualizacion_4g': migración de 3G a 4G que el cliente conoce de antemano → figura en el PDF del cliente.
+// 'orden_interna': el mismo cambio de 3G a 4G pero por orden interna de la empresa; si el cliente pidió solo un sensor o módulo,
+// el cambio NO figura en su PDF (ver ocultaCambioEquipoEnPdf) y queda completo en el panel.
+export type CambioEquipoRazon = 'equipo_danado' | 'pantalla_danada' | 'actualizacion_4g' | 'orden_interna' | 'otro';
 
 export const CAMBIO_EQUIPO_RAZON_LABELS: Record<CambioEquipoRazon, string> = {
   equipo_danado: 'Equipo dañado',
   pantalla_danada: 'Pantalla dañada (táctil / trizada)',
+  actualizacion_4g: 'Actualización de 3G a 4G',
+  orden_interna: 'Cambio por orden interna (3G a 4G)',
   otro: 'Otro',
 };
+
+// Intervención con cambio de equipo + instalación de un sensor o módulo: el PDF del cliente habla solo de la instalación del
+// sensor y no menciona el cambio (ni sus fotos ni los datos del equipo retirado) cuando el cambio fue por orden interna.
+// Con cualquier otra razón (incluida la actualización a 4G, que el cliente ya conoce) el cambio figura como siempre.
+export function ocultaCambioEquipoEnPdf(r: {
+  tipoServicio?: TipoServicio | null;
+  motivoIntervencion?: MotivoIntervencion | null;
+  cambioEquipoRazon?: CambioEquipoRazon | null;
+  instalaSensorModulo?: boolean | null;
+}): boolean {
+  return (
+    r.tipoServicio === 'reparacion' &&
+    r.motivoIntervencion === 'cambio_equipo' &&
+    r.cambioEquipoRazon === 'orden_interna' &&
+    r.instalaSensorModulo === true
+  );
+}
 
 // Cambio de equipo "de hecho": ya sea porque tipoServicio es 'cambio_equipo'
 // desde el alta, o porque una reparación derivó en reemplazar el equipo.
@@ -255,6 +277,8 @@ export interface ConformidadRecord {
   cambioEquipoRazonDetalle?: string;
   // El equipo instalado es un backup provisorio y el original vuelve después del laboratorio (pastilla "Reemplazo temporal" del PDF).
   cambioEquipoTemporal?: boolean;
+  // Intervención en la que, además de lo que se hizo con el equipo, se instala un sensor o módulo (se tilda en "Módulos y sensores").
+  instalaSensorModulo?: boolean;
 
   numero: string;
   cliente: string;

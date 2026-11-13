@@ -174,6 +174,7 @@ export const createConformidad = asyncHandler(async (req: Request, res: Response
     motivoIntervencionDetalle: body.motivoIntervencionDetalle ?? '',
     cambioEquipoRazon: body.cambioEquipoRazon ?? null,
     cambioEquipoRazonDetalle: body.cambioEquipoRazonDetalle ?? '',
+    instalaSensorModulo: body.instalaSensorModulo ?? false,
     numero: body.numero,
     cliente: body.cliente,
     fecha: body.fecha,
@@ -349,7 +350,7 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
     throw new HttpError(400, 'PRE must be finished before submitting POST data');
   }
 
-  const topLevel = ['numero', 'cliente', 'fecha', 'hora', 'matricula', 'tipoUnidad', 'instalador', 'responsableEmpresa', 'tipoServicio', 'motivoIntervencion', 'motivoIntervencionDetalle', 'cambioEquipoRazon', 'cambioEquipoRazonDetalle'] as const;
+  const topLevel = ['numero', 'cliente', 'fecha', 'hora', 'matricula', 'tipoUnidad', 'instalador', 'responsableEmpresa', 'tipoServicio', 'motivoIntervencion', 'motivoIntervencionDetalle', 'cambioEquipoRazon', 'cambioEquipoRazonDetalle', 'instalaSensorModulo'] as const;
   for (const key of topLevel) {
     if (body[key] !== undefined) (record as unknown as Record<string, unknown>)[key] = body[key];
   }
