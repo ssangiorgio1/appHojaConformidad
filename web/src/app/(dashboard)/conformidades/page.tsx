@@ -303,7 +303,7 @@ export default function ConformidadesPage() {
           <IconSearch className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
           <Input
             className="pl-10"
-            placeholder="Cliente, Unidad, IMEI o N° acta..."
+            placeholder="Cliente, unidad, IMEI, N° de ticket o acta..."
             value={search}
             onChange={(e) => {
               setPage(1);

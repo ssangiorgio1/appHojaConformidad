@@ -14,6 +14,10 @@ export interface VisitaAbierta {
   motivoSuspension?: string;
   tecnico: { nombre: string; email: string } | null;
   cliente: string;
+  // Qué tarea es en Odoo (null si Odoo no respondió) y el ticket del que nace; las hojas son las de esa tarea en cualquier estado.
+  tarea: { nombre: string; etapa: string | null; url: string; unidades: { id: number; nombre: string; cerrada: boolean }[] } | null;
+  ticket: { numero: string; titulo: string; url: string } | null;
+  hojas: { codigoActa: string; matricula: string; estado: EstadoConformidad; tipoServicio: TipoServicio | null; unidad: string }[];
   enCaminoAt: string | null;
   enSitioAt: string | null;
   horasAbierta: number;

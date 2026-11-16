@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { TIPO_SERVICIO_LABELS } from '@wara/shared';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { IconAlertTriangle } from '@/components/ui/Icons';
@@ -11,6 +12,23 @@ import { formatIsoDateTime } from '@/lib/format';
 import type { VisitaAbierta } from '@/lib/types';
 
 const ESTADO: Record<VisitaAbierta['estado'], string> = { en_camino: 'En camino', en_sitio: 'En sitio' };
+
+const ESTADO_HOJA: Record<VisitaAbierta['hojas'][number]['estado'], string> = {
+  borrador_pre: 'PRE en curso',
+  pendiente_post: 'Falta el POST',
+  completo: 'Completa',
+};
+
+function Dato({ etiqueta, children }: { etiqueta: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[10.5px] font-extrabold uppercase tracking-wide text-muted">{etiqueta}</div>
+      <div className="text-[12.5px] font-semibold">{children}</div>
+    </div>
+  );
+}
+
+const linkOdoo = 'text-primary underline-offset-2 hover:underline';
 
 function duracion(horas: number): string {
   if (horas < 1) return 'menos de 1 h';
@@ -69,7 +87,14 @@ export default function VisitasAbiertasPage() {
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="flex min-w-0 flex-col">
                 <div className="text-[14px] font-bold">
-                  {v.tecnico?.nombre || v.tecnico?.email || 'Sin técnico'} · Tarea #{v.tareaOdooId}
+                  {v.tecnico?.nombre || v.tecnico?.email || 'Sin técnico'} ·{' '}
+                  {v.tarea ? (
+                    <a href={v.tarea.url} target="_blank" rel="noreferrer" className={linkOdoo}>
+                      Tarea #{v.tareaOdooId}
+                    </a>
+                  ) : (
+                    `Tarea #${v.tareaOdooId}`
+                  )}
                 </div>
                 <div className="text-[12.5px] font-semibold text-muted">{v.cliente || 'Cliente sin dato'} · día {v.fecha}</div>
               </div>
@@ -77,6 +102,53 @@ export default function VisitasAbiertasPage() {
                 <span className="rounded-full bg-warning-600 px-2.5 py-1 text-[11px] font-bold text-white">Suspendida</span>
               ) : (
                 <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] font-bold text-text">{ESTADO[v.estado]}</span>
+              )}
+            </div>
+            <div className="grid grid-cols-1 gap-x-4 gap-y-2 border-t border-line pt-2 sm:grid-cols-2">
+              <Dato etiqueta="Ticket">
+                {v.ticket ? (
+                  <a href={v.ticket.url} target="_blank" rel="noreferrer" className={linkOdoo}>
+                    #{v.ticket.numero}
+                    {v.ticket.titulo ? ` · ${v.ticket.titulo}` : ''}
+                  </a>
+                ) : (
+                  <span className="text-muted">Sin ticket vinculado</span>
+                )}
+              </Dato>
+              <Dato etiqueta="Tarea">
+                {v.tarea ? (
+                  <>
+                    {v.tarea.nombre}
+                    {v.tarea.etapa ? <span className="text-muted"> · {v.tarea.etapa}</span> : null}
+                  </>
+                ) : (
+                  <span className="text-muted">Odoo no respondió: sin el detalle de la tarea</span>
+                )}
+              </Dato>
+              {v.tarea && v.tarea.unidades.length > 0 && (
+                <Dato etiqueta={`Unidades (${v.tarea.unidades.length})`}>
+                  <ul className="flex flex-col gap-0.5">
+                    {v.tarea.unidades.map((u) => (
+                      <li key={u.id} className={u.cerrada ? 'text-muted' : ''}>
+                        {u.cerrada ? '✓ ' : '• '}
+                        {u.nombre}
+                      </li>
+                    ))}
+                  </ul>
+                </Dato>
+              )}
+              {(v.hojas ?? []).length > 0 && (
+                <Dato etiqueta={`Hojas (${v.hojas.length})`}>
+                  <ul className="flex flex-col gap-0.5">
+                    {v.hojas.map((h) => (
+                      <li key={h.codigoActa}>
+                        {h.matricula || 'Sin matrícula'} · {h.tipoServicio ? TIPO_SERVICIO_LABELS[h.tipoServicio] : 'Instalación'} ·{' '}
+                        <span className={h.estado === 'completo' ? 'text-muted' : 'text-warning-700'}>{ESTADO_HOJA[h.estado]}</span>
+                        <span className="text-muted"> · {h.codigoActa}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </Dato>
               )}
             </div>
             {v.suspendida && (
