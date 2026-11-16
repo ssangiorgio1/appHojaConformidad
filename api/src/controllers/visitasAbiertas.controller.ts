@@ -5,6 +5,7 @@ import { HttpError } from '../middleware/error.middleware.js';
 import { VisitaNotificacionModel } from '../models/VisitaNotificacion.js';
 import { ConformidadModel } from '../models/Conformidad.js';
 import { UsuarioModel } from '../models/Usuario.js';
+import { odooRegistroUrl, resumenDeTareas } from '../services/tareaResumen.service.js';
 
 // Visitas "pegadas": un viaje abierto (en camino / en sitio) que nadie cerró — por ejemplo porque las unidades las
 // terminó otro técnico de la misma tarea, y el cierre automático solo mira las unidades propias de quien termina.
@@ -21,17 +22,32 @@ export const listVisitasAbiertas = asyncHandler(async (_req: Request, res: Respo
   const tareaIds = [...new Set(abiertas.map((v) => v.tareaOdooId))];
   const tecnicoIds = [...new Set(abiertas.map((v) => String(v.tecnicoId ?? '')).filter(Boolean))];
 
-  const [tecnicos, completas, otrasCompletas] = await Promise.all([
+  const [tecnicos, todasLasHojas, otrasCompletas, tareas] = await Promise.all([
     UsuarioModel.find({ _id: { $in: tecnicoIds } }).select('nombre email'),
-    ConformidadModel.find({ 'tareaOdoo.id': { $in: tareaIds }, status: 'completo', deletedAt: null }).select('tareaOdoo.id cliente fecha'),
+    // Todas las hojas de la tarea (también las que están en curso): de ellas salen la unidad, el cliente y el ticket cuando
+    // Odoo no responde, y se ve qué se hizo ya.
+    ConformidadModel.find({ 'tareaOdoo.id': { $in: tareaIds }, deletedAt: null }).select(
+      'tareaOdoo.id subtareaOdoo.nombre cliente matricula status tipoServicio codigoActa ticketOdoo fecha',
+    ),
     VisitaNotificacionModel.find({ tareaOdooId: { $in: tareaIds }, estado: 'completo' }).select('tareaOdooId fecha tecnicoId'),
+    resumenDeTareas(tareaIds),
   ]);
   const tecnicoPorId = new Map(tecnicos.map((t) => [String(t._id), t]));
 
   const ahora = Date.now();
   const data = abiertas.map((v) => {
     const t = v.tecnicoId ? tecnicoPorId.get(String(v.tecnicoId)) : null;
-    const hojas = completas.filter((c) => c.tareaOdoo?.id === v.tareaOdooId);
+    const hojasDeLaTarea = todasLasHojas.filter((c) => c.tareaOdoo?.id === v.tareaOdooId);
+    const hojas = hojasDeLaTarea.filter((c) => c.status === 'completo');
+    const tarea = tareas.get(v.tareaOdooId) ?? null;
+    // Ticket: el de Odoo si respondió; si no, el que tiene guardado alguna hoja.
+    const ticketDeHoja = hojasDeLaTarea.find((c) => c.ticketOdoo?.numero)?.ticketOdoo;
+    const ticketId = tarea?.ticket?.id ?? Number(ticketDeHoja?.odooId ?? ticketDeHoja?.numero);
+    const ticket = tarea?.ticket
+      ? { numero: String(tarea.ticket.id), titulo: tarea.ticket.titulo, url: tarea.ticket.url }
+      : Number.isFinite(ticketId)
+        ? { numero: String(ticketId), titulo: '', url: odooRegistroUrl('helpdesk.ticket', ticketId) }
+        : null;
     // Otro técnico ya cerró su visita de esta misma tarea y fecha: lo más probable es que el trabajo esté terminado.
     const otroTermino = otrasCompletas.some(
       (o) => o.tareaOdooId === v.tareaOdooId && o.fecha === v.fecha && String(o.tecnicoId) !== String(v.tecnicoId),
@@ -46,7 +62,17 @@ export const listVisitasAbiertas = asyncHandler(async (_req: Request, res: Respo
       suspendida: v.suspendida === true,
       motivoSuspension: v.suspendida ? (v.suspensiones.at(-1)?.motivo ?? '') : '',
       tecnico: t ? { nombre: t.nombre, email: t.email } : null,
-      cliente: hojas[0]?.cliente ?? '',
+      cliente: tarea?.cliente || hojasDeLaTarea.find((c) => c.cliente)?.cliente || '',
+      // Qué tarea es: nombre, etapa y link en Odoo, el ticket del que nace y sus unidades. null si Odoo no respondió.
+      tarea: tarea ? { nombre: tarea.nombre, etapa: tarea.etapa, url: tarea.url, unidades: tarea.unidades } : null,
+      ticket,
+      hojas: hojasDeLaTarea.map((c) => ({
+        codigoActa: c.codigoActa,
+        matricula: c.matricula ?? '',
+        estado: c.status,
+        tipoServicio: c.tipoServicio ?? null,
+        unidad: c.subtareaOdoo?.nombre ?? '',
+      })),
       enCaminoAt: v.enCaminoAt,
       enSitioAt: v.enSitioAt,
       horasAbierta,

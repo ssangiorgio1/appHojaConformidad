@@ -55,6 +55,7 @@ export const createRetiroEquipo = asyncHandler(async (req: Request, res: Respons
     adicionales: body.adicionales ?? [],
     entrega: body.entrega ?? {},
     observaciones: body.observaciones ?? '',
+    reinstalaEnOtraUnidad: body.modalidad === 'entrega' && body.reinstalaEnOtraUnidad === true,
     firma: body.firma ?? null,
     fotos: body.fotos ?? [],
   });
@@ -99,22 +100,27 @@ export const createRetiroEquipo = asyncHandler(async (req: Request, res: Respons
 
   // Cierre en Odoo: igual que una hoja de conformidad completa (subtarea o tarea a "Hecho"; el lote, si era la última
   // unidad). Cada llamada es best-effort: el acta ya quedó guardada.
-  try {
-    const taskId = acta.subtareaOdooId ?? acta.tareaOdooId;
-    await markTaskStageHecho(taskId);
-    await markTaskStateHecho(taskId);
-    for (const mergedId of acta.mergedTaskIds ?? []) {
-      await markTaskStageHecho(mergedId);
-      await markTaskStateHecho(mergedId);
+  // Excepción: una tarea suelta (sin subtareas) cuyo equipo se reinstala en otra unidad sigue abierta, porque la instalación recién
+  // viene; la cierra la hoja de la unidad nueva al terminar su POST. Con subtareas, la de esta unidad sí se cierra.
+  const sigueAbierta = acta.reinstalaEnOtraUnidad && !acta.subtareaOdooId;
+  if (!sigueAbierta) {
+    try {
+      const taskId = acta.subtareaOdooId ?? acta.tareaOdooId;
+      await markTaskStageHecho(taskId);
+      await markTaskStateHecho(taskId);
+      for (const mergedId of acta.mergedTaskIds ?? []) {
+        await markTaskStageHecho(mergedId);
+        await markTaskStateHecho(mergedId);
+      }
+      if (acta.subtareaOdooId) {
+        await markParentStageHechoIfAllChildrenResolved(acta.tareaOdooId);
+        await cerrarVisitaLoteSiTodoResuelto(acta.tareaOdooId, tecnicoId, acta.fecha, body.ocurrioAt);
+      } else {
+        await notificarEstadoVisita(acta.tareaOdooId, 'completo', tecnicoId, acta.fecha, body.ocurrioAt);
+      }
+    } catch (err) {
+      console.error('RETIRO_EQUIPO_CIERRE_ODOO_FAILED', acta.id, err);
     }
-    if (acta.subtareaOdooId) {
-      await markParentStageHechoIfAllChildrenResolved(acta.tareaOdooId);
-      await cerrarVisitaLoteSiTodoResuelto(acta.tareaOdooId, tecnicoId, acta.fecha, body.ocurrioAt);
-    } else {
-      await notificarEstadoVisita(acta.tareaOdooId, 'completo', tecnicoId, acta.fecha, body.ocurrioAt);
-    }
-  } catch (err) {
-    console.error('RETIRO_EQUIPO_CIERRE_ODOO_FAILED', acta.id, err);
   }
 
   res.status(201).json(acta.toObject());

@@ -63,6 +63,8 @@ const RetiroEquipoSchema = new Schema(
       lugar: { type: String, default: '' },
     },
     observaciones: { type: String, default: '' },
+    // Cambio de unidad: el equipo que entregó el cliente no vuelve al laboratorio, el técnico lo instala en otra unidad.
+    reinstalaEnOtraUnidad: { type: Boolean, default: false },
     firma: { type: FirmaRetiroSchema, default: null },
     fotos: { type: [FotoRetiroSchema], default: [] },
     // Resultado del envío del PDF al ticket (best-effort: no bloquea el guardado).

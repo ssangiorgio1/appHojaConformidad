@@ -151,6 +151,11 @@ const cambioUnidadSchema = z
     parejaId: z.string().min(1).nullable().optional(),
     // Cambio completo: las dos hojas son un solo trabajo (la liquidación no las paga como dos).
     completo: z.boolean().optional(),
+    // Destino cuyo equipo lo entregó el cliente en un acta de retiro/entrega de la unidad de origen (no hay hoja de origen).
+    desdeRetiro: z
+      .object({ clientId: z.string().min(8).max(64), unidad: z.string().trim().max(200).optional() })
+      .nullable()
+      .optional(),
   })
   .nullable();
 

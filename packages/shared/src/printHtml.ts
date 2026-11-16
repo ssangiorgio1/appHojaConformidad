@@ -223,6 +223,10 @@ const GALLERY_LABELS: Record<string, string> = {
   [VIDEO_SERVICIO_KEY]: 'Video del servicio',
 };
 
+// Un video (el "Video del servicio" o un clip de verificación) no se imprime en el PDF del cliente: ni la imagen ni un
+// recuadro que avise que existe. Se sigue viendo en el panel y en la PWA, donde sí se reproduce.
+const esVideo = (foto: Foto): boolean => foto.slotKey === VIDEO_SERVICIO_KEY || (foto.mimeType ?? '').startsWith('video/');
+
 async function photosBlock(slots: PhotoSlotDef[], fotos: Foto[], titulo: string, resolvePhotoSrc: PhotoSrcResolver): Promise<string> {
   if (!fotos.length) return '';
 
@@ -245,25 +249,22 @@ async function photosBlock(slots: PhotoSlotDef[], fotos: Foto[], titulo: string,
     }
   }
 
+  // Los videos quedan afuera del PDF (ver esVideo). Con motivo sí se imprime: es la explicación de por qué falta esa foto.
+  const imprimibles = matched.filter(({ foto }) => foto.motivo || !esVideo(foto));
+  if (!imprimibles.length) return '';
+
   const cells = await Promise.all(
-    matched.map(async ({ foto, label }) => {
+    imprimibles.map(async ({ foto, label }) => {
       // Foto.motivo (see GalleryPhotoCapture in the PWA): técnico couldn't
       // take this photo (e.g. forgot to bring the sensor/módulo) and left
       // why instead of the image — print the reason, not the video placeholder.
       if (foto.motivo) {
         return `<div class="photo-cell"><div class="photo video-placeholder">Sin foto — motivo:<br>${esc(foto.motivo)}</div><div class="photo-caption">${esc(label)}</div></div>`;
       }
-      // Short verification clip (GalleryPhotoCapture `allowVideo`, "Pantalla
-      // N° de serie"/"Cámaras ADAS") — an <img> pointed at a video/webm data
-      // URL or R2 URL renders nothing useful in a static PDF, so it falls
-      // straight into the same placeholder already used for non-printable
-      // attachments, before even trying resolvePhotoSrc.
-      if (foto.mimeType === 'video/webm') {
-        return `<div class="photo-cell"><div class="photo video-placeholder">Video adjunto<br>(no incluido en el PDF)</div><div class="photo-caption">${esc(label)}</div></div>`;
-      }
       const src = await resolvePhotoSrc(foto);
       if (!src) {
-        return `<div class="photo-cell"><div class="photo video-placeholder">Video adjunto<br>(no incluido en el PDF)</div><div class="photo-caption">${esc(label)}</div></div>`;
+        // Ya no puede ser un video (se descartó arriba): es una foto cuya imagen no se pudo obtener.
+        return `<div class="photo-cell"><div class="photo video-placeholder">Foto no disponible</div><div class="photo-caption">${esc(label)}</div></div>`;
       }
       return `<div class="photo-cell"><img class="photo" src="${esc(src)}"><div class="photo-caption">${esc(label)}</div></div>`;
     }),
@@ -421,7 +422,9 @@ export async function buildPrintHtml(
     record.tipoServicio === 'cambio_unidad' && record.cambioUnidad
       ? record.cambioUnidad.rol === 'origen'
         ? 'Unidad de origen (desinstalación)'
-        : 'Unidad de destino (instalación)'
+        : record.cambioUnidad.desdeRetiro
+          ? `Unidad de destino (instalación) · equipo entregado por el cliente${record.cambioUnidad.desdeRetiro.unidad ? ` de ${record.cambioUnidad.desdeRetiro.unidad}` : ''}`
+          : 'Unidad de destino (instalación)'
       : null;
   const mode = getServiceMode(record);
   // En el PDF solo va "Cambio de equipo": el resto de los motivos (reinicio manual, ramales, otro) y la razón del cambio son

@@ -239,10 +239,10 @@ export async function scheduleSubtareaReprogramarActivity(params: {
 async function consultarPublicado(params: {
   ticketId: number;
   fileName: string;
-  as: { login: string; password: string };
+  as?: { login: string; password: string };
 }): Promise<{ existingIds: number[]; posted: boolean }> {
   const existingIds = (await withTimeout(
-    executeKwAsCredentials(params.as.login, params.as.password, 'ir.attachment', 'search', [
+    llamarOdoo(params.as, 'ir.attachment', 'search', [
       [
         ['res_model', '=', 'helpdesk.ticket'],
         ['res_id', '=', params.ticketId],
@@ -254,7 +254,7 @@ async function consultarPublicado(params: {
   )) as number[];
   if (!existingIds.length) return { existingIds, posted: false };
   const posted = (await withTimeout(
-    executeKwAsCredentials(params.as.login, params.as.password, 'mail.message', 'search_count', [
+    llamarOdoo(params.as, 'mail.message', 'search_count', [
       [
         ['model', '=', 'helpdesk.ticket'],
         ['res_id', '=', params.ticketId],
@@ -267,14 +267,19 @@ async function consultarPublicado(params: {
   return { existingIds, posted: posted > 0 };
 }
 
+// Una llamada a Odoo con las credenciales del técnico si se pasan, o con la cuenta de servicio (la de la API) si no.
+function llamarOdoo(as: { login: string; password: string } | undefined, model: string, method: string, args: unknown[], kwargs: Record<string, unknown> = {}) {
+  return as ? executeKwAsCredentials(as.login, as.password, model, method, args, kwargs) : executeKw(model, method, args, kwargs);
+}
+
 const esperar = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const esTimeout = (err: unknown) => err instanceof Error && /Tiempo de espera agotado/i.test(err.message);
 
 // Posts a chatter note with the finished hoja de conformidad PDF attached to
 // the ticket. Uses message_post (core mail.thread) so nothing needs to be
 // configured on the Odoo side first — no custom fields to coordinate.
-// `as` is the técnico's own linked Odoo credentials — the message is posted
-// under their Odoo identity, not the shared service account.
+// `as` (opcional) son las credenciales de Odoo del técnico: con ellas el mensaje queda a su nombre. Sin `as` se publica con
+// la cuenta de servicio de la API, que es lo que usa el envío normal de hojas (el técnico figura en el resumen y en el PDF).
 //
 // Envío único: message_post manda el correo a los seguidores del ticket (incluido el cliente), así que un segundo post
 // ensucia el ticket y le llega duplicado. Por eso (1) antes de publicar se verifica que no esté ya, y (2) si Odoo tarda más
@@ -287,7 +292,7 @@ export async function pushConformidadToTicket(params: {
   pdfBuffer: Buffer;
   fileName: string;
   resumenHtml: string;
-  as: { login: string; password: string };
+  as?: { login: string; password: string };
   // Espera antes de re-consultar tras un timeout (Odoo puede estar terminando de publicar). Configurable para los tests.
   esperaVerificacionMs?: number;
 }): Promise<void> {
@@ -308,7 +313,7 @@ export async function pushConformidadToTicket(params: {
       // ir.attachment, by contrast, IS the base64 payload directly, so we
       // create the attachment ourselves and only hand message_post its id.
       const attachmentId = reuseAttachmentId ?? await withTimeout(
-        executeKwAsCredentials(params.as.login, params.as.password, 'ir.attachment', 'create', [
+        llamarOdoo(params.as, 'ir.attachment', 'create', [
           {
             name: params.fileName,
             datas: base64,
@@ -322,7 +327,7 @@ export async function pushConformidadToTicket(params: {
       );
 
       await withTimeout(
-        executeKwAsCredentials(params.as.login, params.as.password, 'helpdesk.ticket', 'message_post', [[params.ticketId]], {
+        llamarOdoo(params.as, 'helpdesk.ticket', 'message_post', [[params.ticketId]], {
           body: params.resumenHtml,
           // mail.thread.message_post runs `body = escape(body)` (markupsafe) on
           // any plain string — only a Markup instance (which JSON-RPC can't

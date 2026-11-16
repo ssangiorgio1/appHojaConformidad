@@ -13,7 +13,6 @@ import { notificarEstadoVisita } from '../services/telegram.service.js';
 import { cerrarVisitaLoteSiTodoResuelto } from '../services/loteVisita.service.js';
 import { procesarDerivacion } from '../services/derivacion.service.js';
 import { buildConformidadPdfBuffer as renderConformidadPdf, buildCambioCompletoPdfBuffer } from '../services/pdf.service.js';
-import { decryptSecret } from '../utils/secretBox.js';
 import { EQUIP_ITEM_PHOTO_LABEL, type PrintableConformidad } from '@wara/shared';
 import {
   isSubtaskAssignedToTechnician,
@@ -190,7 +189,15 @@ export const createConformidad = asyncHandler(async (req: Request, res: Response
     tareaOdoo: body.tareaOdoo,
     subtareaOdoo: body.subtareaOdoo,
     cambioEquipo: body.cambioEquipo ? { rol: body.cambioEquipo.rol } : undefined,
-    cambioUnidad: body.cambioUnidad ? { rol: body.cambioUnidad.rol, completo: body.cambioUnidad.completo ?? false } : undefined,
+    cambioUnidad: body.cambioUnidad
+      ? {
+          rol: body.cambioUnidad.rol,
+          completo: body.cambioUnidad.completo ?? false,
+          desdeRetiro: body.cambioUnidad.desdeRetiro
+            ? { clientId: body.cambioUnidad.desdeRetiro.clientId, unidad: body.cambioUnidad.desdeRetiro.unidad ?? '' }
+            : null,
+        }
+      : undefined,
   });
 
   // El emparejamiento en el momento de creación es "best effort": si la
@@ -206,7 +213,9 @@ export const createConformidad = asyncHandler(async (req: Request, res: Response
     }
   }
 
-  if (body.tipoServicio === 'cambio_unidad' && body.cambioUnidad) {
+  // Un destino que viene de un acta de entrega no tiene hoja de origen con quien emparejarse: no se adivina una por la tarea
+  // (podría quedar atado al origen de OTRO cambio de la misma tarea).
+  if (body.tipoServicio === 'cambio_unidad' && body.cambioUnidad && !body.cambioUnidad.desdeRetiro) {
     try {
       const parejaId = body.cambioUnidad.parejaId
         ? (await linkCambioUnidadPareja(String(record._id), body.cambioUnidad.parejaId), body.cambioUnidad.parejaId)
@@ -541,7 +550,17 @@ export const listConformidades = asyncHandler(async (req: Request, res: Response
 
   if (query.search) {
     const re = new RegExp(escapeRegExp(query.search), 'i');
-    filter.$or = [{ cliente: re }, { matricula: re }, { instalador: re }, { numero: re }, { 'equipo.imei': re }];
+    // El ticket de Odoo se busca también escrito como "#41390". El código de acta (CONF-...) es el que muestra la tabla.
+    const reTicket = new RegExp(escapeRegExp(query.search.trim().replace(/^#/, '')), 'i');
+    filter.$or = [
+      { cliente: re },
+      { matricula: re },
+      { instalador: re },
+      { numero: re },
+      { codigoActa: re },
+      { 'ticketOdoo.numero': reTicket },
+      { 'equipo.imei': re },
+    ];
   }
 
   // Cuando se pide "altaMesaAyuda=hecho"/"altaCoordinacion=hecho" el caso de
@@ -741,10 +760,9 @@ async function runSyncConformidadToOdoo(req: Request, res: Response, fase: 'pre'
   const ticketOdoo = record.ticketOdoo?.numero ? record.ticketOdoo : pareja?.ticketOdoo;
   if (!ticketOdoo?.numero) throw new HttpError(400, 'This record has no ticket de Odoo linked');
 
-  // The PDF is posted to Odoo as the técnico, not a shared service account —
-  // they must have linked their own Odoo login from the profile screen first.
-  const usuario = await UsuarioModel.findById(req.user!.usuarioId);
-  if (!usuario?.odoo) throw new HttpError(400, 'Vinculá tu cuenta de Odoo en tu perfil antes de enviar.');
+  // El PDF se publica en el ticket con la cuenta de servicio de la API, no con la cuenta de Odoo de cada técnico: así no hay
+  // permisos ni contraseñas por técnico, y no hace falta que vinculen su cuenta para enviar. Quién hizo el servicio figura en
+  // el resumen del mensaje ("Técnico: ...") y en el PDF.
 
   // Posible duplicado sin revisar: no se envía nada a Odoo hasta que coordinación lo libere (ver duplicidadUnidad.service.ts).
   // Se responde 200 con FAILED y el motivo (en vez de un 4xx) para que la PWA lo muestre sin descartar nada.
@@ -872,7 +890,6 @@ async function runSyncConformidadToOdoo(req: Request, res: Response, fase: 'pre'
           ? `pre_conformidad_${record.codigoActa}.pdf`
           : `hoja_conformidad_${record.codigoActa}.pdf`,
       resumenHtml,
-      as: { login: usuario.odoo.login, password: decryptSecret(usuario.odoo.passwordEnc) },
     });
     record[syncKey] = {
       status: 'SYNCED',

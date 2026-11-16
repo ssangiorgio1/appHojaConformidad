@@ -50,6 +50,8 @@ export const createRetiroEquipoSchema = z
       })
       .optional(),
     observaciones: z.string().trim().max(1000).optional(),
+    // Cambio de unidad: el equipo entregado se instala en otra unidad en vez de volver al laboratorio.
+    reinstalaEnOtraUnidad: z.boolean().optional(),
     firma: firmaSchema.nullable().optional(),
     // Fotos del equipo / sensor (mismo criterio que la firma: solo URLs del bucket público de R2).
     fotos: z

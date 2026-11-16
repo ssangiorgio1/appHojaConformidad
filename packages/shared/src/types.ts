@@ -232,6 +232,9 @@ export interface CambioUnidadRef {
   parejaId?: string | null;
   // Cambio completo: las dos hojas son un solo trabajo (la liquidación no las paga como dos).
   completo?: boolean;
+  // Destino cuyo equipo no lo desinstaló el técnico: lo entregó el cliente en un acta de retiro/entrega de la unidad de origen
+  // (no hay hoja de origen). `clientId` es el del acta y `unidad` el nombre de la unidad de donde viene.
+  desdeRetiro?: { clientId: string; unidad?: string } | null;
 }
 
 export interface TicketOdooRef {

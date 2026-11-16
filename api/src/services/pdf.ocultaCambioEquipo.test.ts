@@ -51,6 +51,58 @@ describe('ocultaCambioEquipoEnPdf', () => {
   });
 });
 
+describe('PDF del cliente: los videos no se imprimen', () => {
+  const conVideo = () => {
+    const h = hoja({ cambioEquipoRazon: 'actualizacion_4g' });
+    return {
+      ...h,
+      post: {
+        ...h.post,
+        fotos: [
+          ...h.post.fotos,
+          { id: 'v1', slotKey: 'video_servicio', url: 'https://r2.test/v1.webm', mimeType: 'video/webm' as const },
+          { id: 'v2', slotKey: SENSOR, url: 'https://r2.test/v2.webm', mimeType: 'video/webm' as const },
+        ],
+      },
+    } as PrintableConformidad;
+  };
+
+  it('ni el recuadro "Video adjunto" ni la leyenda del video aparecen en el PDF', async () => {
+    const html = await buildPrintHtml(conVideo());
+    expect(html).not.toContain('Video adjunto');
+    expect(html).not.toContain('no incluido en el PDF');
+    expect(html).not.toContain('Video del servicio');
+    expect(html).not.toContain('v1.webm');
+    expect(html).not.toContain('v2.webm');
+  });
+
+  it('las fotos siguen igual: el video no le saca ni le suma nada al resto', async () => {
+    const sinVideo = await buildPrintHtml(hoja({ cambioEquipoRazon: 'actualizacion_4g' }));
+    const conVideoHtml = await buildPrintHtml(conVideo());
+    expect(conVideoHtml).toBe(sinVideo);
+  });
+});
+
+describe('PDF del cliente: unidad de destino con el equipo que entregó el cliente', () => {
+  const destino = (desdeRetiro: { clientId: string; unidad?: string } | null) =>
+    hoja({ tipoServicio: 'cambio_unidad', motivoIntervencion: null, cambioEquipoRazon: null, instalaSensorModulo: false, cambioUnidad: { rol: 'destino', desdeRetiro } });
+
+  it('dice que el equipo lo entregó el cliente y de qué unidad viene', async () => {
+    const html = await buildPrintHtml(destino({ clientId: 'acta-0001', unidad: 'AB 123 CD' }));
+    expect(html).toContain('Unidad de destino (instalación) · equipo entregado por el cliente de AB 123 CD');
+  });
+  it('sin el nombre de la unidad igual lo dice', async () => {
+    const html = await buildPrintHtml(destino({ clientId: 'acta-0001' }));
+    expect(html).toContain('equipo entregado por el cliente');
+    expect(html).not.toContain('entregado por el cliente de ');
+  });
+  it('un destino de siempre queda como estaba', async () => {
+    const html = await buildPrintHtml(destino(null));
+    expect(html).toContain('Unidad de destino (instalación)');
+    expect(html).not.toContain('entregado por el cliente');
+  });
+});
+
 describe('PDF del cliente: cambio de equipo por orden interna + sensor', () => {
   it('habla solo de la instalación del sensor y no menciona el cambio', async () => {
     const html = await buildPrintHtml(hoja());

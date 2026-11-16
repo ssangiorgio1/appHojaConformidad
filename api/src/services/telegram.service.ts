@@ -63,7 +63,9 @@ export async function notificarEstadoVisita(
   // Una tarea tiene UNA visita por técnico y día: si el técnico sigue en el lugar ('en_sitio') y su visita ya se había cerrado
   // porque se sumaron unidades, se reabre esa misma visita en vez de crear otra (ver reabrirVisitaCerrada).
   const reapertura = estado === 'en_sitio' ? await reabrirVisitaCerrada(tareaOdooId, tecnicoId, fecha, ocurrioAt) : null;
-  const visita = reapertura ?? (await upsertViajeAbierto(tareaOdooId, estado, tecnicoId, fecha));
+  // Al cerrar, la visita que estaba en curso puede ser de un día anterior (ver cerrarVisitasAbiertasDeDiasAnteriores).
+  const deDiaAnterior = estado === 'completo' ? await cerrarVisitasAbiertasDeDiasAnteriores(tareaOdooId, tecnicoId, fecha) : null;
+  const visita = reapertura ?? deDiaAnterior ?? (await upsertViajeAbierto(tareaOdooId, estado, tecnicoId, fecha));
 
   // Timestamp por transición, seteado una sola vez: un reintento o un PATCH
   // duplicado del mismo estado no debe correr el reloj de traslado/trabajo.
@@ -103,6 +105,38 @@ export async function notificarEstadoVisita(
 
   await visita.save();
   return visita;
+}
+
+// Una visita es una por (tarea, técnico, día). Si el técnico llegó un día, no la finalizó y siguió trabajando la tarea después, la
+// visita abierta es la de ese día anterior: cerrar "por hoy" creaba una visita nueva ya cerrada y dejaba la vieja abierta, con el
+// banner de "trabajo en curso" pegado y el botón "Finalizar visita" en la ficha aunque ya no quedara nada por hacer.
+//
+// Al cerrar ('completo'), las visitas abiertas de este técnico para esta tarea con fecha ANTERIOR a `fecha` ya no están en curso:
+// - Si hoy no hay una abierta, la más reciente de ellas ES la visita que se está cerrando (se devuelve para completarla: conserva
+//   cuándo salió y llegó) y las demás se cierran.
+// - Si hoy hay una abierta, esa sigue su curso normal y las anteriores se cierran.
+// Las fechas posteriores no se tocan. Nunca tira: ante un error se sigue con el cierre de siempre.
+export async function cerrarVisitasAbiertasDeDiasAnteriores(tareaOdooId: number, tecnicoId: Types.ObjectId | string, fecha: string) {
+  try {
+    const anteriores = await VisitaNotificacionModel.find({ tareaOdooId, tecnicoId, abierta: true, fecha: { $lt: fecha } }).sort({ fecha: -1 });
+    if (!anteriores.length) return null;
+
+    const hayHoy = await VisitaNotificacionModel.exists({ tareaOdooId, tecnicoId, fecha, abierta: true });
+    const vigente = hayHoy ? null : anteriores[0];
+    const aCerrar = anteriores.filter((v) => v !== vigente);
+    if (aCerrar.length) {
+      await VisitaNotificacionModel.updateMany(
+        { _id: { $in: aCerrar.map((v) => v._id) }, abierta: true },
+        { $set: { estado: 'completo', abierta: false, completoAt: new Date() } },
+      );
+    }
+    if (!vigente) return null;
+    // completoAt lo completa notificarEstadoVisita con el momento real del cierre.
+    return await VisitaNotificacionModel.findOneAndUpdate({ _id: vigente._id, abierta: true }, { $set: { estado: 'completo', abierta: false } }, { new: true });
+  } catch (err) {
+    console.error('VISITA_CIERRE_DIAS_ANTERIORES_FAILED', tareaOdooId, err);
+    return null;
+  }
 }
 
 // Reabre la visita CERRADA ('completo') de este técnico para esta tarea y día, si no hay una abierta: sigue siendo la misma

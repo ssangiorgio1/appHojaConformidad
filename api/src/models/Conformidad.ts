@@ -191,6 +191,11 @@ const CambioUnidadSchema = new Schema(
     parejaId: { type: Schema.Types.ObjectId, ref: 'Conformidad', default: null },
     // Cambio completo: las dos hojas son un solo trabajo (la liquidación no las paga como dos).
     completo: { type: Boolean, default: false },
+    // Destino cuyo equipo lo entregó el cliente en un acta de retiro/entrega de la unidad de origen (no hay hoja de origen).
+    desdeRetiro: {
+      type: new Schema({ clientId: { type: String, default: '' }, unidad: { type: String, default: '' } }, { _id: false }),
+      default: null,
+    },
   },
   { _id: false },
 );

@@ -58,6 +58,22 @@ describe('pushConformidadToTicket', () => {
     expect(postKwargs.attachments).toBeUndefined();
   });
 
+  it('sin cuenta de técnico publica con la cuenta de servicio (executeKw), sin tocar credenciales personales', async () => {
+    executeKw.mockReset();
+    executeKw.mockResolvedValueOnce([]); // ya enviado antes? no
+    executeKw.mockResolvedValueOnce(777); // ir.attachment.create
+    executeKw.mockResolvedValueOnce(true); // message_post
+
+    await pushConformidadToTicket({ ticketId: 5, pdfBuffer: pdfBytes, fileName: 'hoja_conformidad_Y.pdf', resumenHtml: '<p>y</p>' });
+
+    expect(executeKwAsCredentials).not.toHaveBeenCalled();
+    expect(executeKw).toHaveBeenCalledTimes(3);
+    expect(executeKw.mock.calls[1].slice(0, 2)).toEqual(['ir.attachment', 'create']);
+    const [model, method, args, kwargs] = executeKw.mock.calls[2];
+    expect([model, method, args]).toEqual(['helpdesk.ticket', 'message_post', [[5]]]);
+    expect(kwargs.attachment_ids).toEqual([777]);
+  });
+
   it('adjunta el buffer correctamente aunque el PDF tenga contenido vacío', async () => {
     const emptyBuffer = Buffer.alloc(0);
     executeKwAsCredentials.mockResolvedValueOnce([]);

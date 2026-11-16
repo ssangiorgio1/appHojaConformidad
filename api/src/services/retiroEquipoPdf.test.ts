@@ -17,6 +17,12 @@ const base: RetiroEquipoPdfData = {
 };
 
 describe('buildRetiroEquipoHtml', () => {
+  // El acta se adjunta al ticket y la ve el cliente: que el equipo se reinstale en otra unidad es un dato interno de la app.
+  it('el acta no menciona que el equipo se instala en otra unidad', () => {
+    const html = buildRetiroEquipoHtml({ ...base, reinstalaEnOtraUnidad: true } as RetiroEquipoPdfData);
+    expect(html).not.toContain('otra unidad');
+    expect(html).not.toContain('cambio de unidad');
+  });
   it('lleva la patente, el ticket y escapa el HTML', () => {
     const html = buildRetiroEquipoHtml(base);
     expect(html).toContain('AD880CC');
