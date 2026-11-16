@@ -7,7 +7,6 @@ import { UsuarioModel } from '../models/Usuario.js';
 import { VisitaNotificacionModel } from '../models/VisitaNotificacion.js';
 import { clasificarLlegada, constanciaYaEnviada, enviaConstanciaAlReportar } from '../services/clasificarIncidencia.js';
 import { IncidenciaDestinatarioModel } from '../models/IncidenciaDestinatario.js';
-import { decryptSecret } from '../utils/secretBox.js';
 import { postSubtareaNoEncontrada, postTicketNote, pushReprogramacionToTicket, scheduleSubtareaReprogramarActivity } from '../services/odoo.service.js';
 import { buildReprogramacionPdfBuffer, buildConstanciaVisitaFallidaPdfBuffer, buildReprogramacionClientePdfBuffer } from '../services/pdf.service.js';
 import { buildIncidenciaFirmaKey, uploadBuffer } from '../services/r2.service.js';
@@ -136,16 +135,14 @@ export const createSubtareaIncidencia = asyncHandler(async (req: Request, res: R
       : ''
   }`;
 
-  if (usuario?.odoo) {
-    try {
-      await postSubtareaNoEncontrada({
-        subtareaOdooId: body.subtareaOdooId,
-        bodyHtml,
-        as: { login: usuario.odoo.login, password: decryptSecret(usuario.odoo.passwordEnc) },
-      });
-    } catch (err) {
-      console.error('SUBTAREA_INCIDENCIA_ODOO_NOTE_FAILED', body.subtareaOdooId, err);
-    }
+  // Con la cuenta de servicio de la API (no la del técnico): sale aunque el técnico no haya vinculado su cuenta de Odoo.
+  try {
+    await postSubtareaNoEncontrada({
+      subtareaOdooId: body.subtareaOdooId,
+      bodyHtml,
+    });
+  } catch (err) {
+    console.error('SUBTAREA_INCIDENCIA_ODOO_NOTE_FAILED', body.subtareaOdooId, err);
   }
 
   // Recordatorio para coordinación (mail.activity) — corre con la cuenta de
@@ -220,7 +217,6 @@ export const createSubtareaIncidencia = asyncHandler(async (req: Request, res: R
         pdfBuffer,
         fileName: `reprogramacion_cliente_${nombre.replace(/[^\w.-]+/g, '_')}.pdf`,
         resumenHtml: `<p><b>Reprogramación a pedido del cliente</b> — ${esc(body.subtareaNombre)} (${esc(body.clienteNombre)}). El técnico se presentó en el lugar y el cliente pidió cambiar la visita.</p><p>Nueva fecha y hora elegida por el cliente: <b>${esc(formatoFechaHora(propuesta.inicio))}</b>.</p>`,
-        as: usuario?.odoo ? { login: usuario.odoo.login, password: decryptSecret(usuario.odoo.passwordEnc) } : undefined,
       });
       incidencia.pdfReprogramacionAt = new Date();
       incidencia.pdfReprogramacionError = '';
@@ -257,7 +253,6 @@ export const createSubtareaIncidencia = asyncHandler(async (req: Request, res: R
         pdfBuffer,
         fileName: `visita_fallida_${nombre.replace(/[^\w.-]+/g, '_')}.pdf`,
         resumenHtml: `<p><b>Visita fallida</b> — ${esc(body.subtareaNombre)} (${esc(body.clienteNombre)}). El técnico se presentó en el lugar y la unidad no se encontraba.</p>`,
-        as: usuario?.odoo ? { login: usuario.odoo.login, password: decryptSecret(usuario.odoo.passwordEnc) } : undefined,
       });
       incidencia.pdfReprogramacionAt = new Date();
       incidencia.pdfReprogramacionError = '';
@@ -476,7 +471,6 @@ export const resolveSubtareaIncidencia = asyncHandler(async (req: Request, res: 
         resumenHtml: esConstancia
           ? `<p><b>Visita fallida</b> — ${esc(incidencia.subtareaNombre)} (${esc(incidencia.clienteNombre)}). ${incidencia.tipo === 'pre_cancelado' ? 'El técnico se presentó dentro del rango horario y la visita no pudo completarse.' : 'La unidad no se encontraba en el lugar.'}</p>${nuevaInicio ? `<p>Nueva fecha y hora: <b>${esc(formatoFechaHora(nuevaInicio))}</b>.</p>` : ''}`
           : `<p><b>Visita reprogramada (sin cargo)</b> — ${esc(incidencia.subtareaNombre)} (${esc(incidencia.clienteNombre)}). El técnico llegó fuera del rango horario agendado.</p><p>Nueva fecha y hora: <b>${esc(formatoFechaHora(nuevaInicio!))}</b>.</p>`,
-        as: tecnico?.odoo ? { login: tecnico.odoo.login, password: decryptSecret(tecnico.odoo.passwordEnc) } : undefined,
       });
       incidencia.pdfReprogramacionAt = new Date();
       incidencia.pdfReprogramacionError = '';
@@ -488,11 +482,9 @@ export const resolveSubtareaIncidencia = asyncHandler(async (req: Request, res: 
   // La constancia de visita fallida ya está en el ticket (salió al reportar): al reprogramar se deja solo la fecha nueva.
   if (yaEnviada && incidencia.ticketOdooId && body.start) {
     try {
-      const tecnico = await UsuarioModel.findById(incidencia.tecnicoId);
       await postTicketNote({
         ticketId: incidencia.ticketOdooId,
         bodyHtml: `<p><b>Visita reprogramada</b> — ${esc(incidencia.subtareaNombre)} (${esc(incidencia.clienteNombre)}). Nueva fecha y hora: <b>${esc(formatoFechaHora(new Date(`${body.start.replace(' ', 'T')}Z`)))}</b>.</p>`,
-        as: tecnico?.odoo ? { login: tecnico.odoo.login, password: decryptSecret(tecnico.odoo.passwordEnc) } : undefined,
       });
     } catch (err) {
       console.error('SUBTAREA_INCIDENCIA_NOTA_FECHA_NUEVA_FAILED', incidencia.id, err);
@@ -505,11 +497,9 @@ export const resolveSubtareaIncidencia = asyncHandler(async (req: Request, res: 
     const elegida = new Date(`${body.start.replace(' ', 'T')}Z`);
     if (elegida.getTime() !== propuestaOriginal.inicio.getTime()) {
       try {
-        const tecnico = await UsuarioModel.findById(incidencia.tecnicoId);
         await postTicketNote({
           ticketId: incidencia.ticketOdooId,
           bodyHtml: `<p><b>Reprogramación ajustada por coordinación</b> — ${esc(incidencia.subtareaNombre)}. El cliente había elegido el <b>${esc(formatoFechaHora(propuestaOriginal.inicio))}</b>; la visita queda para el <b>${esc(formatoFechaHora(elegida))}</b>.</p>`,
-          as: tecnico?.odoo ? { login: tecnico.odoo.login, password: decryptSecret(tecnico.odoo.passwordEnc) } : undefined,
         });
       } catch (err) {
         console.error('SUBTAREA_INCIDENCIA_NOTA_AJUSTE_FAILED', incidencia.id, err);

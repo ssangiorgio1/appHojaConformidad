@@ -10,7 +10,6 @@ import { cerrarVisitasAjenasSiTodoResuelto } from '../services/loteVisita.servic
 import { cerrarSuspensionAbierta } from '../services/suspensionVisita.js';
 import { estadosUnidadesDeTarea, type EstadoUnidad } from '../services/unidadesResueltas.service.js';
 import { postNotaInternaTarea } from '../services/odoo.service.js';
-import { decryptSecret } from '../utils/secretBox.js';
 import type {
   TareaIdParam,
   EstadoVisitaInput,
@@ -533,9 +532,8 @@ export const suspenderVisita = asyncHandler(async (req: Request, res: Response) 
     const usuario = await UsuarioModel.findById(tecnicoId);
     const quien = usuario?.nombre || usuario?.email || 'El técnico';
     const bodyHtml = `<p><b>Tarea suspendida por el técnico</b> — ${esc(quien)}. Motivo: ${esc(motivo)}</p><p>Nota interna: no la ve el cliente.</p>`;
-    const as = usuario?.odoo ? { login: usuario.odoo.login, password: decryptSecret(usuario.odoo.passwordEnc) } : undefined;
     for (const taskId of subtareaOdooIds?.length ? subtareaOdooIds : [tareaOdooId]) {
-      await postNotaInternaTarea({ taskId, bodyHtml, as });
+      await postNotaInternaTarea({ taskId, bodyHtml });
     }
   } catch (err) {
     console.error('VISITA_SUSPENDER_ODOO_NOTE_FAILED', tareaOdooId, err);

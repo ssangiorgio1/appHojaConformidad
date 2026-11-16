@@ -101,10 +101,10 @@ export async function verifyOdooLogin(login: string, password: string): Promise<
 export async function postSubtareaNoEncontrada(params: {
   subtareaOdooId: number;
   bodyHtml: string;
-  as: { login: string; password: string };
+  as?: { login: string; password: string };
 }): Promise<void> {
   await withTimeout(
-    executeKwAsCredentials(params.as.login, params.as.password, 'project.task', 'message_post', [[params.subtareaOdooId]], {
+    llamarOdoo(params.as, 'project.task', 'message_post', [[params.subtareaOdooId]], {
       body: params.bodyHtml,
       body_is_html: true,
       message_type: 'comment',
@@ -115,8 +115,8 @@ export async function postSubtareaNoEncontrada(params: {
 }
 
 // Adjunta al ticket el PDF de reprogramación de una unidad, con un comentario. Mismo mecanismo que
-// pushConformidadToTicket pero `as` es opcional: si el técnico no vinculó su cuenta de Odoo se usa la cuenta de
-// servicio (la reprogramación no debe quedar sin constancia por eso).
+// pushConformidadToTicket. Los controllers lo llaman sin `as`: se publica con la cuenta de servicio de la API (desde 2026-11-16
+// ya no se usa la cuenta de Odoo de cada técnico, que fallaba cuando le faltaban permisos).
 export async function pushReprogramacionToTicket(params: {
   ticketId: number;
   pdfBuffer: Buffer;
@@ -152,7 +152,7 @@ export async function pushReprogramacionToTicket(params: {
 
 // NOTA INTERNA en una tarea (project.task) de Field Service: solo la ve el personal. A diferencia de un comentario
 // (`mail.mt_comment`), una nota (`mail.mt_note`) no se envía por correo a los seguidores ni se publica para el cliente.
-// Con la cuenta del técnico si la vinculó, si no con la de servicio. Ver la suspensión de una visita.
+// Los controllers la llaman sin `as` (cuenta de servicio). Ver la suspensión de una visita.
 export async function postNotaInternaTarea(params: { taskId: number; bodyHtml: string; as?: { login: string; password: string } }): Promise<void> {
   const kwargs = { body: params.bodyHtml, body_is_html: true, message_type: 'comment', subtype_xmlid: 'mail.mt_note' };
   try {
@@ -169,7 +169,7 @@ export async function postNotaInternaTarea(params: { taskId: number; bodyHtml: s
 }
 
 // Nota (comentario) en el ticket, sin adjunto: por ejemplo cuando coordinación cambia la fecha que había elegido el
-// cliente. Con la cuenta del técnico si la vinculó, si no con la de servicio.
+// cliente. Los controllers la llaman sin `as` (cuenta de servicio).
 export async function postTicketNote(params: { ticketId: number; bodyHtml: string; as?: { login: string; password: string } }): Promise<void> {
   try {
     const kwargs = { body: params.bodyHtml, body_is_html: true, message_type: 'comment', subtype_xmlid: 'mail.mt_comment' };

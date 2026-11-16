@@ -3,7 +3,6 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { HttpError } from '../middleware/error.middleware.js';
 import { RetiroEquipoModel } from '../models/RetiroEquipo.js';
 import { UsuarioModel } from '../models/Usuario.js';
-import { decryptSecret } from '../utils/secretBox.js';
 import { pushReprogramacionToTicket } from '../services/odoo.service.js';
 import { buildRetiroEquipoPdfBuffer } from '../services/pdf.service.js';
 import { formatoFechaHora } from '../services/reprogramacionPdf.js';
@@ -87,7 +86,6 @@ export const createRetiroEquipo = asyncHandler(async (req: Request, res: Respons
         pdfBuffer,
         fileName: `${acta.modalidad === 'entrega' ? 'retiro' : 'entrega'}_equipo_${nombre}.pdf`,
         resumenHtml: `<p><b>${acta.modalidad === 'entrega' ? 'Retiro de equipo (lo entregó el cliente)' : 'Entrega de equipo (lo dejó el técnico)'}</b> — ${esc(acta.subtareaNombre)} (${esc(acta.clienteNombre)}).</p><p>${esc(formatoFechaHora(fechaHora))}. Se adjunta el acta.</p>`,
-        as: tecnico?.odoo ? { login: tecnico.odoo.login, password: decryptSecret(tecnico.odoo.passwordEnc) } : undefined,
       });
       acta.pdfAt = new Date();
       acta.pdfError = '';

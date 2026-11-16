@@ -9,7 +9,7 @@ vi.mock('../config/odoo.js', () => ({
   authenticateOdooCredentials: vi.fn(),
 }));
 
-const { pushConformidadToTicket, postNotaInternaTarea } = await import('./odoo.service.js');
+const { pushConformidadToTicket, postNotaInternaTarea, postSubtareaNoEncontrada } = await import('./odoo.service.js');
 
 describe('pushConformidadToTicket', () => {
   const pdfBytes = Buffer.from('%PDF-1.4 fake pdf content', 'utf-8');
@@ -157,5 +157,19 @@ describe('postNotaInternaTarea', () => {
     await postNotaInternaTarea({ taskId: 5, bodyHtml: '<p>x</p>' });
     expect(executeKwAsCredentials).not.toHaveBeenCalled();
     expect(executeKw).toHaveBeenCalledWith('project.task', 'message_post', [[5]], expect.objectContaining({ subtype_xmlid: 'mail.mt_note' }));
+  });
+});
+
+describe('postSubtareaNoEncontrada', () => {
+  beforeEach(() => {
+    executeKwAsCredentials.mockReset();
+    executeKw.mockReset();
+  });
+
+  it('sin cuenta del técnico publica la nota en la subtarea con la cuenta de servicio', async () => {
+    executeKw.mockResolvedValueOnce(true);
+    await postSubtareaNoEncontrada({ subtareaOdooId: 7, bodyHtml: '<p>no está</p>' });
+    expect(executeKwAsCredentials).not.toHaveBeenCalled();
+    expect(executeKw).toHaveBeenCalledWith('project.task', 'message_post', [[7]], expect.objectContaining({ body: '<p>no está</p>', body_is_html: true }));
   });
 });
