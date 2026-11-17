@@ -8,11 +8,14 @@ import { Card } from '@/components/ui/Card';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { MultiSelectBuscable } from '@/components/ui/MultiSelectBuscable';
+import { Button } from '@/components/ui/Button';
 import { Pagination } from '@/components/ui/Pagination';
-import { IconAlertTriangle, IconChevronDown, IconEye, IconSearch, IconX } from '@/components/ui/Icons';
+import { IconAlertTriangle, IconChevronDown, IconDownload, IconEye, IconSearch, IconX } from '@/components/ui/Icons';
 import { AltaCheckToggle, canToggleAlta } from '@/components/AltaCheckToggle';
 import { ConformidadResumenBody } from '@/components/ConformidadResumen';
-import { listConformidades, listUsuarios, setAltaConformidad } from '@/lib/api';
+import { exportConformidades, listConformidades, listUsuarios, setAltaConformidad } from '@/lib/api';
+import { descargarXlsx } from '@/lib/descargarXlsx';
 import { useAuth } from '@/auth/AuthContext';
 import { useApiData } from '@/lib/useApiData';
 import { formatFechaHora } from '@/lib/format';
@@ -42,7 +45,9 @@ interface VistaGuardada {
   search: string;
   status: EstadoConformidad | '';
   tipoServicio: TipoServicio | '';
-  tecnicoId: string;
+  tecnicoIds?: string[];
+  // Vistas guardadas antes de poder elegir varios técnicos.
+  tecnicoId?: string;
   altaMesaAyuda: 'pendiente' | 'hecho' | '';
   altaCoordinacion: 'pendiente' | 'hecho' | '';
   cambioEquipoPendiente: boolean;
@@ -96,7 +101,7 @@ export default function ConformidadesPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [status, setStatus] = useState<EstadoConformidad | ''>('');
   const [tipoServicio, setTipoServicio] = useState<TipoServicio | ''>('');
-  const [tecnicoId, setTecnicoId] = useState('');
+  const [tecnicoIds, setTecnicoIds] = useState<string[]>([]);
   const [altaMesaAyuda, setAltaMesaAyuda] = useState<'pendiente' | 'hecho' | ''>('');
   const [altaCoordinacion, setAltaCoordinacion] = useState<'pendiente' | 'hecho' | ''>('');
   const [cambioEquipoPendiente, setCambioEquipoPendiente] = useState(false);
@@ -129,7 +134,7 @@ export default function ConformidadesPage() {
       search,
       status,
       tipoServicio,
-      tecnicoId,
+      tecnicoIds,
       altaMesaAyuda,
       altaCoordinacion,
       cambioEquipoPendiente,
@@ -155,7 +160,7 @@ export default function ConformidadesPage() {
       setDebouncedSearch(v.search);
       setStatus(v.status);
       setTipoServicio(v.tipoServicio);
-      setTecnicoId(v.tecnicoId);
+      setTecnicoIds(v.tecnicoIds ?? (v.tecnicoId ? [v.tecnicoId] : []));
       setAltaMesaAyuda(v.altaMesaAyuda);
       setAltaCoordinacion(v.altaCoordinacion);
       setCambioEquipoPendiente(v.cambioEquipoPendiente);
@@ -178,28 +183,77 @@ export default function ConformidadesPage() {
 
   const { data: usuariosData } = useApiData((idToken) => listUsuarios(idToken), []);
   const tecnicos = useMemo(() => (usuariosData ?? []).filter((u) => u.role === 'tecnico'), [usuariosData]);
+  // Los técnicos elegibles en el filtro, ordenados por nombre (sin distinguir mayúsculas ni tildes).
+  const tecnicoOpciones = useMemo(
+    () =>
+      tecnicos
+        .map((t) => ({ value: t._id, label: t.nombre || t.email }))
+        .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' })),
+    [tecnicos],
+  );
   const tecnicoNombre = useMemo(() => {
     const map = new Map((usuariosData ?? []).map((u) => [u._id, u.nombre || u.email]));
     return (id?: string) => (id && map.get(id)) || (id ? id.slice(-6) : '—');
   }, [usuariosData]);
 
+  // Los técnicos viajan juntos, separados por coma ("a,b,c"). Mismos filtros para el listado y para exportar a Excel: lo que se
+  // exporta es lo que se está viendo (todas las páginas, no solo la actual).
+  const tecnicoIdsParam = tecnicoIds.join(',');
+  const filtros = useMemo(
+    () => ({
+      search: debouncedSearch || undefined,
+      status: status || undefined,
+      tipoServicio: tipoServicio || undefined,
+      tecnicoId: tecnicoIdsParam || undefined,
+      altaMesaAyuda: altaMesaAyuda || undefined,
+      altaCoordinacion: altaCoordinacion || undefined,
+      cambioEquipoPendiente: cambioEquipoPendiente || undefined,
+      verificacionEquipo: verificacion || undefined,
+    }),
+    [debouncedSearch, status, tipoServicio, tecnicoIdsParam, altaMesaAyuda, altaCoordinacion, cambioEquipoPendiente, verificacion],
+  );
+
   const { data, loading, error, setData } = useApiData(
-    (idToken) =>
-      listConformidades(idToken, {
-        page,
-        pageSize: PAGE_SIZE,
-        search: debouncedSearch || undefined,
-        status: status || undefined,
-        tipoServicio: tipoServicio || undefined,
-        tecnicoId: tecnicoId || undefined,
-        altaMesaAyuda: altaMesaAyuda || undefined,
-        altaCoordinacion: altaCoordinacion || undefined,
-        cambioEquipoPendiente: cambioEquipoPendiente || undefined,
-        verificacionEquipo: verificacion || undefined,
-      }),
-    [page, debouncedSearch, status, tipoServicio, tecnicoId, altaMesaAyuda, altaCoordinacion, cambioEquipoPendiente, verificacion],
+    (idToken) => listConformidades(idToken, { page, pageSize: PAGE_SIZE, ...filtros }),
+    [page, filtros],
     restaurado,
   );
+
+  const [exportando, setExportando] = useState(false);
+  // Resultado de la última exportación; se muestra solo mientras los filtros sean los mismos con los que se exportó.
+  const [resultadoExport, setResultadoExport] = useState<{ error: boolean; texto: string; filtros: string } | null>(null);
+  const filtrosClave = JSON.stringify(filtros);
+  const mensajeExport = resultadoExport && resultadoExport.filtros === filtrosClave ? resultadoExport : null;
+
+  async function exportarExcel() {
+    if (exportando) return;
+    const clave = filtrosClave;
+    setExportando(true);
+    setResultadoExport(null);
+    try {
+      const r = await exportConformidades(await getIdToken(), filtros);
+      // La primera hoja tiene una fila por conformidad; la segunda, una por cada elemento instalado.
+      const cantidad = r.hojas[0]?.filas.length ?? 0;
+      if (!cantidad) {
+        setResultadoExport({ error: false, texto: 'No hay conformidades con estos filtros para exportar.', filtros: clave });
+        return;
+      }
+      const hoy = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      await descargarXlsx(r.hojas, `conformidades_${hoy.getFullYear()}-${pad(hoy.getMonth() + 1)}-${pad(hoy.getDate())}.xlsx`);
+      setResultadoExport({
+        error: false,
+        texto: r.recortado
+          ? `Se exportaron las primeras ${cantidad} de ${r.total} conformidades (límite por archivo). Acotá los filtros para el resto.`
+          : `Se exportaron ${cantidad} conformidades.`,
+        filtros: clave,
+      });
+    } catch (err) {
+      setResultadoExport({ error: true, texto: err instanceof Error ? err.message : 'No se pudo exportar.', filtros: clave });
+    } finally {
+      setExportando(false);
+    }
+  }
 
   // Con la lista ya cargada (las filas desplegadas ya tienen su alto), vuelve al punto donde se estaba.
   useEffect(() => {
@@ -224,7 +278,11 @@ export default function ConformidadesPage() {
     () =>
       [
         search && { key: 'search', label: `Buscar: "${search}"`, onRemove: () => setSearch('') },
-        tecnicoId && { key: 'tecnico', label: `Técnico: ${tecnicoNombre(tecnicoId)}`, onRemove: () => setTecnicoId('') },
+        tecnicoIds.length > 0 && {
+          key: 'tecnico',
+          label: `${tecnicoIds.length === 1 ? 'Técnico' : 'Técnicos'}: ${tecnicoIds.map((id) => tecnicoNombre(id)).join(', ')}`,
+          onRemove: () => setTecnicoIds([]),
+        },
         tipoServicio && { key: 'tipoServicio', label: `Servicio: ${TIPO_SERVICIO_LABELS[tipoServicio]}`, onRemove: () => setTipoServicio('') },
         status && { key: 'status', label: `Estado: ${ESTADO_LABEL[status]}`, onRemove: () => setStatus('') },
         altaMesaAyuda && {
@@ -248,13 +306,13 @@ export default function ConformidadesPage() {
           onRemove: () => setVerificacion(''),
         },
       ].filter((f): f is { key: string; label: string; onRemove: () => void } => Boolean(f)),
-    [search, tecnicoId, status, tipoServicio, altaMesaAyuda, altaCoordinacion, cambioEquipoPendiente, verificacion, tecnicoNombre],
+    [search, tecnicoIds, status, tipoServicio, altaMesaAyuda, altaCoordinacion, cambioEquipoPendiente, verificacion, tecnicoNombre],
   );
 
   function clearAllFilters() {
     setPage(1);
     setSearch('');
-    setTecnicoId('');
+    setTecnicoIds([]);
     setStatus('');
     setTipoServicio('');
     setAltaMesaAyuda('');
@@ -265,10 +323,27 @@ export default function ConformidadesPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <div className="text-2xl font-extrabold">Conformidades</div>
-        <div className="mt-0.5 text-sm font-semibold text-muted">
-          {data ? `${data.total} registros` : 'Cargando...'}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-2xl font-extrabold">Conformidades</div>
+          <div className="mt-0.5 text-sm font-semibold text-muted">
+            {data ? `${data.total} registros` : 'Cargando...'}
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <Button
+            variant="ghost"
+            className="border border-neutral-300 text-xs"
+            onClick={exportarExcel}
+            disabled={exportando || !data || data.total === 0}
+            title="Descarga en Excel todo lo que muestra el listado con los filtros de ahora (todas las páginas)"
+          >
+            <IconDownload size={15} />
+            {exportando ? 'Exportando...' : 'Exportar a Excel'}
+          </Button>
+          {mensajeExport && (
+            <div className={`max-w-xs text-right text-[11.5px] font-semibold ${mensajeExport.error ? 'text-bad' : 'text-muted'}`}>{mensajeExport.texto}</div>
+          )}
         </div>
       </div>
 
@@ -315,20 +390,18 @@ export default function ConformidadesPage() {
         <div className={`${showFiltros ? 'grid' : 'hidden'} grid-cols-2 gap-3 sm:grid sm:grid-cols-4`}>
           <div>
             <div className="mb-1 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Técnico</div>
-            <Select
-              value={tecnicoId}
-              onChange={(e) => {
+            <MultiSelectBuscable
+              opciones={tecnicoOpciones}
+              seleccionados={tecnicoIds}
+              onChange={(ids) => {
                 setPage(1);
-                setTecnicoId(e.target.value);
+                setTecnicoIds(ids);
               }}
-            >
-              <option value="">Todos</option>
-              {tecnicos.map((t) => (
-                <option key={t._id} value={t._id}>
-                  {t.nombre || t.email}
-                </option>
-              ))}
-            </Select>
+              todosLabel="Todos"
+              plural="técnicos"
+              buscarPlaceholder="Escribí el nombre del técnico..."
+              sinResultadosLabel="Ningún técnico coincide"
+            />
           </div>
 
           <div>

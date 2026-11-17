@@ -33,6 +33,20 @@ export const MOTIVO_INTERVENCION_LABELS: Record<MotivoIntervencion, string> = {
   otro: 'Otro',
 };
 
+// Qué se hizo, para el listado del panel y su exportación a Excel: el tipo de servicio y, en una intervención, lo que no dice el
+// tipo solo ("Intervención · Cambio de equipo · Sensor / módulo"). El PDF del cliente puede no mencionar el cambio de equipo; acá
+// figura siempre. Una hoja vieja sin tipo se muestra como instalación.
+export function servicioLabel(c: {
+  tipoServicio?: TipoServicio | null;
+  motivoIntervencion?: MotivoIntervencion | null;
+  instalaSensorModulo?: boolean | null;
+}): string {
+  const partes = [TIPO_SERVICIO_LABELS[c.tipoServicio ?? 'instalacion']];
+  if (c.tipoServicio === 'reparacion' && c.motivoIntervencion === 'cambio_equipo') partes.push(MOTIVO_INTERVENCION_LABELS.cambio_equipo);
+  if (c.instalaSensorModulo) partes.push('Sensor / módulo');
+  return partes.join(' · ');
+}
+
 // Por qué se cambia el equipo — solo aplica cuando motivoIntervencion es 'cambio_equipo'.
 // 'actualizacion_4g': migración de 3G a 4G que el cliente conoce de antemano → figura en el PDF del cliente.
 // 'orden_interna': el mismo cambio de 3G a 4G pero por orden interna de la empresa; si el cliente pidió solo un sensor o módulo,

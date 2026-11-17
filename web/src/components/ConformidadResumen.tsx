@@ -185,6 +185,17 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
       <div className="flex min-h-0 flex-col gap-4">
         <div className="flex flex-wrap gap-x-8 gap-y-3">
           <InfoField label="Tipo de servicio">{tipoServicioLabel}</InfoField>
+          {c.tipoServicio === 'cambio_unidad' && c.cambioUnidad?.rol && (
+            <InfoField label="Cambio de unidad">
+              {c.cambioUnidad.rol === 'origen' ? 'Unidad de origen (desinstalación)' : 'Unidad de destino (instalación)'}
+              {c.cambioUnidad.completo ? ' · cambio completo' : ''}
+            </InfoField>
+          )}
+          {c.tipoServicio === 'cambio_unidad' && c.cambioUnidad?.rol === 'destino' && c.cambioUnidad.desdeRetiro && (
+            <InfoField label="Equipo instalado">
+              Entregado por el cliente{c.cambioUnidad.desdeRetiro.unidad ? ` (de ${c.cambioUnidad.desdeRetiro.unidad})` : ''}
+            </InfoField>
+          )}
           {c.tipoServicio === 'reparacion' && c.motivoIntervencion && (
             <InfoField label="Acción tomada">
               {MOTIVO_INTERVENCION_LABELS[c.motivoIntervencion]}
@@ -206,6 +217,10 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
               <InfoField label="IMEI (instalado)">{c.equipo.imeiInstalado || '—'}</InfoField>
             </>
           )}
+          {/* El técnico carga al menos uno de los dos (según tenga tablero con km o cuente horas de uso); los que
+              quedaron vacíos, o los servicios que no los piden (retiro, otro equipo), no se muestran. */}
+          {c.equipo.controlOdometro?.trim() && <InfoField label="Odómetro">{c.equipo.controlOdometro.trim()} km</InfoField>}
+          {c.equipo.controlHorometro?.trim() && <InfoField label="Horómetro">{c.equipo.controlHorometro.trim()} hs</InfoField>}
         </div>
 
         {ocultaCambioEquipoEnPdf(c) && (

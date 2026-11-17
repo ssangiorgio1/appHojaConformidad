@@ -10,6 +10,9 @@ import type {
   CreateUsuarioResponse,
   ListCalendarTasksQuery,
   ListConformidadesQuery,
+  ListRetirosEquipoQuery,
+  RetiroEquipoDoc,
+  ExportConformidadesRespuesta,
   IncidenciaDestinatario,
   ListSubtareaIncidenciasQuery,
   OdooTechnician,
@@ -91,9 +94,9 @@ export function resetUsuarioPassword(idToken: string, id: string) {
   return apiFetch<{ tempPassword: string }>(`/api/auth/usuarios/${id}/reset-password`, idToken, { method: 'POST' });
 }
 
-function queryString(query: ListConformidadesQuery): string {
+function queryString(query: object): string {
   const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(query)) {
+  for (const [key, value] of Object.entries(query as Record<string, unknown>)) {
     if (value !== undefined && value !== '') params.set(key, String(value));
   }
   const qs = params.toString();
@@ -102,6 +105,25 @@ function queryString(query: ListConformidadesQuery): string {
 
 export function listConformidades(idToken: string, query: ListConformidadesQuery = {}) {
   return apiFetch<Paginated<ConformidadDoc>>(`/api/conformidades${queryString(query)}`, idToken);
+}
+
+// Datos para exportar a Excel con los mismos filtros del listado (sin paginar). Ver exportConformidades en el API.
+export function exportConformidades(idToken: string, query: Omit<ListConformidadesQuery, 'page' | 'pageSize'> = {}) {
+  return apiFetch<ExportConformidadesRespuesta>(`/api/conformidades/export${queryString(query)}`, idToken);
+}
+
+export function listRetirosEquipo(idToken: string, query: ListRetirosEquipoQuery = {}) {
+  return apiFetch<Paginated<RetiroEquipoDoc>>(`/api/retiros-equipo${queryString(query)}`, idToken);
+}
+
+// PDF del acta (el mismo que se adjunta al ticket de Odoo), como binario: no pasa por apiFetch porque esa función asume JSON.
+export async function getRetiroEquipoPdf(idToken: string, id: string): Promise<Blob> {
+  const res = await fetch(`${API_URL}/api/retiros-equipo/${id}/pdf`, { headers: { Authorization: `Bearer ${idToken}` } });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new ApiError(res.status, body.error ?? res.statusText);
+  }
+  return res.blob();
 }
 
 export function getConformidad(idToken: string, id: string) {

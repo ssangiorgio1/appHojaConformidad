@@ -294,6 +294,7 @@ export default function ConformidadDetailPage() {
       </Card>
 
       {c.cambioEquipo?.rol && <CambioEquipoCard c={c} onLinked={setData} />}
+      {c.tipoServicio === 'cambio_unidad' && c.cambioUnidad?.rol && <CambioUnidadCard c={c} />}
 
       <Card className="p-6">
         <ConformidadResumen c={c} open={resumenOpen} onToggle={() => setResumenOpen((v) => !v)} />
@@ -576,6 +577,62 @@ export default function ConformidadDetailPage() {
 function fmtDeadline48h(firmedAt: string): string {
   const deadline = new Date(new Date(firmedAt).getTime() + 48 * 60 * 60 * 1000);
   return deadline.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+// Cambio de unidad: qué pata es esta hoja (unidad vieja o nueva), si es un cambio completo y con qué se vincula la otra
+// (la hoja de la otra unidad, o el acta de entrega cuando el cliente desinstaló el equipo).
+function CambioUnidadCard({ c }: { c: ConformidadDoc }) {
+  const { getIdToken } = useAuth();
+  const cu = c.cambioUnidad!;
+  const parejaId = cu.parejaId ?? null;
+  const otra = cu.rol === 'origen' ? 'destino' : 'origen';
+  const [pareja, setPareja] = useState<ConformidadDoc | null>(null);
+
+  useEffect(() => {
+    if (!parejaId) return;
+    let cancelled = false;
+    getIdToken()
+      .then((idToken) => getConformidad(idToken, parejaId))
+      .then((doc) => {
+        if (!cancelled) setPareja(doc);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parejaId]);
+
+  return (
+    <Card className="flex flex-col gap-2 p-6">
+      <div className="text-[15px] font-extrabold">
+        Cambio de unidad — {cu.rol === 'origen' ? 'Unidad de origen (desinstalación)' : 'Unidad de destino (instalación)'}
+        {cu.completo ? ' · cambio completo' : ''}
+      </div>
+      <div className="text-[12.5px] font-semibold text-muted">
+        {cu.rol === 'origen'
+          ? 'Se desinstala el equipo; en la unidad de destino se instala uno nuevo.'
+          : cu.desdeRetiro
+            ? `Se instala el equipo que entregó el cliente${cu.desdeRetiro.unidad ? ` de ${cu.desdeRetiro.unidad}` : ''}.`
+            : 'Se instala un equipo nuevo; el de la unidad de origen vuelve al laboratorio.'}
+      </div>
+      <div className="text-[13px]">
+        {cu.desdeRetiro ? (
+          <span className="text-muted">La unidad de origen se cerró con un acta de retiro/entrega, no con una hoja.</span>
+        ) : parejaId ? (
+          <>
+            Vinculada a la hoja de la unidad de {otra}{' '}
+            <Link href={`/conformidades/${parejaId}`} className="font-bold text-primary hover:underline">
+              #{pareja ? pareja.numero || pareja.codigoActa : parejaId}
+              {pareja?.matricula ? ` (${pareja.matricula})` : ''}
+            </Link>
+          </>
+        ) : (
+          <span className="text-muted">Pendiente de la hoja de la unidad de {otra}.</span>
+        )}
+      </div>
+    </Card>
+  );
 }
 
 // Card de vinculación de cambio de equipo — cubre 2 casos: la pareja ya está

@@ -104,6 +104,15 @@ export interface CambioEquipo {
   parejaId: string | null;
 }
 
+// Cambio de unidad (tipoServicio 'cambio_unidad'): una hoja por unidad. `completo`: las dos hojas son un solo trabajo
+// (cambio completo). `desdeRetiro`: el destino instala el equipo que entregó el cliente en un acta de la unidad de origen.
+export interface CambioUnidad {
+  rol: 'origen' | 'destino';
+  parejaId?: string | null;
+  completo?: boolean;
+  desdeRetiro?: { clientId: string; unidad?: string } | null;
+}
+
 // Resultado acotado de GET /conformidades/cambio-equipo/retiros-pendientes —
 // ver api/src/controllers/conformidades.controller.ts's getRetirosPendientes.
 export interface RetiroPendiente {
@@ -181,6 +190,7 @@ export interface ConformidadDoc {
   altaEquipo: AltaEquipo;
   ticketOdoo: TicketOdoo | null;
   cambioEquipo: CambioEquipo | null;
+  cambioUnidad?: CambioUnidad | null;
   // Verificación del equipo en el paso de control de la PWA. `avanzoBajoResponsabilidad`: el técnico avanzó igual
   // con el equipo sin confirmar. null/ausente = hoja anterior a este dato.
   verificacionEquipo?: VerificacionEquipo | null;
@@ -269,6 +279,7 @@ export interface ListConformidadesQuery {
   pageSize?: number;
   status?: EstadoConformidad;
   tipoServicio?: TipoServicio;
+  // Uno o varios técnicos: ids separados por coma ("a,b,c").
   tecnicoId?: string;
   matricula?: string;
   imei?: string;
@@ -280,6 +291,64 @@ export interface ListConformidadesQuery {
   altaCoordinacion?: 'pendiente' | 'hecho';
   cambioEquipoPendiente?: boolean;
   verificacionEquipo?: EstadoVerificacionEquipo | 'bajo_responsabilidad';
+}
+
+// Acta de retiro / entrega de equipo (la hace el técnico desde la PWA, sin PRE ni POST). Ver api/src/models/RetiroEquipo.ts.
+export type ModalidadRetiro = 'entrega' | 'deja_para_retirar';
+export type EstadoEquipoRetiro = 'completo' | 'danado' | 'incompleto';
+
+export interface RetiroEquipoDoc {
+  _id: string;
+  tareaOdooId: number;
+  subtareaOdooId: number | null;
+  subtareaNombre: string;
+  ticketOdooId: number | null;
+  clienteNombre: string;
+  // El listado trae al técnico ya resuelto (nombre y email).
+  tecnicoId: { _id: string; nombre?: string; email?: string } | string | null;
+  fecha: string; // YYYY-MM-DD
+  modalidad: ModalidadRetiro;
+  equipo?: { numero?: string; imei?: string; estado?: EstadoEquipoRetiro | '' };
+  equiposExtra?: Array<{ numero?: string; imei?: string }>;
+  adicionales?: Array<{ nombre: string; recibido: boolean }>;
+  entrega?: { nombre?: string; telefono?: string; lugar?: string };
+  observaciones?: string;
+  // El equipo entregado se instala en otra unidad (cambio de unidad). Dato interno: no figura en el acta ni en Odoo.
+  reinstalaEnOtraUnidad?: boolean;
+  firma?: { url?: string; nombreFirmante?: string; motivo?: string; firmedAt?: string } | null;
+  fotos?: Array<{ url: string }>;
+  // Envío del PDF del acta al ticket de Odoo (best-effort): cuándo salió, o por qué falló.
+  pdfAt?: string | null;
+  pdfError?: string;
+  createdAt: string;
+}
+
+// Mirrors api/src/schemas/retiroEquipo.schema.ts's listRetirosEquipoQuerySchema
+export interface ListRetirosEquipoQuery {
+  page?: number;
+  pageSize?: number;
+  fechaDesde?: string;
+  fechaHasta?: string;
+  modalidad?: ModalidadRetiro;
+  // Uno o varios técnicos: ids separados por coma ("a,b,c").
+  tecnicoId?: string;
+  search?: string;
+}
+
+// Una hoja del Excel ya armada: texto, o número cuando es un dato para sumar o promediar. '' = celda vacía.
+export interface HojaExport {
+  nombre: string;
+  encabezados: string[];
+  filas: Array<Array<string | number>>;
+}
+
+// Respuesta de GET /api/conformidades/export: todo lo que muestra el listado con los filtros del momento, en las hojas del Excel
+// (la primera con una fila por conformidad, la segunda con una por cada elemento instalado). `total` cuenta conformidades;
+// `recortado`: había más que el tope del servidor y el archivo trae solo las primeras.
+export interface ExportConformidadesRespuesta {
+  hojas: HojaExport[];
+  total: number;
+  recortado: boolean;
 }
 
 // Mirrors api/src/schemas/reporte.schema.ts

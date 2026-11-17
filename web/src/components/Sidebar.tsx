@@ -21,6 +21,12 @@ import {
 export const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: IconGrid },
   { href: '/conformidades', label: 'Conformidades', icon: IconDocument },
+  {
+    href: '/actas',
+    label: 'Actas de retiro',
+    icon: IconDocument,
+    roles: ['coordinacion', 'mesa_ayuda', 'admin', 'superadmin'] as const,
+  },
   { href: '/calendario', label: 'Calendario', icon: IconCalendar },
   { href: '/atilio', label: 'Atilio', icon: IconSparkle },
   {
