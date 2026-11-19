@@ -184,6 +184,8 @@ export const createConformidad = asyncHandler(async (req: Request, res: Response
     elementosIntervenidos: body.elementosIntervenidos,
     elementosIntervenidosDetalle: body.elementosIntervenidosDetalle,
     dispositivosAccion: body.dispositivosAccion,
+    unidadNoRevisable: body.unidadNoRevisable ?? null,
+    preFinalizadoAt: body.preFinalizadoAt ? new Date(body.preFinalizadoAt) : null,
     ubicacionEquipo: body.ubicacionEquipo ?? '',
     cambioEquipoRazon: body.cambioEquipoRazon ?? null,
     cambioEquipoRazonDetalle: body.cambioEquipoRazonDetalle ?? '',
@@ -373,12 +375,16 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
     throw new HttpError(400, 'PRE must be finished before submitting POST data');
   }
 
-  const topLevel = ['numero', 'cliente', 'fecha', 'hora', 'matricula', 'tipoUnidad', 'instalador', 'responsableEmpresa', 'tipoServicio', 'motivoIntervencion', 'motivoIntervencionDetalle', 'actualizacionSobre', 'actualizacionNumero', 'elementosIntervenidos', 'elementosIntervenidosDetalle', 'dispositivosAccion', 'ubicacionEquipo', 'cambioEquipoRazon', 'cambioEquipoRazonDetalle', 'instalaSensorModulo'] as const;
+  const topLevel = ['numero', 'cliente', 'fecha', 'hora', 'matricula', 'tipoUnidad', 'instalador', 'responsableEmpresa', 'tipoServicio', 'motivoIntervencion', 'motivoIntervencionDetalle', 'actualizacionSobre', 'actualizacionNumero', 'elementosIntervenidos', 'elementosIntervenidosDetalle', 'dispositivosAccion', 'unidadNoRevisable', 'ubicacionEquipo', 'cambioEquipoRazon', 'cambioEquipoRazonDetalle', 'instalaSensorModulo'] as const;
   for (const key of topLevel) {
     if (body[key] !== undefined) (record as unknown as Record<string, unknown>)[key] = body[key];
   }
 
   if (body.ticketOdoo !== undefined) record.ticketOdoo = body.ticketOdoo as typeof record.ticketOdoo;
+
+  // Horas reales del dispositivo: se guardan una sola vez (un reintento no las corre).
+  if (body.preFinalizadoAt && !record.preFinalizadoAt) record.preFinalizadoAt = new Date(body.preFinalizadoAt);
+  if (body.completadoAt && !record.completadoAt) record.completadoAt = new Date(body.completadoAt);
 
   if (body.pre) {
     if (body.pre.checklist) Object.assign(record.pre.checklist, body.pre.checklist);
@@ -402,6 +408,9 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
       record.status = 'completo';
     }
   }
+
+  // Cuándo el servidor se enteró de que la hoja quedó completa (comparado con completadoAt = cuándo se firmó de verdad).
+  if (!wasCompleto && record.status === 'completo' && !record.completoRecibidoAt) record.completoRecibidoAt = new Date();
 
   if (body.equipo) Object.assign(record.equipo, body.equipo);
   if (body.noInstalados !== undefined) {
@@ -622,7 +631,7 @@ export const exportConformidades = asyncHandler(async (req: Request, res: Respon
     ConformidadModel.find(filter)
       .select(
         'codigoActa numero cliente responsableEmpresa tecnicoId tecnicoIdPost matricula tipoUnidad ticketOdoo.numero tareaOdoo.id subtareaOdoo.nombre ' +
-          'tipoServicio motivoIntervencion motivoIntervencionDetalle actualizacionSobre actualizacionNumero dispositivosAccion ubicacionEquipo elementosIntervenidos elementosIntervenidosDetalle cambioEquipoRazon cambioEquipoRazonDetalle cambioEquipoTemporal instalaSensorModulo ' +
+          'tipoServicio motivoIntervencion motivoIntervencionDetalle actualizacionSobre actualizacionNumero dispositivosAccion unidadNoRevisable ubicacionEquipo elementosIntervenidos elementosIntervenidosDetalle cambioEquipoRazon cambioEquipoRazonDetalle cambioEquipoTemporal instalaSensorModulo ' +
           'cambioEquipo.rol cambioUnidad.rol cambioUnidad.desdeRetiro.unidad fecha hora status altaEquipo equipo pre.observaciones ' +
           'post.observaciones post.fallaDetalle post.firma.satisfaccion post.firma.firmedAt post.firma.nombreFirmante post.firma.clienteAusente ' +
           'verificacionEquipo.avanzoBajoResponsabilidad odooSync.status duplicado.estado',

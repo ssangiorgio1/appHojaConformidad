@@ -245,6 +245,14 @@ const ConformidadSchema = new Schema(
     elementosIntervenidosDetalle: { type: Schema.Types.Mixed, default: undefined },
     // Reinicio / actualización: qué se reinició o actualizó -> N° de serie ('' para el equipo GPS). Ver DispositivoAccion en @wara/shared.
     dispositivosAccion: { type: Schema.Types.Mixed, default: undefined },
+    // Horas reales en el dispositivo del técnico (fin del PRE y firma del POST) y hora en que el servidor recibió la hoja
+    // completa. createdAt es cuándo llegó el PRE. Con eso el panel marca las hojas que no se pudieron enviar en el momento
+    // (sin señal, app cerrada) y llegaron después.
+    preFinalizadoAt: { type: Date, default: null },
+    completadoAt: { type: Date, default: null },
+    completoRecibidoAt: { type: Date, default: null },
+    // Desinstalación de una unidad destruida, chocada o incendiada: se salteó el checklist. { motivo, detalle } (ver @wara/shared).
+    unidadNoRevisable: { type: Schema.Types.Mixed, default: null },
     // Dónde quedó instalado el equipo (texto libre del técnico). Uso interno: no va al PDF.
     ubicacionEquipo: { type: String, default: '' },
     cambioEquipoRazon: { type: String, enum: ['equipo_danado', 'pantalla_danada', 'actualizacion_4g', 'orden_interna', 'otro'], default: null },

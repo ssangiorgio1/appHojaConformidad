@@ -124,6 +124,9 @@ export interface CalendarSubtask {
   esperado: EsperadoUnidad | null;
   // Tipo de servicio que la PWA precarga para esta unidad (por producto o por etiqueta de la tarea); null = sin dato.
   tipoServicioSugerido: SugerenciaTipoServicio | null;
+  // Campo "Tipo de servicio" de la PROPIA subtarea en Odoo: en un ticket con varias cosas (una unidad se instala, otra se
+  // desinstala) coordinación lo carga en cada subtarea y manda sobre el de la tarea padre. null = vacío.
+  tipoServicioOdoo: TipoServicioSugerido | null;
 }
 
 export interface CalendarTask {
@@ -622,8 +625,9 @@ function completarTipoServicio(tareas: CalendarTask[]): void {
     for (const s of t.subtasks) s.tipoServicioSugerido = sugerirTipoServicio(s.esperado, t.etiquetaIds);
     marcarCambioUnidad(t.subtasks);
     // Al final: el tipo de Odoo pisa lo deducido por producto/etiqueta (conservando origen/destino del cambio de unidad).
+    // El de la propia subtarea manda sobre el de la tarea padre (un ticket puede traer una instalación y una desinstalación).
     t.tipoServicioSugerido = fijarTipoOdoo(t.tipoServicioSugerido, t.tipoServicioOdoo);
-    for (const s of t.subtasks) s.tipoServicioSugerido = fijarTipoOdoo(s.tipoServicioSugerido, t.tipoServicioOdoo);
+    for (const s of t.subtasks) s.tipoServicioSugerido = fijarTipoOdoo(s.tipoServicioSugerido, s.tipoServicioOdoo ?? t.tipoServicioOdoo);
   }
 }
 
@@ -647,6 +651,7 @@ interface RawSubtask {
   isClosed: boolean;
   description: string | null;
   ubicacion: string | null;
+  tipoServicioOdoo: TipoServicioSugerido | null;
   saleLine: { id: number; label: string } | null;
   // Fecha propia de ESTA subtarea (ver listCalendarTasks) — no siempre
   // coincide con la del padre: reprogramar una unidad desde Incidencias
@@ -691,6 +696,7 @@ function mapOdooRowToRawSubtask(s: Record<string, unknown>): RawSubtask {
     isClosed: !!s.is_closed,
     description: stripHtml(s.description as string | false),
     ubicacion: textoOpcional(s[UBICACION_FIELD]),
+    tipoServicioOdoo: tipoServicioDeOdoo(s[TIPO_SERVICIO_ODOO_FIELD]),
     saleLine: many2oneRef(s.sale_line_id),
     start: s[START_FIELD] as string | false,
     end: s[END_FIELD] as string | false,
@@ -723,6 +729,7 @@ function toCalendarSubtask(g: GroupedSubtask): CalendarSubtask {
     productos: g.productos,
     esperado: g.esperado,
     tipoServicioSugerido: g.tipoServicioSugerido,
+    tipoServicioOdoo: g.tipoServicioOdoo,
   };
 }
 
@@ -790,6 +797,7 @@ function collapseDuplicateNames(subtasks: RawSubtask[], parentStart: string | nu
       productos,
       esperado: null,
       tipoServicioSugerido: null,
+      tipoServicioOdoo: primary.tipoServicioOdoo ?? sorted.find((s) => s.tipoServicioOdoo)?.tipoServicioOdoo ?? null,
       start,
       end: computeTaskEnd(start, primary.end, primary.allocatedHours),
     });

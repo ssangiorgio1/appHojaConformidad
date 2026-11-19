@@ -16,7 +16,7 @@ import {
   type PhotoSlotDef,
 } from './photoSlots.js';
 import { getServiceMode } from './serviceMode.js';
-import { ACCION_ELEMENTO_LABELS, FOTO_ELEMENTO_INTERVENIDO_PREFIX, accionConDispositivos, detalleElementoTexto, dispositivosAccionTexto, MOTIVO_INTERVENCION_LABELS, SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, isEquipoSwap, ocultaCambioEquipoEnPdf, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
+import { ACCION_ELEMENTO_LABELS, FOTO_ELEMENTO_INTERVENIDO_PREFIX, UNIDAD_NO_REVISABLE_LABELS, accionConDispositivos, checklistOmitido, detalleElementoTexto, dispositivosAccionTexto, MOTIVO_INTERVENCION_LABELS, SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, isEquipoSwap, ocultaCambioEquipoEnPdf, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
 
 // The fields buildPrintHtml actually reads — deliberately narrower than the
 // full ConformidadRecord so both the mobile app's local record and the
@@ -41,6 +41,7 @@ export type PrintableConformidad = Pick<
   | 'elementosIntervenidos'
   | 'elementosIntervenidosDetalle'
   | 'dispositivosAccion'
+  | 'unidadNoRevisable'
   | 'cambioEquipoRazon'
   | 'instalaSensorModulo'
   | 'cambioEquipoTemporal'
@@ -113,6 +114,17 @@ function checklistTable(record: PrintableConformidad, soloPre = false): string {
     <thead><tr><th>Ítem a revisar</th><th>Pre-Conformidad</th>${soloPre ? '' : '<th>Post-Conformidad</th>'}</tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
+}
+
+// Desinstalación de una unidad destruida, chocada o incendiada: en lugar de la tabla del checklist, un recuadro con el motivo.
+function checklistNoRealizado(record: PrintableConformidad): string {
+  const u = record.unidadNoRevisable;
+  if (!u?.motivo) return '';
+  return `<div style="border: 1.5px solid #b45309; background: #fffbeb; border-radius: 6px; padding: 10px 14px; margin: 6px 0 4px;">
+    <div style="font-weight: 800; color: #92400e; margin-bottom: 3px;">Checklist no realizado</div>
+    <div>La unidad no está en condiciones de ser revisada: <strong>${esc(UNIDAD_NO_REVISABLE_LABELS[u.motivo])}</strong>.</div>
+    ${u.detalle?.trim() ? `<div style="margin-top: 3px;">${esc(u.detalle.trim())}</div>` : ''}
+  </div>`;
 }
 
 function equipCard(title: string, rowsHtml: string, extraClass = ""): string {
@@ -529,7 +541,7 @@ export async function buildPrintHtml(
 
   <div class="keep-together">
     <div class="section-banner">${record.tipoUnidad === 'otro_equipo' ? 'Revisión general del equipo antes de comenzar' : `Revisión general del vehículo antes de comenzar la ${mode === 'retiro' ? 'desinstalación' : 'instalación'}`}</div>
-    ${checklistTable(record, soloPre)}
+    ${mode === 'retiro' && checklistOmitido(record) ? checklistNoRealizado(record) : checklistTable(record, soloPre)}
   </div>
 
   ${soloPre ? '' : `<div class="keep-together">

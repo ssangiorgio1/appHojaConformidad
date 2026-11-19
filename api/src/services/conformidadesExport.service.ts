@@ -5,6 +5,8 @@ import {
   type AccionElemento,
   type DetalleElementoIntervenido,
   type DispositivoAccion,
+  type UnidadNoRevisable,
+  UNIDAD_NO_REVISABLE_LABELS,
   type ActualizacionSobre,
   CAMBIO_EQUIPO_RAZON_LABELS,
   EQUIP_GROUPS,
@@ -73,6 +75,7 @@ export interface ConformidadParaExport {
   elementosIntervenidosDetalle?: Record<string, DetalleElementoIntervenido> | null;
   dispositivosAccion?: Partial<Record<DispositivoAccion, string>> | null;
   ubicacionEquipo?: string | null;
+  unidadNoRevisable?: UnidadNoRevisable | null;
   cambioEquipoRazon?: CambioEquipoRazon | null;
   cambioEquipoRazonDetalle?: string | null;
   cambioEquipoTemporal?: boolean | null;
@@ -344,6 +347,14 @@ export const COLUMNAS_CONFORMIDADES: Columna[] = [
   { encabezado: 'Motivo de la intervención', valor: (c) => motivoDe(c.doc) },
   { encabezado: 'Razón del cambio de equipo', valor: (c) => razonCambioDe(c.doc) },
   { encabezado: 'Ubicación del equipo', valor: (c) => c.doc.ubicacionEquipo ?? '' },
+  {
+    encabezado: 'Unidad no revisable',
+    // Desinstalación de una unidad destruida, chocada o incendiada (se salteó el checklist).
+    valor: (c) => {
+      const u = c.doc.unidadNoRevisable;
+      return u?.motivo ? `${UNIDAD_NO_REVISABLE_LABELS[u.motivo]}${u.detalle?.trim() ? `: ${u.detalle.trim()}` : ''}` : '';
+    },
+  },
   { encabezado: 'Reemplazo temporal', valor: (c) => siSi(c.doc.cambioEquipoTemporal) },
   { encabezado: 'Cambio de unidad', valor: (c) => cambioUnidadDe(c.doc) },
   { encabezado: 'Técnico', valor: (c) => c.nombreDe(c.doc.tecnicoId) },

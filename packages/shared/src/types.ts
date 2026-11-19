@@ -54,6 +54,26 @@ export const MOTIVO_INTERVENCION_OPTIONS: MotivoIntervencion[] = [
   'otro',
 ];
 
+// Desinstalación en una unidad que no se puede revisar (destruida, chocada o incendiada): el técnico saltea el checklist del PRE
+// y del POST con un motivo y una descripción. El PDF del cliente muestra un recuadro "Checklist no realizado" en lugar de la tabla.
+export type UnidadNoRevisableMotivo = 'destruccion_total' | 'chocada' | 'incendiada';
+
+export const UNIDAD_NO_REVISABLE_LABELS: Record<UnidadNoRevisableMotivo, string> = {
+  destruccion_total: 'Destrucción total',
+  chocada: 'Chocada',
+  incendiada: 'Incendiada',
+};
+
+export interface UnidadNoRevisable {
+  motivo: UnidadNoRevisableMotivo | null;
+  detalle: string;
+}
+
+// true si el técnico marcó que la unidad no se puede revisar (ya eligió el motivo).
+export function checklistOmitido(r: { unidadNoRevisable?: UnidadNoRevisable | null }): boolean {
+  return !!r.unidadNoRevisable?.motivo;
+}
+
 // Sobre qué se actualizó el firmware / software (solo motivoIntervencion 'actualizacion_firmware').
 export type ActualizacionSobre = 'equipo' | 'pantalla';
 
@@ -436,6 +456,8 @@ export interface ConformidadRecord {
   // pantalla: su N° de serie va acá, a mano (no en modPantallaSerie, que figuraría como pantalla instalada).
   actualizacionSobre?: ActualizacionSobre | null;
   actualizacionNumero?: string;
+  // Solo desinstalación: la unidad no se puede revisar y se saltea el checklist (ver UnidadNoRevisable).
+  unidadNoRevisable?: UnidadNoRevisable | null;
   // Solo 'reinicio_manual' y 'actualizacion_firmware': qué se reinició / actualizó y su N° de serie (ver DispositivoAccion).
   dispositivosAccion?: Partial<Record<DispositivoAccion, string>>;
   // Dónde quedó instalado el equipo (texto libre, junto a la foto "Ubicación y colocación"). Solo uso interno: no va al PDF;

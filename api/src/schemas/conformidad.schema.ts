@@ -129,6 +129,12 @@ const motivoIntervencionSchema = z
   .nullable();
 const actualizacionSobreSchema = z.enum(['equipo', 'pantalla']).nullable();
 const elementosIntervenidosSchema = z.record(z.string().max(60), z.enum(['reemplazado', 'reparado']));
+const unidadNoRevisableSchema = z
+  .object({
+    motivo: z.enum(['destruccion_total', 'chocada', 'incendiada']).nullable(),
+    detalle: z.string().max(1000),
+  })
+  .nullable();
 const dispositivosAccionSchema = z
   .object({
     equipo: z.string().max(100),
@@ -206,6 +212,8 @@ export const createConformidadSchema = topLevelSchema
   })
   .extend({
     clientId: z.string().min(1),
+    // Hora real en que se terminó el PRE en el dispositivo (ver preFinalizadoAt en el modelo).
+    preFinalizadoAt: z.string().datetime().optional(),
     pre: phaseInputSchema,
     ticketOdoo: ticketOdooSchema.optional(),
     tareaOdoo: tareaOdooSchema.optional(),
@@ -218,6 +226,7 @@ export const createConformidadSchema = topLevelSchema
     elementosIntervenidos: elementosIntervenidosSchema.optional(),
     elementosIntervenidosDetalle: elementosIntervenidosDetalleSchema.optional(),
     dispositivosAccion: dispositivosAccionSchema.optional(),
+    unidadNoRevisable: unidadNoRevisableSchema.optional(),
     ubicacionEquipo: z.string().max(1000).optional(),
     cambioEquipoRazon: cambioEquipoRazonSchema.optional(),
     cambioEquipoRazonDetalle: z.string().optional(),
@@ -261,12 +270,15 @@ export const patchConformidadSchema = topLevelSchema.partial().extend({
   elementosIntervenidos: elementosIntervenidosSchema.optional(),
   elementosIntervenidosDetalle: elementosIntervenidosDetalleSchema.optional(),
   dispositivosAccion: dispositivosAccionSchema.optional(),
+  unidadNoRevisable: unidadNoRevisableSchema.optional(),
   ubicacionEquipo: z.string().max(1000).optional(),
   cambioEquipoRazon: cambioEquipoRazonSchema.optional(),
   cambioEquipoRazonDetalle: z.string().optional(),
   instalaSensorModulo: z.boolean().optional(),
   // Hora real de la firma del POST en el dispositivo (ver resolverMomento en telegram.service.ts).
   completadoAt: z.string().datetime().optional(),
+  // Hora real en que se terminó el PRE en el dispositivo.
+  preFinalizadoAt: z.string().datetime().optional(),
   // odooSync is intentionally NOT accepted here — it's written only by the
   // dedicated /odoo-sync endpoint once Odoo actually confirms success.
   pdfReporte: pdfReporteSchema.optional(),
