@@ -238,6 +238,7 @@ export function ConformidadResumenBody({ c, mostrarTicket = true }: { c: Conform
               {c.unidadNoRevisable.detalle?.trim() && <span className="ml-1.5">{c.unidadNoRevisable.detalle.trim()}</span>}
             </InfoField>
           )}
+        
           {c.tipoServicio === 'cambio_unidad' && c.cambioUnidad?.rol && (
             <InfoField label="Cambio de unidad">
               {c.cambioUnidad.rol === 'origen' ? 'Unidad de origen (desinstalación)' : 'Unidad de destino (instalación)'}
@@ -262,6 +263,7 @@ export function ConformidadResumenBody({ c, mostrarTicket = true }: { c: Conform
               {[c.motivoIntervencionDetalle?.trim(), c.cambioEquipoRazonDetalle?.trim()].filter(Boolean).join(' · ')}
             </InfoField>
           )}
+          <InfoField label="Matrícula">{c.matricula || '—'}</InfoField>
           <InfoField label={`Modelo${equipoLabelSuffix}`}>{c.equipo.modelo || '—'}</InfoField>
           <InfoField label={`IMEI${equipoLabelSuffix}`}>{c.equipo.imei || '—'}</InfoField>
           {esSwap && (
