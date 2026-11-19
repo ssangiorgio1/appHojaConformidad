@@ -24,19 +24,27 @@ export const EQUIP_GROUPS = [
     fields: [
       { key: 'sensorTemperatura', label: 'Temperatura', checkbox: true },
       { key: 'sensorTemperaturaCantidad', label: 'Cantidad', dependsOn: 'sensorTemperatura', cantidad: true },
+      { key: 'sensorTemperaturaConexion', label: 'Dónde se conecta', dependsOn: 'sensorTemperatura', conexion: true, opcional: true },
       { key: 'sensorAperturaPuertas', label: 'Apertura de puertas', checkbox: true },
       { key: 'sensorAperturaPuertasCantidad', label: 'Cantidad', dependsOn: 'sensorAperturaPuertas', cantidad: true },
+      // Dónde se conecta en el equipo (texto libre: IO1, AO3, 1-Wire…). Opcional; solo panel, no va al PDF.
+      { key: 'sensorAperturaPuertasConexion', label: 'Dónde se conecta', dependsOn: 'sensorAperturaPuertas', conexion: true, opcional: true },
       { key: 'sensorAperturaPSemi', label: 'Apertura p/semi', checkbox: true },
       { key: 'sensorAperturaPSemiCantidad', label: 'Cantidad', dependsOn: 'sensorAperturaPSemi', cantidad: true },
+      { key: 'sensorAperturaPSemiConexion', label: 'Dónde se conecta', dependsOn: 'sensorAperturaPSemi', conexion: true, opcional: true },
       { key: 'sensorGiro', label: 'Sensor de giro', checkbox: true },
+      { key: 'sensorGiroConexion', label: 'Dónde se conecta', dependsOn: 'sensorGiro', conexion: true, opcional: true },
       { key: 'canbus', label: 'CANBUS', checkbox: true },
       { key: 'trabaRobusta', label: 'Traba robusta', checkbox: true },
+      { key: 'trabaRobustaConexion', label: 'Dónde se conecta', dependsOn: 'trabaRobusta', conexion: true, opcional: true },
       { key: 'medComb', label: 'Varilla de combustible', checkbox: true },
       { key: 'medCombCantidad', label: 'Cantidad', dependsOn: 'medComb', cantidad: true },
       // Uno por unidad (sin cantidad). El número que trae el anillo se escribe a mano; la foto va en "Ubicación y sujeción".
       { key: 'anilloCombustible', label: 'Anillo de combustible', checkbox: true },
       { key: 'anilloCombustibleNumero', label: 'N° del anillo de combustible', dependsOn: 'anilloCombustible' },
+      { key: 'anilloCombustibleConexion', label: 'Dónde se conecta', dependsOn: 'anilloCombustible', conexion: true, opcional: true },
       { key: 'desAcopSemi', label: 'Desacople / semi', checkbox: true },
+      { key: 'desAcopSemiConexion', label: 'Dónde se conecta', dependsOn: 'desAcopSemi', conexion: true, opcional: true },
     ],
   },
   {
@@ -46,6 +54,7 @@ export const EQUIP_GROUPS = [
       { key: 'modMicrofono', label: 'Micrófono', checkbox: true },
       { key: 'modBPanico', label: 'Botón de pánico', checkbox: true },
       { key: 'modBuzzerVelocidad', label: 'Buzzer velocidad', checkbox: true },
+      { key: 'modBuzzerVelocidadConexion', label: 'Dónde se conecta', dependsOn: 'modBuzzerVelocidad', conexion: true, opcional: true },
       { key: 'modIdConductor', label: 'Id. Conductor', checkbox: true },
       { key: 'modRFID', label: 'RFID', checkbox: true },
       { key: 'modDALLAS', label: 'DALLAS', checkbox: true },
@@ -183,7 +192,10 @@ export function missingRequiredEquipoLabels(equipo: Equipo): string[] {
       // A field with `dependsOn` becomes required as soon as the field it
       // depends on is checked — no point letting the técnico move on with
       // the checkbox ticked but no detail describing what it is.
-      const isRequired = ('required' in f && f.required) || ('dependsOn' in f && f.dependsOn && isEquipoFieldVisible(f, equipo));
+      // `opcional`: depende de una casilla pero no es obligatorio (ej. dónde se conecta un sensor).
+      const isRequired =
+        ('required' in f && f.required) ||
+        ('dependsOn' in f && f.dependsOn && !('opcional' in f && f.opcional) && isEquipoFieldVisible(f, equipo));
       if (isRequired && !equipo[f.key]?.trim()) {
         missing.push(f.label);
       }

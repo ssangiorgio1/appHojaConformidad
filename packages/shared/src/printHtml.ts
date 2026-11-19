@@ -16,7 +16,7 @@ import {
   type PhotoSlotDef,
 } from './photoSlots.js';
 import { getServiceMode } from './serviceMode.js';
-import { MOTIVO_INTERVENCION_LABELS, SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, isEquipoSwap, ocultaCambioEquipoEnPdf, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
+import { ACCION_ELEMENTO_LABELS, FOTO_ELEMENTO_INTERVENIDO_PREFIX, accionConDispositivos, detalleElementoTexto, dispositivosAccionTexto, MOTIVO_INTERVENCION_LABELS, SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, isEquipoSwap, ocultaCambioEquipoEnPdf, type ConformidadRecord, type Firma, type Foto, type TipoServicio } from './types.js';
 
 // The fields buildPrintHtml actually reads — deliberately narrower than the
 // full ConformidadRecord so both the mobile app's local record and the
@@ -38,6 +38,9 @@ export type PrintableConformidad = Pick<
   | 'equipo'
   | 'tipoServicio'
   | 'motivoIntervencion'
+  | 'elementosIntervenidos'
+  | 'elementosIntervenidosDetalle'
+  | 'dispositivosAccion'
   | 'cambioEquipoRazon'
   | 'instalaSensorModulo'
   | 'cambioEquipoTemporal'
@@ -135,6 +138,8 @@ function fieldRows(
   return fields
     .map((f) => {
       const val = equipo[f.key];
+      // Dónde se conecta cada sensor (campos `conexion`): dato interno, solo para el panel.
+      if ('conexion' in f && f.conexion) return '';
       // Solo se imprime lo que se completó: nada de filas vacías ni casillas sin tildar.
       if (typeof val !== 'string' || !val.trim() || val === 'NO') return '';
       const label = equipoFieldLabel(f, tipoServicio);
@@ -169,7 +174,13 @@ function equipoGrid(record: PrintableConformidad): string {
   const datosEquipoFields = byTitle['Datos del equipo'].fields.filter(
     (f) => tipoServicio === 'cambio_equipo' || (f.key !== 'modeloInstalado' && f.key !== 'imeiInstalado'),
   );
-  const datosEquipoTitle = tipoServicio === 'desinstalacion' ? 'Datos del equipo a desinstalar' : 'Datos del equipo';
+  // Intervención sin cambio de equipo: el equipo ya estaba en la unidad (no se instaló nada) y lo que importa es lo que se hizo.
+  const intervencionSinCambio = tipoServicio === 'reparacion';
+  const datosEquipoTitle =
+    tipoServicio === 'desinstalacion' ? 'Datos del equipo a desinstalar' : intervencionSinCambio ? 'Equipo de la unidad' : 'Datos del equipo';
+  // Lo tildado en una intervención figura como instalado solo si se instaló un sensor o módulo.
+  const adicionalesTitle = intervencionSinCambio && !record.instalaSensorModulo ? 'Elementos adicionales' : 'Elementos adicionales instalados';
+  const controlTitle = record.tipoServicio === 'reparacion' ? 'Control de funcionamiento' : 'Control de instalación';
 
   const retirados = ((equipo.elementosRetirados as string | undefined) ?? '').split(',').filter(Boolean);
   const retiradosCard = retirados.length
@@ -179,14 +190,33 @@ function equipoGrid(record: PrintableConformidad): string {
       )
     : '';
 
+  // Intervención que reemplazó o reparó sensores/módulos que ya estaban: tarjeta propia, para que no se lean como instalados.
+  // Con cualquier acción de la intervención (ej. un cambio de equipo que además reemplaza la pantalla).
+  const intervenidos = tipoServicio === 'reparacion' ? Object.entries(record.elementosIntervenidos ?? {}) : [];
+  // Va primero y a lo ancho: es lo que realmente se hizo en la intervención.
+  const intervenidosCard = intervenidos.length
+    ? equipCard(
+        'Intervención realizada: elementos reemplazados / reparados',
+        intervenidos
+          .map(([k, accion]) => {
+            const serie = detalleElementoTexto(accion, record.elementosIntervenidosDetalle?.[k]);
+            const valor = `${ACCION_ELEMENTO_LABELS[accion] ?? accion}${serie ? ` — ${serie}` : ''}`;
+            return `<tr><td class="k">${esc(EQUIP_ITEM_PHOTO_LABEL[k] ?? k)}</td><td class="v">${esc(valor)}</td></tr>`;
+          })
+          .join(''),
+        'equip-card-wide',
+      )
+    : '';
+
   const cards = [
+    intervenidosCard,
     equipCard(datosEquipoTitle, fieldRows(equipo, datosEquipoFields, tipoServicio), "equip-card-wide"),
     equipCard('Sensores', fieldRows(equipo, byTitle['Sensores'].fields, tipoServicio)),
     // "Entradas / Salidas" (IO/AO y sus detalles) NO se imprime en la hoja: ni el SI/NO ni el detalle. Se ven solo en el
     // resumen del panel (ConformidadResumen, que lee EQUIP_GROUPS).
     equipCard('Módulos', fieldRows(equipo, byTitle['Módulos'].fields, tipoServicio)),
     equipCard(
-      'Elementos adicionales instalados',
+      adicionalesTitle,
       fieldRows(
         equipo,
         // Series, canales del MDVR, etc. solo cuando su casilla está tildada.
@@ -196,7 +226,7 @@ function equipoGrid(record: PrintableConformidad): string {
     ),
     retiradosCard,
     equipCard(
-      'Control de instalación',
+      controlTitle,
       fieldRows(equipo, byTitle['Control de instalación'].fields, tipoServicio) + checkRows(equipo, EQUIP_CHECK_FIELDS),
     ),
   ];
@@ -227,7 +257,13 @@ const GALLERY_LABELS: Record<string, string> = {
 // recuadro que avise que existe. Se sigue viendo en el panel y en la PWA, donde sí se reproduce.
 const esVideo = (foto: Foto): boolean => foto.slotKey === VIDEO_SERVICIO_KEY || (foto.mimeType ?? '').startsWith('video/');
 
-async function photosBlock(slots: PhotoSlotDef[], fotos: Foto[], titulo: string, resolvePhotoSrc: PhotoSrcResolver): Promise<string> {
+async function photosBlock(
+  slots: PhotoSlotDef[],
+  fotos: Foto[],
+  titulo: string,
+  resolvePhotoSrc: PhotoSrcResolver,
+  extraLabels: Record<string, string> = {},
+): Promise<string> {
   if (!fotos.length) return '';
 
   const matched: { foto: Foto; label: string }[] = [];
@@ -245,7 +281,7 @@ async function photosBlock(slots: PhotoSlotDef[], fotos: Foto[], titulo: string,
   const matchedIds = new Set(matched.map((m) => m.foto.id));
   for (const foto of fotos) {
     if (!matchedIds.has(foto.id)) {
-      matched.push({ foto, label: GALLERY_LABELS[foto.slotKey ?? ''] ?? 'Foto adicional' });
+      matched.push({ foto, label: GALLERY_LABELS[foto.slotKey ?? ''] ?? extraLabels[foto.slotKey ?? ''] ?? 'Foto adicional' });
     }
   }
 
@@ -294,7 +330,6 @@ const PRINT_CSS = `
   .logo-img { height: 30px; display: block; }
   .logo-fallback { font-weight: 800; color: var(--primary); font-size: 17px; }
   .header-badges { display: flex; align-items: center; gap: 8px; }
-  .ticket-badge { background: var(--tint); border: 1px solid var(--secondary); color: var(--secondary); font-weight: 700; font-size: 11.5px; padding: 5px 12px; border-radius: 4px; letter-spacing: 0.2px; }
   .numero-badge { background: var(--dark); color: #fff; font-weight: 700; font-size: 12.5px; padding: 6px 14px; border-radius: 4px; letter-spacing: 0.3px; }
 
   .title-banner { background: var(--primary); color: #fff; border-radius: 6px; padding: 9px 14px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; page-break-after: avoid; break-after: avoid; }
@@ -398,6 +433,16 @@ function sinCambioDeEquipo(record: PrintableConformidad): PrintableConformidad {
   };
 }
 
+// Leyenda de las fotos de cada elemento reemplazado/reparado (slotKey = FOTO_ELEMENTO_INTERVENIDO_PREFIX + clave): "Pantalla — reemplazado".
+function fotosIntervenidosLabels(record: PrintableConformidad): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(record.elementosIntervenidos ?? {}).map(([k, accion]) => [
+      FOTO_ELEMENTO_INTERVENIDO_PREFIX + k,
+      `${EQUIP_ITEM_PHOTO_LABEL[k] ?? k} — ${(ACCION_ELEMENTO_LABELS[accion] ?? accion).toLowerCase()}`,
+    ]),
+  );
+}
+
 export async function buildPrintHtml(
   registro: PrintableConformidad,
   opts?: {
@@ -429,11 +474,21 @@ export async function buildPrintHtml(
   const mode = getServiceMode(record);
   // En el PDF solo va "Cambio de equipo": el resto de los motivos (reinicio manual, ramales, otro) y la razón del cambio son
   // datos internos y llenaban el encabezado de etiquetas.
-  const motivoIntervencionLabel = record.motivoIntervencion === 'cambio_equipo' ? MOTIVO_INTERVENCION_LABELS.cambio_equipo : null;
+  // Cambio o reparación de sensor / módulo también va: es lo que se hizo y el equipo no se tocó.
+  // Reinicio / actualización: van solo si se marcó qué se reinició o actualizó (hojas nuevas), con el N° de serie.
+  const dispositivos = accionConDispositivos(record.motivoIntervencion) ? dispositivosAccionTexto(record.dispositivosAccion) : '';
+  const motivoIntervencionLabel =
+    record.motivoIntervencion === 'cambio_equipo' || record.motivoIntervencion === 'cambio_sensor_modulo'
+      ? MOTIVO_INTERVENCION_LABELS[record.motivoIntervencion]
+      : dispositivos && record.motivoIntervencion
+        ? `${MOTIVO_INTERVENCION_LABELS[record.motivoIntervencion].replace(/ del equipo$/, '')} (${dispositivos})`
+        : null;
 
   const [prePhotos, postPhotos] = await Promise.all([
     photosBlock(prePhotoSlotsFor(mode, record.tipoUnidad), record.pre.fotos, 'Fotos PRE', resolvePhotoSrc),
-    soloPre ? '' : photosBlock(postPhotoSlotsFor(mode, record.motivoIntervencion, record.tipoUnidad), record.post.fotos, 'Fotos POST', resolvePhotoSrc),
+    soloPre
+      ? ''
+      : photosBlock(postPhotoSlotsFor(mode, record.motivoIntervencion, record.tipoUnidad), record.post.fotos, 'Fotos POST', resolvePhotoSrc, fotosIntervenidosLabels(record)),
   ]);
   // Lo que escribe el técnico en el paso "Observaciones" del PRE — lo ve el
   // cliente. Foto.descripcion (qué encontró en la foto extra) es solo para el
@@ -445,14 +500,12 @@ export async function buildPrintHtml(
   const cuerpo = `<div class="header">
     ${opts?.logoDataUri ? `<img class="logo-img" src="${esc(opts.logoDataUri)}">` : '<div class="logo-fallback">WARA · Seguimiento y Control</div>'}
     <div class="header-badges">
-      ${record.ticketOdoo?.numero ? `<div class="ticket-badge">Ticket Odoo: #${esc(record.ticketOdoo.numero)}</div>` : ''}
       <div class="numero-badge">N° ${esc(record.numero) || '—'}</div>
     </div>
   </div>
   <div class="title-banner">
     <span class="t">Hoja de Conformidad</span>
     <div class="banner-pills">
-      ${record.ticketOdoo?.numero ? `<span class="status-pill">Ticket #${esc(record.ticketOdoo.numero)}</span>` : ''}
       ${tipoServicioLabel ? `<span class="status-pill">${esc(tipoServicioLabel)}</span>` : ''}
       ${record.instalaSensorModulo ? `<span class="status-pill">Instalación de sensor o módulo</span>` : ''}
       ${cambioUnidadLabel ? `<span class="status-pill">${esc(cambioUnidadLabel)}</span>` : ''}

@@ -24,14 +24,151 @@ export const TIPO_SERVICIO_LABELS: Record<TipoServicio, string> = {
 // tipoServicio es 'reparacion'. Si es 'cambio_equipo' la reparación terminó en
 // reemplazar el equipo: modelo/imei describen el que sale y
 // modeloInstalado/imeiInstalado el que entra (ver isEquipoSwap).
-export type MotivoIntervencion = 'cambio_equipo' | 'reinicio_manual' | 'revisar_ramales' | 'otro';
+// 'reinicio_manual' y 'revisar_ramales' conservan su clave (hojas anteriores) con un rótulo más preciso. Un sensor o módulo
+// que ya estaba y se reemplaza o se repara va en 'cambio_sensor_modulo' (ver elementosIntervenidos), no en las casillas de
+// equipo, que figuran como instalados.
+export type MotivoIntervencion =
+  | 'cambio_equipo'
+  | 'reinicio_manual'
+  | 'actualizacion_firmware'
+  | 'revisar_ramales'
+  | 'cambio_sensor_modulo'
+  | 'otro';
 
 export const MOTIVO_INTERVENCION_LABELS: Record<MotivoIntervencion, string> = {
   cambio_equipo: 'Cambio de equipo',
-  reinicio_manual: 'Reinicio manual del equipo',
-  revisar_ramales: 'Revisar ramales, módulos, etc',
+  reinicio_manual: 'Reinicio / reconfiguración del equipo',
+  actualizacion_firmware: 'Actualización de firmware / software',
+  revisar_ramales: 'Reparación de cableado / alimentación',
+  cambio_sensor_modulo: 'Cambio o reparación de sensor / módulo',
   otro: 'Otro',
 };
+
+export const MOTIVO_INTERVENCION_OPTIONS: MotivoIntervencion[] = [
+  'cambio_equipo',
+  'reinicio_manual',
+  'actualizacion_firmware',
+  // 'revisar_ramales' (cableado / alimentación) ya no se ofrece: se superponía con sensor / módulo; un cable arreglado se
+  // cuenta en el diagnóstico y en "¿Qué se hizo?". Sigue en el tipo para leer las hojas que ya lo tienen.
+  'cambio_sensor_modulo',
+  'otro',
+];
+
+// Sobre qué se actualizó el firmware / software (solo motivoIntervencion 'actualizacion_firmware').
+export type ActualizacionSobre = 'equipo' | 'pantalla';
+
+export const ACTUALIZACION_SOBRE_LABELS: Record<ActualizacionSobre, string> = {
+  equipo: 'Equipo',
+  pantalla: 'Pantalla',
+};
+
+// Qué se reinició / reconfiguró o qué se actualizó (motivoIntervencion 'reinicio_manual' y 'actualizacion_firmware'): se pueden
+// marcar varios. Clave presente = marcado; el valor es el N° de serie (vacío para el equipo GPS, que es el equipo de la unidad
+// ya vinculado). Reemplaza a actualizacionSobre / actualizacionNumero, que quedan para leer las hojas anteriores.
+export type DispositivoAccion = 'equipo' | 'pantalla10' | 'pantalla' | 'mdvr' | 'camara';
+
+export const DISPOSITIVO_ACCION_LABELS: Record<DispositivoAccion, string> = {
+  equipo: 'Equipo GPS',
+  // El equipo con pantalla de 10" integrada: su N° es el del equipo de la unidad (está detrás de la pantalla).
+  pantalla10: 'Pantalla 10"',
+  pantalla: 'Pantalla separada',
+  mdvr: 'MDVR',
+  camara: 'Cámara ADAS',
+};
+
+export const DISPOSITIVO_ACCION_OPTIONS: DispositivoAccion[] = ['equipo', 'pantalla10', 'pantalla', 'mdvr', 'camara'];
+
+// El equipo GPS y la pantalla de 10" son el equipo de la unidad, ya vinculado: no piden N° de serie. El resto sí.
+export function dispositivoPideSerie(k: DispositivoAccion): boolean {
+  return k !== 'equipo' && k !== 'pantalla10';
+}
+
+// Las acciones que preguntan "¿Qué se reinició / actualizó?".
+export function accionConDispositivos(m?: MotivoIntervencion | null): boolean {
+  return m === 'reinicio_manual' || m === 'actualizacion_firmware';
+}
+
+// "Equipo GPS, MDVR N° 5566" — vacío si no se marcó nada.
+export function dispositivosAccionTexto(d?: Partial<Record<DispositivoAccion, string>> | null): string {
+  return DISPOSITIVO_ACCION_OPTIONS.filter((k) => d && k in d)
+    .map((k) => {
+      const serie = dispositivoPideSerie(k) ? (d?.[k] ?? '').trim() : '';
+      return `${DISPOSITIVO_ACCION_LABELS[k]}${serie ? ` N° ${serie}` : ''}`;
+    })
+    .join(', ');
+}
+
+// Sensor o módulo que ya estaba en la unidad y se reemplazó o se reparó (solo motivoIntervencion 'cambio_sensor_modulo'):
+// clave de la casilla de equipo (EQUIP_ITEM_PHOTO_LABEL) -> qué se hizo. NO es una instalación: el PDF lo muestra en su propia
+// tarjeta ("Elementos reemplazados / reparados") y el panel aparte de los instalados.
+export type AccionElemento = 'reemplazado' | 'reparado';
+
+export const ACCION_ELEMENTO_LABELS: Record<AccionElemento, string> = {
+  reemplazado: 'Reemplazado',
+  reparado: 'Reparado',
+};
+
+// Fotos de cada elemento reemplazado/reparado: slotKey = prefijo + clave de la casilla.
+export const FOTO_ELEMENTO_INTERVENIDO_PREFIX = 'intervenido_';
+
+// Elementos con N° de serie propio: al reemplazarlos o repararlos se pide el número, si no se pierde qué dispositivo quedó.
+export const ELEMENTOS_CON_SERIE: readonly string[] = ['modPantallaSerie', 'camarasAdas', 'mdvr', 'antenaStarlink'];
+
+// Sensores que en una instalación llevan cantidad (mismos que tienen campo `cantidad` en EQUIP_GROUPS): al reemplazarlos o
+// repararlos también se pide cuántos.
+export const ELEMENTOS_CON_CANTIDAD: readonly string[] = ['sensorTemperatura', 'sensorAperturaPuertas', 'sensorAperturaPSemi', 'medComb'];
+
+// Sensor de giro: tiene el sensor y un módulo aparte; se indica cuál de las dos partes (o ambas) se intervino.
+export const ELEMENTO_CON_PARTE = 'sensorGiro';
+export type ParteElemento = 'sensor' | 'modulo' | 'ambos';
+export const PARTE_ELEMENTO_LABELS: Record<ParteElemento, string> = {
+  sensor: 'Sensor',
+  modulo: 'Módulo',
+  ambos: 'Sensor y módulo',
+};
+
+// Detalle de cada elemento reemplazado/reparado (clave de la casilla -> detalle):
+// - serie / serieAnterior (ELEMENTOS_CON_SERIE): reemplazado = el que se colocó y el que se sacó; reparado = solo `serie`.
+// - cantidad (ELEMENTOS_CON_CANTIDAD).
+// - parte (ELEMENTO_CON_PARTE).
+// - conexion: dónde se conecta (texto libre: IO1, AO3, 1-Wire…), opcional; solo panel y Excel, no va al PDF.
+export interface DetalleElementoIntervenido {
+  serie?: string;
+  serieAnterior?: string;
+  cantidad?: string;
+  parte?: ParteElemento;
+  conexion?: string;
+}
+
+// "sensor y módulo · x2 · N° 12345 (antes 11111)" — vacío si no se cargó nada.
+// `incluirConexion`: el panel y el Excel la muestran; el PDF del cliente no.
+export function detalleElementoTexto(accion: AccionElemento, d?: DetalleElementoIntervenido | null, incluirConexion = false): string {
+  const serie = d?.serie?.trim() ?? '';
+  const anterior = accion === 'reemplazado' ? (d?.serieAnterior?.trim() ?? '') : '';
+  const cantidad = d?.cantidad?.trim() ?? '';
+  const series = [serie && `N° ${serie}`, anterior && `(antes ${anterior})`].filter(Boolean).join(' ');
+  const conexion = incluirConexion && d?.conexion?.trim() ? `conectado en ${d.conexion.trim()}` : '';
+  return [d?.parte ? PARTE_ELEMENTO_LABELS[d.parte].toLowerCase() : '', cantidad && `x${cantidad}`, series, conexion].filter(Boolean).join(' · ');
+}
+
+
+// "Actualización de firmware / software (pantalla)", "Cambio o reparación de sensor / módulo", etc.
+export function accionIntervencionLabel(c: {
+  motivoIntervencion?: MotivoIntervencion | null;
+  actualizacionSobre?: ActualizacionSobre | null;
+  actualizacionNumero?: string | null;
+  dispositivosAccion?: Partial<Record<DispositivoAccion, string>> | null;
+}): string {
+  if (!c.motivoIntervencion) return '';
+  const base = MOTIVO_INTERVENCION_LABELS[c.motivoIntervencion] ?? c.motivoIntervencion;
+  // "Reinicio / reconfiguración (Equipo GPS, MDVR N° 5566)"
+  const dispositivos = accionConDispositivos(c.motivoIntervencion) ? dispositivosAccionTexto(c.dispositivosAccion) : '';
+  if (dispositivos) return `${base.replace(/ del equipo$/, '')} (${dispositivos})`;
+  if (c.motivoIntervencion !== 'actualizacion_firmware' || !c.actualizacionSobre) return base;
+  const sobre = ACTUALIZACION_SOBRE_LABELS[c.actualizacionSobre].toLowerCase();
+  const numero = c.actualizacionSobre === 'pantalla' ? c.actualizacionNumero?.trim() : '';
+  return `${base} (${sobre}${numero ? ` N° ${numero}` : ''})`;
+}
 
 // Qué se hizo, para el listado del panel y su exportación a Excel: el tipo de servicio y, en una intervención, lo que no dice el
 // tipo solo ("Intervención · Cambio de equipo · Sensor / módulo"). El PDF del cliente puede no mencionar el cambio de equipo; acá
@@ -40,9 +177,14 @@ export function servicioLabel(c: {
   tipoServicio?: TipoServicio | null;
   motivoIntervencion?: MotivoIntervencion | null;
   instalaSensorModulo?: boolean | null;
+  elementosIntervenidos?: Record<string, AccionElemento> | null;
 }): string {
   const partes = [TIPO_SERVICIO_LABELS[c.tipoServicio ?? 'instalacion']];
   if (c.tipoServicio === 'reparacion' && c.motivoIntervencion === 'cambio_equipo') partes.push(MOTIVO_INTERVENCION_LABELS.cambio_equipo);
+  // Con la acción propia o como extra de otra acción (ej. cambio de equipo 3G→4G que además reemplaza la pantalla).
+  if (c.tipoServicio === 'reparacion' && (c.motivoIntervencion === 'cambio_sensor_modulo' || Object.keys(c.elementosIntervenidos ?? {}).length > 0)) {
+    partes.push('Sensor / módulo reemplazado o reparado');
+  }
   if (c.instalaSensorModulo) partes.push('Sensor / módulo');
   return partes.join(' · ');
 }
@@ -54,10 +196,12 @@ export function servicioLabel(c: {
 export type CambioEquipoRazon = 'equipo_danado' | 'pantalla_danada' | 'actualizacion_4g' | 'orden_interna' | 'otro';
 
 export const CAMBIO_EQUIPO_RAZON_LABELS: Record<CambioEquipoRazon, string> = {
-  equipo_danado: 'Equipo dañado',
-  pantalla_danada: 'Pantalla dañada (táctil / trizada)',
-  actualizacion_4g: 'Actualización de 3G a 4G',
-  orden_interna: 'Cambio por orden interna (3G a 4G)',
+  equipo_danado: 'Equipo GPS',
+  // Solo el equipo con pantalla de 10" integrada: una pantalla separada del equipo no es un cambio de equipo.
+  pantalla_danada: 'Pantalla 10"',
+  actualizacion_4g: 'Actualización de 2G, 3G a 4G',
+  // Que no figura en el PDF del cliente se avisa con un cartel al elegirla, no en el botón.
+  orden_interna: 'Cambio por incompatibilidad del equipo',
   otro: 'Otro',
 };
 
@@ -286,8 +430,21 @@ export interface ConformidadRecord {
 
   tipoServicio: TipoServicio | null;
   motivoIntervencion?: MotivoIntervencion | null;
-  // Obligatorio solo cuando motivoIntervencion es 'otro'.
+  // Diagnóstico ("¿Qué se encontró?"), obligatorio en la PWA para cualquier acción. En hojas anteriores: solo el detalle de 'otro'.
   motivoIntervencionDetalle?: string;
+  // Solo motivoIntervencion 'actualizacion_firmware'. Equipo: su N° es el del equipo de la unidad (equipo.modelo/imei);
+  // pantalla: su N° de serie va acá, a mano (no en modPantallaSerie, que figuraría como pantalla instalada).
+  actualizacionSobre?: ActualizacionSobre | null;
+  actualizacionNumero?: string;
+  // Solo 'reinicio_manual' y 'actualizacion_firmware': qué se reinició / actualizó y su N° de serie (ver DispositivoAccion).
+  dispositivosAccion?: Partial<Record<DispositivoAccion, string>>;
+  // Dónde quedó instalado el equipo (texto libre, junto a la foto "Ubicación y colocación"). Solo uso interno: no va al PDF;
+  // sirve para auditar y para mostrárselo al próximo técnico que interviene la unidad.
+  ubicacionEquipo?: string;
+  // Solo motivoIntervencion 'cambio_sensor_modulo' (ver AccionElemento).
+  elementosIntervenidos?: Record<string, AccionElemento>;
+  // N° de serie, cantidad y parte de los elementos intervenidos (ver DetalleElementoIntervenido).
+  elementosIntervenidosDetalle?: Record<string, DetalleElementoIntervenido>;
   // Los 3 campos siguientes solo aplican cuando motivoIntervencion es 'cambio_equipo'.
   cambioEquipoRazon?: CambioEquipoRazon | null;
   // Obligatorio solo cuando cambioEquipoRazon es 'otro'.

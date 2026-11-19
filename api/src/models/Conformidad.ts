@@ -230,10 +230,23 @@ const ConformidadSchema = new Schema(
     // terminó reemplazando el equipo (modelo/imei salen, *Instalado entran).
     motivoIntervencion: {
       type: String,
-      enum: ['cambio_equipo', 'reinicio_manual', 'revisar_ramales', 'otro'],
+      enum: ['cambio_equipo', 'reinicio_manual', 'actualizacion_firmware', 'revisar_ramales', 'cambio_sensor_modulo', 'otro'],
       default: null,
     },
+    // Diagnóstico ("¿Qué se encontró?") de la PWA para cualquier acción; en hojas anteriores, solo el detalle de 'otro'.
     motivoIntervencionDetalle: { type: String, default: '' },
+    // Solo 'actualizacion_firmware': sobre qué se actualizó.
+    actualizacionSobre: { type: String, enum: ['equipo', 'pantalla'], default: null },
+    // N° de serie de la pantalla actualizada (cargado a mano); el del equipo va en equipo.modelo/imei.
+    actualizacionNumero: { type: String, default: '' },
+    // Solo 'cambio_sensor_modulo': clave de la casilla de equipo -> 'reemplazado' | 'reparado' (ver @wara/shared).
+    elementosIntervenidos: { type: Schema.Types.Mixed, default: undefined },
+    // clave -> { serie, serieAnterior? } de los elementos con N° de serie propio (ver ELEMENTOS_CON_SERIE en @wara/shared).
+    elementosIntervenidosDetalle: { type: Schema.Types.Mixed, default: undefined },
+    // Reinicio / actualización: qué se reinició o actualizó -> N° de serie ('' para el equipo GPS). Ver DispositivoAccion en @wara/shared.
+    dispositivosAccion: { type: Schema.Types.Mixed, default: undefined },
+    // Dónde quedó instalado el equipo (texto libre del técnico). Uso interno: no va al PDF.
+    ubicacionEquipo: { type: String, default: '' },
     cambioEquipoRazon: { type: String, enum: ['equipo_danado', 'pantalla_danada', 'actualizacion_4g', 'orden_interna', 'otro'], default: null },
     cambioEquipoRazonDetalle: { type: String, default: '' },
     // Intervención que además instala un sensor o módulo (ver ocultaCambioEquipoEnPdf en @wara/shared).

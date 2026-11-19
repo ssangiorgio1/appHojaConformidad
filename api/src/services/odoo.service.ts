@@ -108,7 +108,8 @@ export async function postSubtareaNoEncontrada(params: {
       body: params.bodyHtml,
       body_is_html: true,
       message_type: 'comment',
-      subtype_xmlid: 'mail.mt_comment',
+      // Nota interna: queda en el historial de la subtarea pero NO se manda por correo a los seguidores (pedido 2026-11-18).
+      subtype_xmlid: 'mail.mt_note',
     }),
     'postSubtareaNoEncontrada',
   );
@@ -122,6 +123,9 @@ export async function pushReprogramacionToTicket(params: {
   pdfBuffer: Buffer;
   fileName: string;
   resumenHtml: string;
+  // true = nota interna (`mail.mt_note`): queda en el ticket pero NO se manda por correo a los seguidores. Lo usa la constancia
+  // de visita fallida (pedido 2026-11-18). Sin esto es un comentario, que sí les llega por correo.
+  notaInterna?: boolean;
   as?: { login: string; password: string };
 }): Promise<void> {
   try {
@@ -139,7 +143,7 @@ export async function pushReprogramacionToTicket(params: {
         body: params.resumenHtml,
         body_is_html: true,
         message_type: 'comment',
-        subtype_xmlid: 'mail.mt_comment',
+        subtype_xmlid: params.notaInterna ? 'mail.mt_note' : 'mail.mt_comment',
         attachment_ids: [attachmentId],
       }),
       'pushReprogramacionToTicket:message',
@@ -225,6 +229,9 @@ export async function scheduleSubtareaReprogramarActivity(params: {
           summary: params.summary,
           note: params.note,
           user_id: userId,
+          // Sin el correo de "se te asignó una actividad" (pedido 2026-11-18): la actividad le aparece igual al asignado en
+          // Odoo (reloj de actividades), solo que no se la manda por mail. Odoo saltea action_notify con esta clave.
+          context: { mail_activity_quick_update: true },
         }),
         'scheduleSubtareaReprogramarActivity',
       ),

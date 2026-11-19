@@ -48,11 +48,11 @@ describe('llegada fuera del rango horario', () => {
     horaFinAgendada: new Date('2026-10-08T16:00:00Z'),
     llegadaAt: new Date('2026-10-08T16:20:00Z'), // 13:20
   };
-  it('explica que llegó fuera del rango (no "demora") y aclara que es sin cargo', () => {
+  it('explica que llegó fuera del rango (no "demora") y no dice "sin cargo"', () => {
     const html = buildReprogramacionHtml(tarde);
     expect(html).toContain('entre las 12:00 y las 13:00');
     expect(html).toContain('fuera del rango horario');
-    expect(html).toContain('sin cargo');
+    expect(html).not.toContain('sin cargo');
     expect(html).toContain('13:20');
     expect(html).not.toContain('demora');
   });

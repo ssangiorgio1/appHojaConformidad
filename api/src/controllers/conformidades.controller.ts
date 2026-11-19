@@ -8,6 +8,13 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { HttpError } from '../middleware/error.middleware.js';
 import { deriveCodigoActa } from '../services/codigoActa.service.js';
 import { escapeRegExp } from '../utils/regex.js';
+import {
+  LIMITE_FILAS_EXPORT,
+  armarHojasExport,
+  idsDeUsuariosDe,
+  tecnicoIdsDeQuery,
+  type ConformidadParaExport,
+} from '../services/conformidadesExport.service.js';
 import { pushConformidadToTicket, verifyTicketExists, OdooError } from '../services/odoo.service.js';
 import { notificarEstadoVisita } from '../services/telegram.service.js';
 import { cerrarVisitaLoteSiTodoResuelto } from '../services/loteVisita.service.js';
@@ -25,6 +32,7 @@ import type {
   CreateConformidadInput,
   PatchConformidadInput,
   ListConformidadesQuery,
+  ExportConformidadesQuery,
   AltaConformidadInput,
   CambioEquipoParejaInput,
   RetirosPendientesQuery,
@@ -171,6 +179,12 @@ export const createConformidad = asyncHandler(async (req: Request, res: Response
     tipoServicio: body.tipoServicio ?? null,
     motivoIntervencion: body.motivoIntervencion ?? null,
     motivoIntervencionDetalle: body.motivoIntervencionDetalle ?? '',
+    actualizacionSobre: body.actualizacionSobre ?? null,
+    actualizacionNumero: body.actualizacionNumero ?? '',
+    elementosIntervenidos: body.elementosIntervenidos,
+    elementosIntervenidosDetalle: body.elementosIntervenidosDetalle,
+    dispositivosAccion: body.dispositivosAccion,
+    ubicacionEquipo: body.ubicacionEquipo ?? '',
     cambioEquipoRazon: body.cambioEquipoRazon ?? null,
     cambioEquipoRazonDetalle: body.cambioEquipoRazonDetalle ?? '',
     instalaSensorModulo: body.instalaSensorModulo ?? false,
@@ -359,7 +373,7 @@ export const patchConformidad = asyncHandler(async (req: Request, res: Response)
     throw new HttpError(400, 'PRE must be finished before submitting POST data');
   }
 
-  const topLevel = ['numero', 'cliente', 'fecha', 'hora', 'matricula', 'tipoUnidad', 'instalador', 'responsableEmpresa', 'tipoServicio', 'motivoIntervencion', 'motivoIntervencionDetalle', 'cambioEquipoRazon', 'cambioEquipoRazonDetalle', 'instalaSensorModulo'] as const;
+  const topLevel = ['numero', 'cliente', 'fecha', 'hora', 'matricula', 'tipoUnidad', 'instalador', 'responsableEmpresa', 'tipoServicio', 'motivoIntervencion', 'motivoIntervencionDetalle', 'actualizacionSobre', 'actualizacionNumero', 'elementosIntervenidos', 'elementosIntervenidosDetalle', 'dispositivosAccion', 'ubicacionEquipo', 'cambioEquipoRazon', 'cambioEquipoRazonDetalle', 'instalaSensorModulo'] as const;
   for (const key of topLevel) {
     if (body[key] !== undefined) (record as unknown as Record<string, unknown>)[key] = body[key];
   }
@@ -514,15 +528,17 @@ export const setAltaConformidad = asyncHandler(async (req: Request, res: Respons
   res.json(record);
 });
 
-export const listConformidades = asyncHandler(async (req: Request, res: Response) => {
-  const query = req.query as unknown as ListConformidadesQuery;
-
+// Filtro y orden del listado del panel. Lo comparten el listado y la exportación a Excel: lo que se exporta es exactamente lo que
+// el listado muestra con los mismos filtros.
+function armarFiltroListado(req: Request, query: Omit<ListConformidadesQuery, 'page' | 'pageSize'>) {
   const filter: Record<string, unknown> = { deletedAt: null };
 
   if (req.user!.role === 'tecnico') {
     filter.tecnicoId = req.user!.usuarioId;
-  } else if (query.tecnicoId) {
-    filter.tecnicoId = query.tecnicoId;
+  } else {
+    // Uno o varios técnicos ("a,b,c"); un id que no es válido simplemente no coincide con nada.
+    const tecnicoIds = tecnicoIdsDeQuery(query.tecnicoId);
+    if (tecnicoIds) filter.tecnicoId = { $in: tecnicoIds };
   }
 
   if (query.status) filter.status = query.status;
@@ -573,6 +589,13 @@ export const listConformidades = asyncHandler(async (req: Request, res: Response
         ? { 'altaEquipo.coordinacion.fecha': -1 }
         : { fechaHora: -1 };
 
+  return { filter, sort };
+}
+
+export const listConformidades = asyncHandler(async (req: Request, res: Response) => {
+  const query = req.query as unknown as ListConformidadesQuery;
+  const { filter, sort } = armarFiltroListado(req, query);
+
   const skip = (query.page - 1) * query.pageSize;
   const [data, total] = await Promise.all([
     ConformidadModel.find(filter).sort(sort).skip(skip).limit(query.pageSize),
@@ -585,6 +608,39 @@ export const listConformidades = asyncHandler(async (req: Request, res: Response
     pageSize: query.pageSize,
     total,
     totalPages: Math.ceil(total / query.pageSize),
+  });
+});
+
+// Datos para exportar a Excel TODO lo que muestra el listado con los filtros del momento (no solo la página): las hojas del Excel ya
+// armadas (conformidades, y lo instalado elemento por elemento), con una consulta liviana (sin fotos ni checklist). Hasta
+// LIMITE_FILAS_EXPORT conformidades; `recortado` avisa si había más.
+export const exportConformidades = asyncHandler(async (req: Request, res: Response) => {
+  const query = req.query as unknown as ExportConformidadesQuery;
+  const { filter, sort } = armarFiltroListado(req, query);
+
+  const [docs, total] = await Promise.all([
+    ConformidadModel.find(filter)
+      .select(
+        'codigoActa numero cliente responsableEmpresa tecnicoId tecnicoIdPost matricula tipoUnidad ticketOdoo.numero tareaOdoo.id subtareaOdoo.nombre ' +
+          'tipoServicio motivoIntervencion motivoIntervencionDetalle actualizacionSobre actualizacionNumero dispositivosAccion ubicacionEquipo elementosIntervenidos elementosIntervenidosDetalle cambioEquipoRazon cambioEquipoRazonDetalle cambioEquipoTemporal instalaSensorModulo ' +
+          'cambioEquipo.rol cambioUnidad.rol cambioUnidad.desdeRetiro.unidad fecha hora status altaEquipo equipo pre.observaciones ' +
+          'post.observaciones post.fallaDetalle post.firma.satisfaccion post.firma.firmedAt post.firma.nombreFirmante post.firma.clienteAusente ' +
+          'verificacionEquipo.avanzoBajoResponsabilidad odooSync.status duplicado.estado',
+      )
+      .sort(sort)
+      .limit(LIMITE_FILAS_EXPORT)
+      .lean(),
+    ConformidadModel.countDocuments(filter),
+  ]);
+
+  const usuarios = await UsuarioModel.find({ _id: { $in: idsDeUsuariosDe(docs as ConformidadParaExport[]) } }).select('nombre email');
+  const nombres = new Map(usuarios.map((u) => [String(u._id), u.nombre || u.email || '']));
+  const nombreDe = (id: unknown) => (id ? (nombres.get(String(id)) ?? '') : '');
+
+  res.json({
+    hojas: armarHojasExport(docs as ConformidadParaExport[], nombreDe),
+    total,
+    recortado: total > docs.length,
   });
 });
 

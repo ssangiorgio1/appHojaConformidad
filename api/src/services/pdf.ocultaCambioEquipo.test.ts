@@ -83,6 +83,22 @@ describe('PDF del cliente: los videos no se imprimen', () => {
   });
 });
 
+describe('PDF del cliente: el ticket de Odoo figura una sola vez', () => {
+  it('solo en la tabla de datos, junto al responsable de empresa: ni junto al N° de hoja ni en el banner', async () => {
+    const html = await buildPrintHtml(hoja({ ticketOdoo: { numero: '41271', verified: true } }));
+    expect(html.match(/41271/g)).toHaveLength(1);
+    expect(html).toContain('<td class="k">Ticket Odoo</td>');
+    expect(html).not.toContain('Ticket Odoo: #41271');
+    expect(html).not.toContain('Ticket #41271');
+    expect(html).not.toContain('ticket-badge');
+  });
+  it('sin ticket el responsable ocupa todo el ancho de su fila y no queda ningún rastro', async () => {
+    const html = await buildPrintHtml(hoja({ ticketOdoo: null }));
+    expect(html).toContain('<td class="v" colspan="3">');
+    expect(html).not.toContain('Ticket Odoo');
+  });
+});
+
 describe('PDF del cliente: unidad de destino con el equipo que entregó el cliente', () => {
   const destino = (desdeRetiro: { clientId: string; unidad?: string } | null) =>
     hoja({ tipoServicio: 'cambio_unidad', motivoIntervencion: null, cambioEquipoRazon: null, instalaSensorModulo: false, cambioUnidad: { rol: 'destino', desdeRetiro } });

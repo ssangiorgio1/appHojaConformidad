@@ -7,6 +7,8 @@ import { pushReprogramacionToTicket } from '../services/odoo.service.js';
 import { buildRetiroEquipoPdfBuffer } from '../services/pdf.service.js';
 import { formatoFechaHora } from '../services/reprogramacionPdf.js';
 import { cerrarVisitaLoteSiTodoResuelto } from '../services/loteVisita.service.js';
+import { condicionesDeBusqueda } from '../services/retiroEquipoBusqueda.js';
+import { tecnicoIdsDeQuery } from '../services/conformidadesExport.service.js';
 import { notificarEstadoVisita } from '../services/telegram.service.js';
 import { markParentStageHechoIfAllChildrenResolved, markTaskStageHecho, markTaskStateHecho } from '../services/calendarTask.service.js';
 import type { CreateRetiroEquipoInput, ListRetirosEquipoQuery } from '../schemas/retiroEquipo.schema.js';
@@ -128,8 +130,19 @@ export const listRetirosEquipo = asyncHandler(async (req: Request, res: Response
   const query = req.query as unknown as ListRetirosEquipoQuery;
   const filter: Record<string, unknown> = {};
   if (query.fecha) filter.fecha = query.fecha;
-  // Un técnico solo ve lo suyo; coordinación, mesa de ayuda y admin ven todo.
-  if (req.user!.role === 'tecnico') filter.tecnicoId = req.user!.usuarioId;
+  // Las fechas son 'YYYY-MM-DD': comparadas como texto ordenan igual que como fechas.
+  if (query.fechaDesde || query.fechaHasta) {
+    filter.fecha = { ...(query.fechaDesde ? { $gte: query.fechaDesde } : {}), ...(query.fechaHasta ? { $lte: query.fechaHasta } : {}) };
+  }
+  if (query.modalidad) filter.modalidad = query.modalidad;
+  // Un técnico solo ve lo suyo; coordinación, mesa de ayuda y admin ven todo (y pueden filtrar por uno o varios técnicos).
+  if (req.user!.role === 'tecnico') {
+    filter.tecnicoId = req.user!.usuarioId;
+  } else {
+    const tecnicoIds = tecnicoIdsDeQuery(query.tecnicoId);
+    if (tecnicoIds) filter.tecnicoId = { $in: tecnicoIds };
+  }
+  if (query.search) filter.$or = condicionesDeBusqueda(query.search);
 
   const skip = (query.page - 1) * query.pageSize;
   const [data, total] = await Promise.all([

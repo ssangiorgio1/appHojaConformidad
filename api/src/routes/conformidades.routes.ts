@@ -5,6 +5,7 @@ import {
   createConformidadSchema,
   patchConformidadSchema,
   listConformidadesQuerySchema,
+  exportConformidadesQuerySchema,
   altaConformidadSchema,
   cambioEquipoParejaSchema,
   retirosPendientesQuerySchema,
@@ -16,6 +17,7 @@ import {
   createConformidad,
   patchConformidad,
   listConformidades,
+  exportConformidades,
   getConformidadById,
   deleteConformidad,
   syncConformidadToOdoo,
@@ -35,6 +37,8 @@ conformidadesRouter.use(requireAuth);
 
 conformidadesRouter.post('/', validate(createConformidadSchema), createConformidad);
 conformidadesRouter.get('/', validate(listConformidadesQuerySchema, 'query'), listConformidades);
+// Antes de '/:id' (mismo cuidado que las rutas de más abajo): si no, "export" matchea ahí como si fuera un id.
+conformidadesRouter.get('/export', validate(exportConformidadesQuerySchema, 'query'), exportConformidades);
 // Antes de '/:id' — si no, "cambio-equipo" matchea ahí como si fuera un id
 // (mismo cuidado que ya toma visitas.routes.ts con '/activa').
 conformidadesRouter.get(

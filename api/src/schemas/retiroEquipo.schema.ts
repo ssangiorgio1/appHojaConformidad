@@ -70,6 +70,14 @@ export type CreateRetiroEquipoInput = z.infer<typeof createRetiroEquipoSchema>;
 
 export const listRetirosEquipoQuerySchema = z.object({
   fecha: fechaField.optional(),
+  // Rango de días de la visita (ambos extremos incluidos). `fecha` sigue siendo un día puntual (lo usa la PWA).
+  fechaDesde: fechaField.optional(),
+  fechaHasta: fechaField.optional(),
+  modalidad: z.enum(['entrega', 'deja_para_retirar']).optional(),
+  // Uno o varios técnicos: ids separados por coma ("a,b,c").
+  tecnicoId: z.string().max(2000).optional(),
+  // Unidad, cliente, N° de equipo, IMEI, quién entrega o N° de ticket de Odoo (con o sin "#").
+  search: z.string().max(100).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });

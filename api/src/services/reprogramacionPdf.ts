@@ -41,7 +41,6 @@ export function buildReprogramacionHtml(data: ReprogramacionPdfData, logoDataUri
       : data.tipo === 'llegada_tarde'
         ? `La visita estaba agendada ${data.horaAgendada && data.horaFinAgendada ? `entre las ${formatoHora(data.horaAgendada)} y las ${formatoHora(data.horaFinAgendada)}` : 'en un rango horario'} y el técnico llegó ${data.llegadaAt ? `a las ${formatoHora(data.llegadaAt)}` : 'después de que terminó ese rango'}, fuera del rango horario. La reprogramación se debe a esa llegada fuera del rango.`
         : 'El técnico se presentó en el lugar y la unidad no se encontraba.';
-  const sinCargo = data.tipo === 'llegada_tarde' ? '<div class="sincargo">Reprogramación sin cargo para el cliente.</div>' : '';
   const cambio =
     data.propuestaOriginal &&
     (data.propuestaOriginal.inicio.getTime() !== data.nuevaInicio.getTime() || data.propuestaOriginal.fin.getTime() !== data.nuevaFin.getTime())
@@ -58,7 +57,6 @@ export function buildReprogramacionHtml(data: ReprogramacionPdfData, logoDataUri
   table { border-collapse: collapse; width: 100%; margin-top: 16px; }
   td { padding: 6px 0; vertical-align: top; }
   td:first-child { width: 160px; color: #555; }
-  .sincargo { border: 1px solid #0f766e; color: #0f766e; padding: 8px 12px; font-weight: bold; margin-bottom: 8px; }
   .nota { color: #555; font-size: 12px; }
 </style></head><body>
   <header><h1>Reprogramación de visita</h1>${logoDataUri ? `<img src="${logoDataUri}" alt="WARA">` : ''}</header>
@@ -67,7 +65,6 @@ export function buildReprogramacionHtml(data: ReprogramacionPdfData, logoDataUri
   <p>${esc(queOcurrio)}</p>
   <div class="fecha">La visita a esta unidad queda reprogramada para el <b>${esc(formatoFechaHora(data.nuevaInicio))}</b> (hasta las ${esc(formatoHora(data.nuevaFin))}).</div>
   ${cambio}
-  ${sinCargo}
   <table>
     <tr><td>Motivo</td><td>${esc(data.motivo)}</td></tr>
     <tr><td>Técnico</td><td>${esc(data.tecnicoNombre)}</td></tr>

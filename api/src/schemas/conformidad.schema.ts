@@ -124,7 +124,30 @@ const fechaField = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'fecha must be YYYY-M
 const tipoServicioSchema = z.enum(['instalacion', 'desinstalacion', 'reparacion', 'cambio_equipo', 'cambio_unidad']).nullable();
 
 // Ver nota en models/Conformidad.ts — solo aplican a tipoServicio 'reparacion'.
-const motivoIntervencionSchema = z.enum(['cambio_equipo', 'reinicio_manual', 'revisar_ramales', 'otro']).nullable();
+const motivoIntervencionSchema = z
+  .enum(['cambio_equipo', 'reinicio_manual', 'actualizacion_firmware', 'revisar_ramales', 'cambio_sensor_modulo', 'otro'])
+  .nullable();
+const actualizacionSobreSchema = z.enum(['equipo', 'pantalla']).nullable();
+const elementosIntervenidosSchema = z.record(z.string().max(60), z.enum(['reemplazado', 'reparado']));
+const dispositivosAccionSchema = z
+  .object({
+    equipo: z.string().max(100),
+    pantalla10: z.string().max(100),
+    pantalla: z.string().max(100),
+    mdvr: z.string().max(100),
+    camara: z.string().max(100),
+  })
+  .partial();
+const elementosIntervenidosDetalleSchema = z.record(
+  z.string().max(60),
+  z.object({
+    serie: z.string().max(500).optional(),
+    serieAnterior: z.string().max(500).optional(),
+    cantidad: z.string().max(10).optional(),
+    parte: z.enum(['sensor', 'modulo', 'ambos']).optional(),
+    conexion: z.string().max(60).optional(),
+  }),
+);
 const cambioEquipoRazonSchema = z.enum(['equipo_danado', 'pantalla_danada', 'actualizacion_4g', 'orden_interna', 'otro']).nullable();
 
 // Ver nota en models/Conformidad.ts — solo aplica al esquema nuevo de 2 hojas
@@ -190,6 +213,12 @@ export const createConformidadSchema = topLevelSchema
     tipoServicio: tipoServicioSchema.optional(),
     motivoIntervencion: motivoIntervencionSchema.optional(),
     motivoIntervencionDetalle: z.string().optional(),
+    actualizacionSobre: actualizacionSobreSchema.optional(),
+    actualizacionNumero: z.string().max(100).optional(),
+    elementosIntervenidos: elementosIntervenidosSchema.optional(),
+    elementosIntervenidosDetalle: elementosIntervenidosDetalleSchema.optional(),
+    dispositivosAccion: dispositivosAccionSchema.optional(),
+    ubicacionEquipo: z.string().max(1000).optional(),
     cambioEquipoRazon: cambioEquipoRazonSchema.optional(),
     cambioEquipoRazonDetalle: z.string().optional(),
     instalaSensorModulo: z.boolean().optional(),
@@ -227,6 +256,12 @@ export const patchConformidadSchema = topLevelSchema.partial().extend({
   tipoServicio: tipoServicioSchema.optional(),
   motivoIntervencion: motivoIntervencionSchema.optional(),
   motivoIntervencionDetalle: z.string().optional(),
+  actualizacionSobre: actualizacionSobreSchema.optional(),
+  actualizacionNumero: z.string().max(100).optional(),
+  elementosIntervenidos: elementosIntervenidosSchema.optional(),
+  elementosIntervenidosDetalle: elementosIntervenidosDetalleSchema.optional(),
+  dispositivosAccion: dispositivosAccionSchema.optional(),
+  ubicacionEquipo: z.string().max(1000).optional(),
   cambioEquipoRazon: cambioEquipoRazonSchema.optional(),
   cambioEquipoRazonDetalle: z.string().optional(),
   instalaSensorModulo: z.boolean().optional(),
@@ -251,7 +286,8 @@ export const listConformidadesQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
   status: z.enum(['borrador_pre', 'pendiente_post', 'completo']).optional(),
   tipoServicio: z.enum(['instalacion', 'desinstalacion', 'reparacion', 'cambio_equipo', 'cambio_unidad']).optional(),
-  tecnicoId: z.string().optional(),
+  // Uno o varios técnicos: ids separados por coma ("a,b,c").
+  tecnicoId: z.string().max(2000).optional(),
   matricula: z.string().max(100).optional(),
   imei: z.string().max(100).optional(),
   numero: z.string().max(100).optional(),
@@ -268,6 +304,9 @@ export const listConformidadesQuerySchema = z.object({
   // equipo sin confirmar (ver verificacionEquipo en el modelo).
   verificacionEquipo: z.enum(['verificado', 'con_problemas', 'sin_verificar', 'bajo_responsabilidad']).optional(),
 });
+
+// Los mismos filtros del listado, sin paginar: la exportación a Excel trae todo lo que el listado muestra (ver exportConformidades).
+export const exportConformidadesQuerySchema = listConformidadesQuerySchema.omit({ page: true, pageSize: true });
 
 // Query del endpoint acotado de búsqueda de pendientes de emparejar — ver
 // GET /conformidades/cambio-equipo/retiros-pendientes en el controller.
@@ -318,6 +357,7 @@ export const altaConformidadSchema = z.object({
 export type CreateConformidadInput = z.infer<typeof createConformidadSchema>;
 export type PatchConformidadInput = z.infer<typeof patchConformidadSchema>;
 export type ListConformidadesQuery = z.infer<typeof listConformidadesQuerySchema>;
+export type ExportConformidadesQuery = z.infer<typeof exportConformidadesQuerySchema>;
 export type AltaConformidadInput = z.infer<typeof altaConformidadSchema>;
 export type CambioEquipoParejaInput = z.infer<typeof cambioEquipoParejaSchema>;
 export type CambioUnidadPendientesQuery = z.infer<typeof cambioUnidadPendientesQuerySchema>;

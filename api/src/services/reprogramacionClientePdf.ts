@@ -11,7 +11,7 @@ export interface ReprogramacionClienteData {
   horaAgendada?: Date | null;
   // Fin del rango horario agendado.
   horaFinAgendada?: Date | null;
-  // El técnico llegó después de que terminó el rango: la reprogramación va sin cargo para el cliente.
+  // El técnico llegó después de que terminó el rango (el resumen dice "fuera del rango"; ya no se imprime la leyenda "sin cargo").
   fueraDeRango?: boolean;
   // Cuándo marcó "llegué" el técnico: la prueba de presencia.
   llegadaAt?: Date | null;
@@ -50,13 +50,11 @@ export function buildReprogramacionClienteHtml(data: ReprogramacionClienteData, 
   .linea { border-top: 1px solid #1a1a1a; margin: 4px 0 6px; }
   .sinfirma { border: 1px dashed #777; padding: 14px 12px; font-weight: bold; }
   .chico { color: #555; font-size: 12px; margin-top: 4px; }
-  .sincargo { border: 1px solid #0f766e; color: #0f766e; padding: 8px 12px; font-weight: bold; margin: 0 0 8px; }
 </style></head><body>
   <header><h1>Constancia de reprogramación a pedido del cliente</h1>${logoDataUri ? `<img src="${logoDataUri}" alt="WARA">` : ''}</header>
   <div class="unidad">${esc(data.subtareaNombre || 'Unidad')}</div>
   <div>${esc(data.clienteNombre)} · Ticket #${esc(data.ticketNumero)}</div>
   <div class="resumen">El técnico se presentó en el lugar${data.horaAgendada && data.horaFinAgendada ? ` ${data.fueraDeRango ? 'fuera del' : 'dentro del'} rango horario agendado (${esc(formatoHora(data.horaAgendada))} a ${esc(formatoHora(data.horaFinAgendada))})` : ''} y el cliente solicitó reprogramar la visita para otro día.</div>
-  ${data.fueraDeRango ? '<div class="sincargo">Reprogramación sin cargo para el cliente: el técnico llegó fuera del rango horario agendado.</div>' : ''}
   <div class="fecha">Fecha elegida por el cliente: <b>${esc(formatoFechaHora(data.nuevaInicio))}</b> (hasta las ${esc(formatoHora(data.nuevaFin))}).</div>
   <table>
     <tr><td>Motivo</td><td>${esc(data.motivo)}</td></tr>

@@ -93,7 +93,9 @@ async function notesFor(model: 'project.task' | 'helpdesk.ticket', resId: number
       fecha: r.date,
       texto: stripHtml(r.body),
     }))
-    .filter((n) => n.texto);
+    // La constancia de visita fallida se publica como nota interna para que no llegue por correo (ver
+    // pushReprogramacionToTicket): no es una nota de mesa de ayuda, no se muestra acá.
+    .filter((n) => n.texto && !n.texto.startsWith('Visita fallida —'));
 }
 
 // Dos fuentes distintas del mismo mecanismo: mesa de ayuda anota sobre el

@@ -48,9 +48,9 @@ describe('buildReprogramacionClienteHtml (rango horario)', () => {
     expect(html).not.toContain('sin cargo');
   });
 
-  it('llegó después de que terminó el rango: sin cargo para el cliente', () => {
+  it('llegó después de que terminó el rango: lo dice, pero sin la leyenda de sin cargo', () => {
     const html = buildReprogramacionClienteHtml({ ...conRango, fueraDeRango: true });
     expect(html).toContain('fuera del rango horario agendado (12:00 a 13:00)');
-    expect(html).toContain('sin cargo para el cliente');
+    expect(html).not.toContain('sin cargo');
   });
 });

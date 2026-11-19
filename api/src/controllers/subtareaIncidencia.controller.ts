@@ -125,9 +125,11 @@ export const createSubtareaIncidencia = asyncHandler(async (req: Request, res: R
       : body.tipo === 'pre_cancelado'
       ? 'PRE cancelado por el técnico'
       : 'Unidad no encontrada en el lugar';
+  // Va al comentario de la subtarea y a la nota de la actividad de coordinación. La llegada fuera del rango horario NO se
+  // escribe acá, por si después hay algún problema con el cliente: queda guardada en la incidencia (`fueraDeRango`).
   const bodyHtml = `<p><b>${titulo}</b> — reportado por ${esc(usuario?.nombre || usuario?.email || 'un técnico')} el ${esc(body.fecha)}.</p>${
     body.motivo ? `<p>Motivo: ${esc(body.motivo)}</p>` : ''
-  }${fueraDeRango ? '<p>El técnico llegó fuera del rango horario agendado: reprogramación sin cargo para el cliente.</p>' : ''}${
+  }${
     propuesta
       ? body.tipo === 'reprogramado_cliente'
         ? `<p>Fecha elegida por el cliente: <b>${esc(formatoArgentina(propuesta.inicio))}</b> a ${esc(formatoArgentina(propuesta.fin))}. ${body.firma ? `Firmó ${esc(body.firma.nombre)}.` : `Sin firma: ${esc(body.sinFirma?.motivo ?? '')}.`} Coordinación puede aceptar, cambiar la hora o rechazar.</p>`
@@ -252,6 +254,7 @@ export const createSubtareaIncidencia = asyncHandler(async (req: Request, res: R
         ticketId: body.ticketOdooId!,
         pdfBuffer,
         fileName: `visita_fallida_${nombre.replace(/[^\w.-]+/g, '_')}.pdf`,
+        notaInterna: true,
         resumenHtml: `<p><b>Visita fallida</b> — ${esc(body.subtareaNombre)} (${esc(body.clienteNombre)}). El técnico se presentó en el lugar y la unidad no se encontraba.</p>`,
       });
       incidencia.pdfReprogramacionAt = new Date();
@@ -468,9 +471,12 @@ export const resolveSubtareaIncidencia = asyncHandler(async (req: Request, res: 
         ticketId: incidencia.ticketOdooId,
         pdfBuffer,
         fileName: `${esConstancia ? 'visita_fallida' : 'reprogramacion'}_${nombre.replace(/[^\w.-]+/g, '_')}.pdf`,
+        // La constancia de visita fallida no se manda por correo; la reprogramación sigue como antes.
+        notaInterna: esConstancia,
         resumenHtml: esConstancia
           ? `<p><b>Visita fallida</b> — ${esc(incidencia.subtareaNombre)} (${esc(incidencia.clienteNombre)}). ${incidencia.tipo === 'pre_cancelado' ? 'El técnico se presentó dentro del rango horario y la visita no pudo completarse.' : 'La unidad no se encontraba en el lugar.'}</p>${nuevaInicio ? `<p>Nueva fecha y hora: <b>${esc(formatoFechaHora(nuevaInicio))}</b>.</p>` : ''}`
-          : `<p><b>Visita reprogramada (sin cargo)</b> — ${esc(incidencia.subtareaNombre)} (${esc(incidencia.clienteNombre)}). El técnico llegó fuera del rango horario agendado.</p><p>Nueva fecha y hora: <b>${esc(formatoFechaHora(nuevaInicio!))}</b>.</p>`,
+          : // Sin "sin cargo" ni "llegó fuera del rango" en el chatter del ticket (mismo criterio que la nota de la subtarea).
+            `<p><b>Visita reprogramada</b> — ${esc(incidencia.subtareaNombre)} (${esc(incidencia.clienteNombre)}).</p><p>Nueva fecha y hora: <b>${esc(formatoFechaHora(nuevaInicio!))}</b>.</p>`,
       });
       incidencia.pdfReprogramacionAt = new Date();
       incidencia.pdfReprogramacionError = '';
