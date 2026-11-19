@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { EQUIP_CHECK_FIELDS, EQUIP_GROUPS, EQUIP_ITEM_PHOTO_LABEL, isEquipoFieldVisible } from '@wara/shared/src/equipo';
 import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY, VIDEO_SERVICIO_KEY } from '@wara/shared/src/photoSlots';
 import type { ServiceMode } from '@wara/shared/src/serviceMode';
-import { TIPO_SERVICIO_LABELS, ACCION_ELEMENTO_LABELS, detalleElementoTexto, FOTO_ELEMENTO_INTERVENIDO_PREFIX, accionIntervencionLabel, CAMBIO_EQUIPO_RAZON_LABELS, formatSeries, isEquipoSwap, ocultaCambioEquipoEnPdf } from '@wara/shared';
+import { TIPO_SERVICIO_LABELS, UNIDAD_NO_REVISABLE_LABELS, checklistOmitido, ACCION_ELEMENTO_LABELS, detalleElementoTexto, FOTO_ELEMENTO_INTERVENIDO_PREFIX, accionIntervencionLabel, CAMBIO_EQUIPO_RAZON_LABELS, formatSeries, isEquipoSwap, ocultaCambioEquipoEnPdf } from '@wara/shared';
 import { Badge } from '@/components/ui/Badge';
 import { TicketOdooLink } from '@/components/TicketOdooLink';
 import { IconAlertTriangle } from '@/components/ui/Icons';
 import { formatIsoDateTime } from '@/lib/format';
+import { formatDemora, llegadaTarde } from '@/lib/llegadaTarde';
 import { IconCamera, IconChevronDown, IconX } from '@/components/ui/Icons';
 import type { ConformidadDoc } from '@/lib/types';
 
@@ -48,6 +49,25 @@ const CONTROL_LABEL: Record<string, string> = {
   controlConexionRed: 'Conexión a la red',
   controlRevisionSensores: 'Sensores / módulos',
 };
+
+// Aviso de que la hoja no se pudo enviar en el momento y llegó después (sin señal, app cerrada): muestra la hora real en que el
+// técnico terminó y la hora en que el servidor la recibió. No aparece si llegó a tiempo ni en hojas anteriores a este dato.
+export function LlegadaTardeAviso({ c }: { c: ConformidadDoc }) {
+  const t = llegadaTarde(c);
+  if (!t) return null;
+  return (
+    <div className="mt-2 rounded-md border border-warning-200 bg-warning-50 p-3 text-xs text-warning-700">
+      <div className="flex items-center gap-1.5 font-extrabold">
+        <IconAlertTriangle size={14} />
+        Llegó al servidor {formatDemora(t.demoraMin)} después de terminarse
+      </div>
+      <div className="mt-1 leading-snug">
+        {t.fase} terminado en el teléfono: {formatIsoDateTime(t.hechaAt)}. Recibido por el servidor: {formatIsoDateTime(t.llegoAt)}. Si se
+        revisó el día del servicio, esta hoja todavía no estaba.
+      </div>
+    </div>
+  );
+}
 
 // Aviso del resultado de la verificación en vivo del equipo (paso de control de la PWA). Solo se muestra cuando el
 // técnico avanzó igual con el equipo sin confirmar: coordinación puede revisar esas hojas. Las hojas anteriores
@@ -211,6 +231,13 @@ export function ConformidadResumenBody({ c, mostrarTicket = true }: { c: Conform
             </InfoField>
           )}
           <InfoField label="Tipo de servicio">{tipoServicioLabel}</InfoField>
+          {/* Desinstalación de una unidad destruida, chocada o incendiada: se salteó el checklist. Bien visible para mesa de ayuda. */}
+          {checklistOmitido(c) && c.unidadNoRevisable?.motivo && (
+            <InfoField label="Checklist omitido">
+              <Badge tone="warn">{UNIDAD_NO_REVISABLE_LABELS[c.unidadNoRevisable.motivo]}</Badge>
+              {c.unidadNoRevisable.detalle?.trim() && <span className="ml-1.5">{c.unidadNoRevisable.detalle.trim()}</span>}
+            </InfoField>
+          )}
           {c.tipoServicio === 'cambio_unidad' && c.cambioUnidad?.rol && (
             <InfoField label="Cambio de unidad">
               {c.cambioUnidad.rol === 'origen' ? 'Unidad de origen (desinstalación)' : 'Unidad de destino (instalación)'}
@@ -331,6 +358,7 @@ export function ConformidadResumenBody({ c, mostrarTicket = true }: { c: Conform
             })}
           </div>
           <VerificacionEquipoAviso c={c} />
+          <LlegadaTardeAviso c={c} />
         </div>
 
         {/* Reparación: lo que contó el técnico en "¿Qué se hizo?" (no figura en el PDF) y si pidió otra intervención. */}

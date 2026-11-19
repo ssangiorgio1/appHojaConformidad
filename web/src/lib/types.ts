@@ -1,4 +1,4 @@
-import type { Checklist, Equipo, SatisfaccionFirma, TipoServicio, MotivoIntervencion, CambioEquipoRazon, ActualizacionSobre, AccionElemento, DetalleElementoIntervenido, DispositivoAccion } from '@wara/shared';
+import type { Checklist, Equipo, SatisfaccionFirma, TipoServicio, MotivoIntervencion, CambioEquipoRazon, ActualizacionSobre, AccionElemento, DetalleElementoIntervenido, DispositivoAccion, UnidadNoRevisable } from '@wara/shared';
 
 // Mirrors api/src/models/Usuario.ts
 export type UsuarioRole = 'tecnico' | 'admin' | 'superadmin' | 'coordinacion' | 'mesa_ayuda';
@@ -173,6 +173,8 @@ export interface ConformidadDoc {
   dispositivosAccion?: Partial<Record<DispositivoAccion, string>>;
   // Dónde quedó instalado el equipo (texto libre del técnico, junto a la foto de ubicación). No va al PDF.
   ubicacionEquipo?: string;
+  // Desinstalación de una unidad destruida, chocada o incendiada: se salteó el checklist (ver UnidadNoRevisable en @wara/shared).
+  unidadNoRevisable?: UnidadNoRevisable | null;
   cambioEquipoRazon?: CambioEquipoRazon | null;
   cambioEquipoRazonDetalle?: string;
   // Intervención que además instala un sensor o módulo (ver ocultaCambioEquipoEnPdf en @wara/shared).
@@ -205,6 +207,11 @@ export interface ConformidadDoc {
   // Set once the app has generated and uploaded the PDF report (see
   // mobile/src/sync/sync.ts) — null until then, e.g. for borrador_pre records.
   pdfReporte: { url: string; key: string } | null;
+  // Horas reales en el teléfono del técnico (fin del PRE y firma del POST) y cuándo el servidor recibió la hoja completa.
+  // createdAt es cuándo llegó el PRE. Ausentes en hojas anteriores a este dato. Ver lib/llegadaTarde.ts.
+  preFinalizadoAt?: string | null;
+  completadoAt?: string | null;
+  completoRecibidoAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

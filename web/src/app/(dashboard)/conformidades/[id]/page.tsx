@@ -7,12 +7,12 @@ import { checklistItemsFor, DETAIL_FIELD_BY_KEY } from '@wara/shared/src/checkli
 import { EQUIP_CHECK_FIELDS, EQUIP_GROUPS, EQUIP_ITEM_PHOTO_LABEL } from '@wara/shared/src/equipo';
 import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY, VIDEO_SERVICIO_KEY } from '@wara/shared/src/photoSlots';
 import type { ServiceMode } from '@wara/shared/src/serviceMode';
-import { SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, type ChecklistValue, type SatisfaccionFirma } from '@wara/shared';
+import { SATISFACCION_LABELS, TIPO_SERVICIO_LABELS, UNIDAD_NO_REVISABLE_LABELS, checklistOmitido, type ChecklistValue, type SatisfaccionFirma } from '@wara/shared';
 import { Card } from '@/components/ui/Card';
 import { Badge, type BadgeTone } from '@/components/ui/Badge';
 import { IconCamera, IconChevronLeft, IconLock, IconDocument, IconX } from '@/components/ui/Icons';
 import { AltaCheckToggle, canToggleAlta } from '@/components/AltaCheckToggle';
-import { ConformidadResumen, InfoField, VerificacionEquipoAviso, isEquipoFieldVisible } from '@/components/ConformidadResumen';
+import { ConformidadResumen, InfoField, LlegadaTardeAviso, VerificacionEquipoAviso, isEquipoFieldVisible } from '@/components/ConformidadResumen';
 import {
   getConformidad,
   generateConformidadPdf,
@@ -320,7 +320,15 @@ export default function ConformidadDetailPage() {
             <div className="mb-1 text-[15px] font-extrabold">Checklist de instalación</div>
             <div className="mb-3.5 text-xs font-semibold text-muted">Fase {fase.toUpperCase()}</div>
 
-            {checklistRows.map((row) =>
+            {/* Desinstalación de una unidad destruida, chocada o incendiada: el técnico salteó el checklist (PRE y POST). */}
+            {c && checklistOmitido(c) && c.unidadNoRevisable?.motivo && (
+              <div className="rounded-md border border-warning-300 bg-warn-bg p-3.5 text-[12.5px] leading-relaxed text-warn">
+                <div className="font-extrabold">Checklist no realizado: {UNIDAD_NO_REVISABLE_LABELS[c.unidadNoRevisable.motivo]}</div>
+                {c.unidadNoRevisable.detalle?.trim() && <div className="mt-0.5 font-medium">{c.unidadNoRevisable.detalle.trim()}</div>}
+              </div>
+            )}
+
+            {!(c && checklistOmitido(c)) && checklistRows.map((row) =>
               row.kind === 'header' ? (
                 <div key={row.label} className="pb-1.5 pt-3.5 text-[11.5px] font-extrabold uppercase tracking-wide text-muted">
                   {row.label}
@@ -515,6 +523,7 @@ export default function ConformidadDetailPage() {
                   );
                 })}
                 <VerificacionEquipoAviso c={c} />
+                <LlegadaTardeAviso c={c} />
               </div>
             </div>
           </Card>

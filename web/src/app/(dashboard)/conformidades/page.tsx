@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { MultiSelectBuscable } from '@/components/ui/MultiSelectBuscable';
 import { Button } from '@/components/ui/Button';
-import { IconAlertTriangle, IconChevronDown, IconDownload, IconEye, IconSearch, IconX } from '@/components/ui/Icons';
+import { IconAlertTriangle, IconChevronDown, IconClock, IconDownload, IconEye, IconSearch, IconX } from '@/components/ui/Icons';
 import { AltaCheckToggle, canToggleAlta } from '@/components/AltaCheckToggle';
 import { ConformidadResumenBody } from '@/components/ConformidadResumen';
 import { TicketOdooLink } from '@/components/TicketOdooLink';
@@ -18,7 +18,8 @@ import { exportConformidades, listConformidades, listUsuarios, setAltaConformida
 import { descargarXlsx } from '@/lib/descargarXlsx';
 import { useAuth } from '@/auth/AuthContext';
 import { useApiData } from '@/lib/useApiData';
-import { formatFechaHora } from '@/lib/format';
+import { formatFechaHora, formatIsoDateTime } from '@/lib/format';
+import { formatDemora, llegadaTarde } from '@/lib/llegadaTarde';
 import type { ConformidadDoc, EstadoConformidad } from '@/lib/types';
 
 const ESTADO_LABEL: Record<EstadoConformidad, string> = {
@@ -96,6 +97,22 @@ function BajoResponsabilidadBadge({ c }: { c: ConformidadDoc }) {
     >
       <IconAlertTriangle size={11} />
       Sin verificar
+    </span>
+  );
+}
+
+// Etiqueta chica en el listado: la hoja no se pudo enviar en el momento (sin señal, app cerrada) y llegó después. Aparece con la
+// fecha real del servicio, que puede ser de un día ya revisado.
+function LlegoTardeBadge({ c }: { c: ConformidadDoc }) {
+  const t = llegadaTarde(c);
+  if (!t) return null;
+  return (
+    <span
+      title={`${t.fase} terminado ${formatIsoDateTime(t.hechaAt)}, llegó al servidor ${formatIsoDateTime(t.llegoAt)} (${formatDemora(t.demoraMin)} después)`}
+      className="mt-1 inline-flex items-center gap-1 rounded-full bg-warning-50 px-2 py-0.5 text-[10.5px] font-bold text-warning-700"
+    >
+      <IconClock size={11} />
+      Llegó {formatDemora(t.demoraMin)} después
     </span>
   );
 }
@@ -653,6 +670,7 @@ export default function ConformidadesPage() {
                   <div className="flex flex-col items-end">
                     <Badge tone={ESTADO_TONE[c.status]}>{ESTADO_LABEL[c.status]}</Badge>
                     <BajoResponsabilidadBadge c={c} />
+                    <LlegoTardeBadge c={c} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[12px] font-semibold">
@@ -801,6 +819,7 @@ export default function ConformidadesPage() {
                     <div className="p-3.5">
                       <Badge tone={ESTADO_TONE[c.status]}>{ESTADO_LABEL[c.status]}</Badge>
                       <BajoResponsabilidadBadge c={c} />
+                    <LlegoTardeBadge c={c} />
                     </div>
                     <div className="p-3.5">{toggleMA}</div>
                     <div className="p-3.5">{toggleCoord}</div>
