@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { EQUIP_CHECK_FIELDS, EQUIP_GROUPS, EQUIP_ITEM_PHOTO_LABEL, isEquipoFieldVisible } from '@wara/shared/src/equipo';
 import { prePhotoSlotsFor, postPhotoSlotsFor, INTERVENCION_GROUP_KEY, EXTRA_POST_PHOTOS_KEY, VIDEO_SERVICIO_KEY } from '@wara/shared/src/photoSlots';
 import type { ServiceMode } from '@wara/shared/src/serviceMode';
-import { TIPO_SERVICIO_LABELS, MOTIVO_INTERVENCION_LABELS, CAMBIO_EQUIPO_RAZON_LABELS, formatSeries, isEquipoSwap, ocultaCambioEquipoEnPdf } from '@wara/shared';
+import { TIPO_SERVICIO_LABELS, ACCION_ELEMENTO_LABELS, detalleElementoTexto, FOTO_ELEMENTO_INTERVENIDO_PREFIX, accionIntervencionLabel, CAMBIO_EQUIPO_RAZON_LABELS, formatSeries, isEquipoSwap, ocultaCambioEquipoEnPdf } from '@wara/shared';
 import { Badge } from '@/components/ui/Badge';
+import { TicketOdooLink } from '@/components/TicketOdooLink';
 import { IconAlertTriangle } from '@/components/ui/Icons';
 import { formatIsoDateTime } from '@/lib/format';
 import { IconCamera, IconChevronDown, IconX } from '@/components/ui/Icons';
@@ -31,6 +32,11 @@ const GALLERY_LABELS: Record<string, string> = {
 // no van a tener match acá — se muestran sin descripción en vez de romper.
 function fotoLabel(fase: 'pre' | 'post', slotKey?: string): string | null {
   if (!slotKey) return null;
+  // Foto de un sensor/módulo reemplazado o reparado en una intervención (ver FOTO_ELEMENTO_INTERVENIDO_PREFIX).
+  if (slotKey.startsWith(FOTO_ELEMENTO_INTERVENIDO_PREFIX)) {
+    const k = slotKey.slice(FOTO_ELEMENTO_INTERVENIDO_PREFIX.length);
+    return `${EQUIP_ITEM_PHOTO_LABEL[k] ?? k} (reemplazado / reparado)`;
+  }
   return PHOTO_SLOT_LABELS[fase][slotKey] ?? GALLERY_LABELS[slotKey] ?? null;
 }
 
@@ -70,6 +76,46 @@ export function VerificacionEquipoAviso({ c }: { c: ConformidadDoc }) {
   );
 }
 
+// Sensores/módulos tildados en la hoja, cada uno con sus detalles (N° de serie, canales, texto de IO1...).
+export function sensoresInstalados(c: ConformidadDoc): { key: string; label: string; detalles: string[] }[] {
+  const equipo = c.equipo as Record<string, string | null | undefined>;
+  const fields: { key: string; label: string; dependsOn?: string; series?: boolean; canales?: boolean; cantidad?: boolean; conexion?: boolean }[] = [];
+  for (const group of EQUIP_GROUPS.slice(1)) {
+    // skip "Datos del equipo" (modelo/imei se muestran aparte) y "Control
+    // de instalación" (son campos de texto, no checkboxes)
+    if (group.title === 'Control de instalación') continue;
+    for (const f of group.fields) fields.push(f);
+  }
+  // Los campos de detalle (dependsOn, ej. el textfield de IO1) no son
+  // checkboxes — su texto se anexa al checkbox del que dependen
+  // en vez de listarse aparte con la etiqueta genérica del campo. Un checkbox puede tener
+  // más de un detalle (MDVR: canales y serie).
+  const detailsByCheckboxKey = new Map<string, typeof fields>();
+  for (const f of fields.filter((x) => x.dependsOn)) {
+    detailsByCheckboxKey.set(f.dependsOn as string, [...(detailsByCheckboxKey.get(f.dependsOn as string) ?? []), f]);
+  }
+  // Los checkbox de EQUIP_GROUPS guardan 'Sí' (truthy) / '' al desmarcar —
+  // nunca 'SI' (mayúsculas, sin tilde), que es la convención de
+  // EQUIP_CHECK_FIELDS nada más.
+  return fields
+    .filter((f) => !f.dependsOn && Boolean(equipo[f.key]))
+    .map((f) => ({
+      key: f.key,
+      label: f.label,
+      detalles: (detailsByCheckboxKey.get(f.key) ?? [])
+        .map((d) => {
+          // Cámaras ADAS / DSM guardan varios N° de serie, uno por línea (ver seriesDe en @wara/shared).
+          const v = d.series ? formatSeries(equipo[d.key]) : equipo[d.key]?.trim();
+          if (!v) return '';
+          // "x4" y "conectado en IO1": solo el número o la entrada sueltos no se entendían en el panel.
+          if (d.conexion) return `conectado en ${v}`;
+          if (d.cantidad) return `x${v}`;
+          return d.canales ? `${v} canales` : v;
+        })
+        .filter(Boolean) as string[],
+    }));
+}
+
 export function InfoField({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
@@ -103,7 +149,8 @@ export function ConformidadResumenHeader({
 // individual de la hoja como, desplegable por fila, en el listado de
 // conformidades (ver conformidades/page.tsx) para poder dar de alta sin
 // tener que entrar de a una.
-export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
+// `mostrarTicket`: el detalle de la hoja ya tiene su propio link al ticket arriba, así que ahí no se repite.
+export function ConformidadResumenBody({ c, mostrarTicket = true }: { c: ConformidadDoc; mostrarTicket?: boolean }) {
   // `isVideo` decide si el lightbox reproduce <video> (con controles) en vez
   // de <img> — ver Foto.mimeType en lib/types.ts (video corto de
   // verificación, Pantalla N° de serie / Cámaras ADAS).
@@ -125,42 +172,16 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
   // modelo/imei del equipo describen el que se retira cuando el servicio es
   // una desinstalación o un cambio de equipo (ver equipo.ts en @wara/shared).
   const esSwap = isEquipoSwap(c.tipoServicio, c.motivoIntervencion);
-  const equipoLabelSuffix = c.tipoServicio === 'desinstalacion' ? ' (desinstalado)' : esSwap ? ' (retirado)' : '';
+  // Intervención sin cambio de equipo: el equipo ya estaba en la unidad, no se instaló.
+  const intervencionSinCambio = c.tipoServicio === 'reparacion' && !esSwap;
+  const equipoLabelSuffix =
+    c.tipoServicio === 'desinstalacion' ? ' (desinstalado)' : esSwap ? ' (retirado)' : intervencionSinCambio ? ' (de la unidad)' : '';
   const tipoServicioLabel = TIPO_SERVICIO_LABELS[c.tipoServicio ?? 'instalacion'];
 
-  const instaladosResumen = useMemo(() => {
-    const equipo = c.equipo as Record<string, string | null | undefined>;
-    const fields: { key: string; label: string; dependsOn?: string; series?: boolean; canales?: boolean }[] = [];
-    for (const group of EQUIP_GROUPS.slice(1)) {
-      // skip "Datos del equipo" (modelo/imei se muestran aparte) y "Control
-      // de instalación" (son campos de texto, no checkboxes)
-      if (group.title === 'Control de instalación') continue;
-      for (const f of group.fields) fields.push(f);
-    }
-    // Los campos de detalle (dependsOn, ej. el textfield de IO1) no son
-    // checkboxes — su texto se anexa al badge del checkbox del que dependen
-    // en vez de listarse aparte con la etiqueta genérica del campo. Un checkbox puede tener
-    // más de un detalle (MDVR: canales y serie).
-    const detailsByCheckboxKey = new Map<string, typeof fields>();
-    for (const f of fields.filter((x) => x.dependsOn)) {
-      detailsByCheckboxKey.set(f.dependsOn as string, [...(detailsByCheckboxKey.get(f.dependsOn as string) ?? []), f]);
-    }
-    // Los checkbox de EQUIP_GROUPS guardan 'Sí' (truthy) / '' al desmarcar —
-    // nunca 'SI' (mayúsculas, sin tilde), que es la convención de
-    // EQUIP_CHECK_FIELDS nada más. Comparar contra 'SI' acá nunca matcheaba.
-    return fields
-      .filter((f) => !f.dependsOn && Boolean(equipo[f.key]))
-      .map((f) => {
-        const detalles = (detailsByCheckboxKey.get(f.key) ?? [])
-          .map((d) => {
-            // Cámaras ADAS / DSM guardan varios N° de serie, uno por línea (ver seriesDe en @wara/shared).
-            const v = d.series ? formatSeries(equipo[d.key]) : equipo[d.key]?.trim();
-            return v ? (d.canales ? `${v} canales` : v) : '';
-          })
-          .filter(Boolean);
-        return detalles.length ? `${f.label}: ${detalles.join(' · ')}` : f.label;
-      });
-  }, [c]);
+  const instaladosResumen = useMemo(
+    () => sensoresInstalados(c).map((s) => (s.detalles.length ? `${s.label}: ${s.detalles.join(' · ')}` : s.label)),
+    [c],
+  );
 
   // Sensores/módulos que se desinstalaron además del equipo (ver Equipo.elementosRetirados en @wara/shared).
   const retiradosResumen = useMemo(
@@ -184,6 +205,11 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
     <>
       <div className="flex min-h-0 flex-col gap-4">
         <div className="flex flex-wrap gap-x-8 gap-y-3">
+          {mostrarTicket && (
+            <InfoField label="Ticket Odoo">
+              <TicketOdooLink ticket={c.ticketOdoo} />
+            </InfoField>
+          )}
           <InfoField label="Tipo de servicio">{tipoServicioLabel}</InfoField>
           {c.tipoServicio === 'cambio_unidad' && c.cambioUnidad?.rol && (
             <InfoField label="Cambio de unidad">
@@ -197,18 +223,18 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
             </InfoField>
           )}
           {c.tipoServicio === 'reparacion' && c.motivoIntervencion && (
-            <InfoField label="Acción tomada">
-              {MOTIVO_INTERVENCION_LABELS[c.motivoIntervencion]}
-              {c.motivoIntervencion === 'otro' && c.motivoIntervencionDetalle?.trim() ? `: ${c.motivoIntervencionDetalle.trim()}` : ''}
-            </InfoField>
+            <InfoField label="Acción tomada">{accionIntervencionLabel(c)}</InfoField>
           )}
           {c.tipoServicio === 'reparacion' && c.motivoIntervencion === 'cambio_equipo' && c.cambioEquipoRazon && (
-            <InfoField label="Razón del cambio de equipo">
-              {CAMBIO_EQUIPO_RAZON_LABELS[c.cambioEquipoRazon]}
-              {c.cambioEquipoRazonDetalle?.trim() ? `: ${c.cambioEquipoRazonDetalle.trim()}` : ''}
+            <InfoField label="Razón del cambio de equipo">{CAMBIO_EQUIPO_RAZON_LABELS[c.cambioEquipoRazon]}</InfoField>
+          )}
+          {/* Diagnóstico de la PWA ("¿Qué se encontró?"): se guarda en motivoIntervencionDetalle para cualquier acción.
+              Hojas anteriores: el detalle de "Otro" o el de la razón del cambio (cambioEquipoRazonDetalle). */}
+          {c.tipoServicio === 'reparacion' && (c.motivoIntervencionDetalle?.trim() || c.cambioEquipoRazonDetalle?.trim()) && (
+            <InfoField label="Diagnóstico">
+              {[c.motivoIntervencionDetalle?.trim(), c.cambioEquipoRazonDetalle?.trim()].filter(Boolean).join(' · ')}
             </InfoField>
           )}
-          {c.instalaSensorModulo && <InfoField label="Además se instaló">Sensor o módulo (ver abajo)</InfoField>}
           <InfoField label={`Modelo${equipoLabelSuffix}`}>{c.equipo.modelo || '—'}</InfoField>
           <InfoField label={`IMEI${equipoLabelSuffix}`}>{c.equipo.imei || '—'}</InfoField>
           {esSwap && (
@@ -221,6 +247,8 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
               quedaron vacíos, o los servicios que no los piden (retiro, otro equipo), no se muestran. */}
           {c.equipo.controlOdometro?.trim() && <InfoField label="Odómetro">{c.equipo.controlOdometro.trim()} km</InfoField>}
           {c.equipo.controlHorometro?.trim() && <InfoField label="Horómetro">{c.equipo.controlHorometro.trim()} hs</InfoField>}
+          {/* Dónde quedó instalado, según el técnico (uso interno, no va al PDF). */}
+          {c.ubicacionEquipo?.trim() && <InfoField label="Ubicación del equipo">{c.ubicacionEquipo.trim()}</InfoField>}
         </div>
 
         {ocultaCambioEquipoEnPdf(c) && (
@@ -230,9 +258,31 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
           </div>
         )}
 
+        {/* Intervención: sensores/módulos que ya estaban y se reemplazaron o repararon (no son instalaciones nuevas). */}
+        {c.tipoServicio === 'reparacion' &&
+          (c.motivoIntervencion === 'cambio_sensor_modulo' || Object.keys(c.elementosIntervenidos ?? {}).length > 0) && (
+          <div>
+            <div className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">
+              Intervención realizada: sensores / módulos reemplazados o reparados
+            </div>
+            {Object.keys(c.elementosIntervenidos ?? {}).length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {Object.entries(c.elementosIntervenidos ?? {}).map(([k, accion]) => (
+                  <Badge key={k} tone="primary">
+                    {EQUIP_ITEM_PHOTO_LABEL[k] ?? k}: {ACCION_ELEMENTO_LABELS[accion] ?? accion}
+                    {detalleElementoTexto(accion, c.elementosIntervenidosDetalle?.[k], true) ? ` — ${detalleElementoTexto(accion, c.elementosIntervenidosDetalle?.[k], true)}` : ''}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <div className="text-[12.5px] font-semibold text-muted">Ninguno marcado.</div>
+            )}
+          </div>
+        )}
+
         <div>
           <div className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">
-            Sensores / módulos instalados
+            {intervencionSinCambio && !c.instalaSensorModulo ? 'Sensores / módulos de la unidad' : 'Sensores / módulos instalados'}
           </div>
           {instaladosResumen.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
@@ -263,7 +313,9 @@ export function ConformidadResumenBody({ c }: { c: ConformidadDoc }) {
         )}
 
         <div>
-          <div className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">Control de instalación</div>
+          <div className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-wide text-muted">
+            {c.tipoServicio === 'reparacion' ? 'Control de funcionamiento' : 'Control de instalación'}
+          </div>
           <div className="flex flex-wrap gap-1.5">
             {EQUIP_CHECK_FIELDS.map((f) => {
               // Ya no es un Sí/No que marca el técnico: la PWA lo resuelve sola contra
@@ -455,7 +507,7 @@ export function ConformidadResumen({ c, open, onToggle }: { c: ConformidadDoc; o
         className={`mt-4 grid overflow-hidden transition-[grid-template-rows] duration-300 ease-in-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
       >
         <div className="min-h-0">
-          <ConformidadResumenBody c={c} />
+          <ConformidadResumenBody c={c} mostrarTicket={false} />
         </div>
       </div>
     </>

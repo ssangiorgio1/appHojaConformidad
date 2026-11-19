@@ -1,4 +1,4 @@
-import type { Checklist, Equipo, SatisfaccionFirma, TipoServicio, MotivoIntervencion, CambioEquipoRazon } from '@wara/shared';
+import type { Checklist, Equipo, SatisfaccionFirma, TipoServicio, MotivoIntervencion, CambioEquipoRazon, ActualizacionSobre, AccionElemento, DetalleElementoIntervenido, DispositivoAccion } from '@wara/shared';
 
 // Mirrors api/src/models/Usuario.ts
 export type UsuarioRole = 'tecnico' | 'admin' | 'superadmin' | 'coordinacion' | 'mesa_ayuda';
@@ -165,6 +165,14 @@ export interface ConformidadDoc {
   tipoServicio: TipoServicio | null;
   motivoIntervencion?: MotivoIntervencion | null;
   motivoIntervencionDetalle?: string;
+  actualizacionSobre?: ActualizacionSobre | null;
+  actualizacionNumero?: string;
+  elementosIntervenidos?: Record<string, AccionElemento>;
+  elementosIntervenidosDetalle?: Record<string, DetalleElementoIntervenido>;
+  // Reinicio / actualización: qué se reinició o actualizó -> N° de serie (ver DispositivoAccion en @wara/shared).
+  dispositivosAccion?: Partial<Record<DispositivoAccion, string>>;
+  // Dónde quedó instalado el equipo (texto libre del técnico, junto a la foto de ubicación). No va al PDF.
+  ubicacionEquipo?: string;
   cambioEquipoRazon?: CambioEquipoRazon | null;
   cambioEquipoRazonDetalle?: string;
   // Intervención que además instala un sensor o módulo (ver ocultaCambioEquipoEnPdf en @wara/shared).
